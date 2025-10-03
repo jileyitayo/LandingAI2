@@ -1,0 +1,39 @@
+# Prototyper Project Rules
+
+## Project Structure
+- `backend/` - FastAPI REST API
+- `frontend/` - Next.js application
+
+## General Principles
+- Write clean, idiomatic code
+- Follow DRY (Don't Repeat Yourself)
+- Prefer composition over inheritance
+- Keep functions small and focused
+- Write self-documenting code with clear names
+
+## Development Workflow
+- Use type safety (TypeScript for frontend, type hints for backend)
+- Update API client (`frontend/lib/api.ts`) when adding backend endpoints
+- Keep frontend and backend interfaces in sync
+- All components are kept under components/[feature]/
+- Each component is placed in a separate file; no default export
+
+## Documentation
+- Read from CLAUDE.md to get the context of the requirements of the application if available
+- Add comments for complex logic only
+- Update README when adding major features
+- Include examples in docstrings
+- Keep setup instructions current
+
+## Code Review Standards
+- All public functions must have type annotations
+- New components should be reusable
+- API endpoints must return proper status codes
+- Error handling required for all async operations
+- Use logger decorators to log major functions in the backend 
+
+## Testing Requirements
+- Write unit tests for new functions
+- Test API integration end-to-end
+- Validate responsive design for UI changes
+- Check error states and edge cases

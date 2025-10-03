@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+# Next.js (Frontend)
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# FastAPI (Backend)
+backend/.pytest_cache/
+backend/htmlcov/
+backend/.coverage
+
+# Environment variables
+.env
+.env.local
+.env*.local
+
+# OS
+.DS_Store
+*.pem
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel
+.vercel
+
+# Testing
+coverage/
