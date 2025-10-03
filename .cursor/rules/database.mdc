@@ -15,7 +15,6 @@ globs: prisma/**/*, src/db/**/*, **/*.prisma, supabase/**/*
 
 ## Supabase Security
 - Implement proper RLS policies
-- Use proper authentication
 - Configure proper permissions
 - Handle sensitive data properly
 - Implement proper backups
@@ -45,13 +44,6 @@ globs: prisma/**/*, src/db/**/*, **/*.prisma, supabase/**/*
 - Implement proper batching
 - Monitor performance metrics
 
-## Security
-- Use proper authentication
-- Implement proper authorization
-- Handle sensitive data properly
-- Use proper encryption
-- Implement proper backups
-- Monitor security issues
 
 ## Best Practices
 - Follow database conventions

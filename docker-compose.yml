@@ -5,9 +5,16 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      # used during the build process for nex.js pre-render pages that use Supabase
+      args:
+        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        - NEXT_PUBLIC_API_URL=http://backend:8000
+        - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
     container_name: sitesmith-frontend
     ports:
       - "3000:3000"
+    # used when container is running, needed for server-side rendering of Supabase and dynamic content
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}

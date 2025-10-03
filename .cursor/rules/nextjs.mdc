@@ -26,7 +26,6 @@ globs: **/*.tsx, **/*.ts, src/**/*.ts, src/**/*.tsx
 - Optimize images: Use WebP format, size data, lazy loading
 - Minimize use of 'useEffect' and 'setState'
 - Favor Server Components (RSC) where possible
-- Use dynamic loading for non-critical components
 - Implement proper caching strategies
 
 ## Data Fetching

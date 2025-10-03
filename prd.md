@@ -587,7 +587,6 @@ Templates use a component-based JSON structure for flexible, reusable sections:
   "showScrollIndicator": true
 }
 ```
-```
 
 **Acceptance Criteria:**
 - [ ] Supabase project created

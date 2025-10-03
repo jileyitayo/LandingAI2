@@ -54,20 +54,10 @@ globs: **/*.py, app/**/*.py, api/**/*.py
 - Implement proper logging
 
 ## Performance
-- Use proper caching
 - Implement proper async operations
 - Use proper background tasks
-- Implement proper connection pooling
-- Use proper query optimization
 - Monitor performance metrics
 
-## Testing
-- Write proper unit tests
-- Implement proper integration tests
-- Use proper test fixtures
-- Implement proper mocking
-- Test error scenarios
-- Use proper test coverage
 
 ## Deployment
 - Use proper Docker configuration

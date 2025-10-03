@@ -63,19 +63,17 @@ export default async function MyServerComponent() {
 Use the server-side client in Server Actions:
 
 ```typescript
-'use server'
+"use server";
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from "@/lib/supabase/server";
 
 export async function myServerAction() {
-  const supabase = await createClient()
-  
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-  
-  if (error) throw error
-  return data
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.from("projects").select("*");
+
+  if (error) throw error;
+  return data;
 }
 ```
 
@@ -84,21 +82,19 @@ export async function myServerAction() {
 Use the server-side client in Route Handlers:
 
 ```typescript
-import { createClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
+import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
 
 export async function GET() {
-  const supabase = await createClient()
-  
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-  
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.from("projects").select("*");
+
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  
-  return NextResponse.json(data)
+
+  return NextResponse.json(data);
 }
 ```
 
@@ -107,14 +103,14 @@ export async function GET() {
 TypeScript types for database tables are available in `/src/types/database.types.ts`:
 
 ```typescript
-import type { User, Project, Template } from '@/types/database.types'
+import type { User, Project, Template } from "@/types/database.types";
 
 // Use these types throughout your application for type safety
 const user: User = {
-  id: 'uuid',
-  email: 'user@example.com',
+  id: "uuid",
+  email: "user@example.com",
   // ... other fields
-}
+};
 ```
 
 ## Database Schema
@@ -139,4 +135,3 @@ See the PRD for detailed schema information.
 - [Supabase Documentation](https://supabase.com/docs)
 - [Supabase Auth with Next.js](https://supabase.com/docs/guides/auth/auth-helpers/nextjs)
 - [Supabase SSR Package](https://supabase.com/docs/guides/auth/server-side/nextjs)
-
