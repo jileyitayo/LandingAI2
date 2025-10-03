@@ -56,6 +56,32 @@ Features to back this up: Natural language prompts, no-code editor, one-click pu
 - Customers are often wary of online businesses. A professional website needs to build trust quickly.
 - Email is not the primary communication tool. Business happens on WhatsApp.
 - Receiving online payments can be complex. Credit card penetration is low; mobile money and local payment systems are dominant.
+
+### 1.5 Key Feature: AI Template Generation (v1.1)
+SiteSmith now supports **AI-powered template generation**, allowing users to create custom, reusable website templates based on their specific design preferences and business needs. This feature provides:
+
+**What it does:**
+- Users can describe their desired website design (e.g., "modern business layout with blue tones and professional feel")
+- AI generates a complete, reusable template with flexible HTML/CSS structure
+- Templates can be saved, edited, and reused across multiple projects
+- Users can build a personal library of custom templates alongside system-provided templates
+
+**Why it matters:**
+- **Consistency:** Businesses with multiple websites or pages can maintain brand consistency
+- **Efficiency:** Create one template, use it multiple times with different content
+- **Flexibility:** More control than pre-built templates, easier than coding from scratch
+- **Cost savings:** Reduce dependency on expensive template purchases or designer fees
+- **Customization:** Templates tailored to African business aesthetics and needs
+
+**User Flow:**
+1. User enters a template generation prompt (e.g., "Create a restaurant template with warm colors")
+2. AI generates template structure with CSS variables for easy theming
+3. User previews the template
+4. User can save, edit, or regenerate
+5. Template becomes available for use when creating new websites
+
+This feature bridges the gap between rigid pre-built templates and complex custom coding, giving users more creative control while maintaining simplicity.
+
 ---
 
 ## 2. Tech Stack
@@ -81,11 +107,12 @@ Features to back this up: Natural language prompts, no-code editor, one-click pu
 ### 3.1 Core Functionality (Must-Have)
 1. **User Authentication** - Sign up, login, logout
 2. **AI Website Generation** - Generate website from text prompt
-3. **Website Preview** - Live preview of generated website
-4. **Basic Editing** - Simple text and image editing
-5. **Website Publishing** - Deploy to a subdomain
-6. **Template Selection** - 3-5 basic templates/styles
-7. **WhatsApp Click-to-Chat** - Users should be able to chat with your business
+3. **AI Template Generation** - Generate custom templates from user prompts
+4. **Website Preview** - Live preview of generated website
+5. **Basic Editing** - Simple text and image editing
+6. **Website Publishing** - Deploy to a subdomain
+7. **Template Selection** - 3-5 basic templates/styles + user-generated templates
+8. **WhatsApp Click-to-Chat** - Users should be able to chat with your business
 
 ### 3.2 Out of Scope for MVP
 - Custom domain support (post-MVP)
@@ -118,19 +145,24 @@ Features to back this up: Natural language prompts, no-code editor, one-click pu
 ---
 
 ### Feature 2: AI Website Generation Engine
-**Description:** Core AI functionality that converts user prompts into complete website code.
+**Description:** Core AI functionality that converts user prompts into complete website code, with the ability to generate custom templates or use existing ones.
 
 **User Stories:**
 - As a user, I want to describe my website needs in plain English
 - As a user, I want to see my website generated within 30 seconds
 - As a user, I want to regenerate with refined prompts
 - As a user, I want to choose a style/template before generation
+- As a user, I want to generate a custom template based on my business type and design preferences
+- As a user, I want to save generated templates for reuse across projects
 
 **Technical Requirements:**
 - Integration with OpenAI API (GPT-4) or similar
 - Prompt engineering for website generation
-- Template system for consistent outputs
+- Prompt engineering for template generation (layout, color schemes, typography)
+- Template system for consistent outputs (system + user-generated)
 - Real-time generation status updates
+- Template validation and storage
+- Template preview generation
 
 ---
 
@@ -185,7 +217,28 @@ Features to back this up: Natural language prompts, no-code editor, one-click pu
 
 ---
 
-### Feature 6: Subscription & Payments
+### Feature 6: Template Management & Generation
+**Description:** System for managing both system-provided and user-generated templates, with AI-powered template creation.
+
+**User Stories:**
+- As a user, I want to browse available templates (system and my custom ones)
+- As a user, I want to generate a custom template by describing my design preferences
+- As a user, I want to preview templates before using them
+- As a user, I want to save generated templates for future use
+- As a user, I want to edit and customize my saved templates
+- As a user, I want to delete templates I no longer need
+
+**Technical Requirements:**
+- Template CRUD operations (Create, Read, Update, Delete)
+- AI template generation service with GPT-4
+- Template preview rendering system
+- Template categorization and tagging
+- Template ownership and access control (RLS)
+- Template validation (ensure valid HTML/CSS structure)
+
+---
+
+### Feature 7: Subscription & Payments
 **Description:** Stripe integration for subscription management.
 
 **User Stories:**
@@ -266,19 +319,27 @@ Create the following database schema in Supabase (provide SQL):
 
 1. users table (extends Supabase auth.users):
    - id (uuid, primary key, references auth.users)
-   - email (text)
-   - full_name (text)
-   - avatar_url (text)
-   - subscription_tier (text, default: 'free')
-   - payment_customer_id (text) # for stripe
-   - created_at (timestamp)
-   - updated_at (timestamp)
+   - email (text, not null, unique)
+   - full_name (text, nullable)
+   - avatar_url (text, nullable)
+   - subscription_tier (text, default: 'free') -- 'free' | 'pro'
+   - payment_customer_id (text) # for stripe -  Stripe customer ID
+   - generation_count (integer, default: 0) -- Total generations ever
+   - current_period_generations (integer, default: 0) -- Resets monthly
+   - current_period_start (date, default: CURRENT_DATE) -- For rate limiting
+   - onboarding_completed (boolean, default: false)
+   - email_verified (boolean, default: false)
+   - last_login_at (timestamp, nullable)
+   - created_at (timestamp, default: NOW())
+   - updated_at (timestamp, default: NOW())
+
 
 2. projects table:
-   - id (uuid, primary key)
-   - user_id (uuid, foreign key to users)
-   - name (text)
-   - prompt (text)
+   - id (uuid, primary key, default: uuid_generate_v4())
+   - user_id (uuid, foreign key to users.id, not null)
+   - name (text, not null)
+   - description (text, nullable)
+   - prompt (text, nullable)
    - template_id (text)
    - html_content (text)
    - css_content (text)
@@ -286,27 +347,256 @@ Create the following database schema in Supabase (provide SQL):
    - published (boolean, default: false)
    - subdomain (text, unique)
    - deployment_url (text)
+   - deployment_id (text, nullable) -- Vercel deployment ID
+   - theme_settings (jsonb, nullable) -- {primaryColor, secondaryColor, fontFamily}
+   - whatsapp_number (varchar(20), nullable) -- African market feature
+   - favicon_url (text, nullable)
+   - generation_status (varchar(20), default: 'idle') -- 'idle' | 'generating' | 'completed' | 'failed'
+   - generation_error (text, nullable)
+   - last_generated_at (timestamp, nullable)
+   - last_deployed_at (timestamp, nullable)
+   - deleted_at (timestamp, nullable) -- Soft delete
    - created_at (timestamp)
    - updated_at (timestamp)
 
-3. templates table:
-   - id (uuid, primary key)
-   - name (text)
-   - description (text)
-   - preview_image (text)
-   - category (text)
-   - base_html (text)
-   - base_css (text)
-   - created_at (timestamp)
 
-Add Row Level Security (RLS) policies for all tables.
+3. templates table:
+   - id (uuid, primary key, default: uuid_generate_v4())
+   - user_id (uuid, foreign key to users.id, nullable) -- NULL for system templates, user ID for user-generated
+   - name (text, not null)
+   - description (text, nullable)
+   - preview_image (text, nullable) -- URL to preview image
+   - preview_html (text, nullable) -- Generated preview for thumbnail
+   - category (text, nullable) -- 'business' | 'portfolio' | 'restaurant' | 'services' | 'custom'
+   - base_html (text, nullable) -- Stores the generated html (Potentially could be generated and during deployment)
+   - base_css (text, nullable) -- Global CSS, component styles in sections_config
+   - base_js (text, nullable) -- Optional JavaScript for template
+   - is_system_template (boolean, default: false) -- True for built-in templates
+   - is_active (boolean, default: true) -- Can be disabled without deleting
+   - is_public (boolean, default: false) -- For future template marketplace
+   - generation_prompt (text, nullable) -- Original prompt used to generate template
+   - style_config (jsonb, nullable) -- {colorScheme: {primary, secondary, accent}, typography: {headingFont, bodyFont}, spacing: 'comfortable' | 'compact' | 'spacious'}
+   - sections_config (jsonb, not null) -- Component-based structure: {sections: [{id, type, order, variation, html, css, content_bindings, config}]}
+   - content_schema (jsonb, nullable) -- Defines required fields: {required_fields: {business_name: 'string', services: 'array', etc.}}
+   - tags (text[], nullable) -- ['african', 'modern', 'minimal', etc.]
+   - use_count (integer, default: 0) -- Track popularity
+   - generation_status (varchar(20), default: 'completed') -- 'generating' | 'completed' | 'failed'
+   - generation_error (text, nullable)
+   - created_at (timestamp, default: NOW())
+   - updated_at (timestamp, default: NOW())
+
+
+Add Row Level Security (RLS) policies for all tables:
+
+**RLS Policies for templates table:**
+```sql
+-- Enable RLS
+ALTER TABLE templates ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Anyone can view system templates
+CREATE POLICY "System templates are viewable by everyone" 
+ON templates FOR SELECT 
+USING (is_system_template = true);
+
+-- Policy: Users can view their own templates
+CREATE POLICY "Users can view own templates" 
+ON templates FOR SELECT 
+USING (auth.uid() = user_id);
+
+-- Policy: Users can insert their own templates
+CREATE POLICY "Users can insert own templates" 
+ON templates FOR INSERT 
+WITH CHECK (auth.uid() = user_id AND is_system_template = false);
+
+-- Policy: Users can update their own templates
+CREATE POLICY "Users can update own templates" 
+ON templates FOR UPDATE 
+USING (auth.uid() = user_id AND is_system_template = false);
+
+-- Policy: Users can delete their own templates
+CREATE POLICY "Users can delete own templates" 
+ON templates FOR DELETE 
+USING (auth.uid() = user_id AND is_system_template = false);
+
+-- Policy: Public templates are viewable by everyone (for future marketplace)
+CREATE POLICY "Public templates are viewable by everyone" 
+ON templates FOR SELECT 
+USING (is_public = true);
+```
+
+**Indexes for performance:**
+```sql
+-- Index for user templates lookup
+CREATE INDEX idx_templates_user_id ON templates(user_id) WHERE user_id IS NOT NULL;
+
+-- Index for system templates lookup
+CREATE INDEX idx_templates_system ON templates(is_system_template) WHERE is_system_template = true;
+
+-- Index for category filtering
+CREATE INDEX idx_templates_category ON templates(category);
+
+-- Index for tag searching
+CREATE INDEX idx_templates_tags ON templates USING GIN(tags);
+
+-- Index for active templates
+CREATE INDEX idx_templates_active ON templates(is_active) WHERE is_active = true;
+```
+
+**Component Library Structure:**
+
+Templates use a component-based JSON structure for flexible, reusable sections:
+
+```json
+{
+  "sections": [
+    {
+      "id": "hero-1",
+      "type": "hero",
+      "order": 1,
+      "variation": "full-width-centered",
+      "html": "<section class='hero'>...</section>",
+      "css": ".hero { ... }",
+      "config": {
+        "background": {
+          "type": "image",  // 'image' | 'color' | 'gradient' | 'video'
+          "value": "{{background_image}}",  // URL binding or color value
+          "overlay": true,  // Dark overlay for text readability
+          "overlayOpacity": 0.4
+        },
+        "contentAlignment": "center",  // 'left' | 'center' | 'right'
+        "minHeight": "100vh",
+        "padding": "comfortable"
+      },
+      "content_bindings": {
+        "headline": {
+          "type": "text",
+          "required": true,
+          "placeholder": "Your Business Name"
+        },
+        "subheadline": {
+          "type": "text",
+          "required": false,
+          "placeholder": "A compelling tagline"
+        },
+        "cta_text": {
+          "type": "text",
+          "required": true,
+          "default": "Get Started"
+        },
+        "cta_url": {
+          "type": "url",
+          "required": false,
+          "default": "#contact"
+        },
+        "hero_image": {
+          "type": "image",
+          "required": false,
+          "placeholder": null
+        },
+        "hero_video": {
+          "type": "video",
+          "required": false,
+          "placeholder": null
+        },
+        "background_image": {
+          "type": "image",
+          "required": false,
+          "placeholder": null
+        }
+      }
+    },
+    {
+      "id": "services-1",
+      "type": "services",
+      "order": 2,
+      "variation": "three-column-grid",
+      "html": "...",
+      "css": "...",
+      "config": {
+        "columns": 3,
+        "iconStyle": "outlined",
+        "cardStyle": "elevated"
+      },
+      "content_bindings": {
+        "section_title": {
+          "type": "text",
+          "required": true,
+          "default": "Our Services"
+        },
+        "services": {
+          "type": "array",
+          "required": true,
+          "itemSchema": {
+            "title": "string",
+            "description": "string",
+            "icon": "string",
+            "image": "url"
+          }
+        }
+      }
+    },
+    {
+      "id": "contact-1",
+      "type": "contact",
+      "order": 3,
+      "variation": "split-form-info",
+      "html": "...",
+      "css": "...",
+      "config": {
+        "showMap": false,
+        "showWhatsApp": true,
+        "formFields": ["name", "email", "message"]
+      },
+      "content_bindings": {
+        "business_phone": {"type": "phone", "required": false},
+        "whatsapp_number": {"type": "phone", "required": false},
+        "business_email": {"type": "email", "required": true},
+        "business_address": {"type": "text", "required": false}
+      }
+    }
+  ]
+}
+```
+
+**Supported Component Types (MVP):**
+- All sections should have a header and a footer
+- `header` - Header sections with multiple variations (centered-logo, logo-left-right-aligned-menu)
+- `hero` - Hero sections with multiple variations (centered, split, video background)
+- `about` - About/story sections (two-column, centered, timeline)
+- `services` - Service/feature grids (2-col, 3-col, 4-col, carousel)
+- `portfolio` - Work/product showcase (grid, masonry, carousel)
+- `testimonials` - Customer reviews (cards, carousel, wall)
+- `cta` - Call-to-action sections (banner, centered, split)
+- `contact` - Contact sections (form, info, map)
+- `footer` - Footer sections (simple, columns, social)
+
+**Hero Section Configuration Options:**
+```json
+{
+  "background": {
+    "type": "image | color | gradient | video",
+    "value": "url or color value",
+    "overlay": true,
+    "overlayOpacity": 0.4,
+    "parallax": false
+  },
+  "contentAlignment": "left | center | right",
+  "verticalAlignment": "top | center | bottom",
+  "minHeight": "50vh | 75vh | 100vh | auto",
+  "textColor": "auto | light | dark",
+  "showScrollIndicator": true
+}
+```
 ```
 
 **Acceptance Criteria:**
 - [ ] Supabase project created
 - [ ] Database schema deployed
-- [ ] RLS policies active
+- [ ] RLS policies active for all tables
+- [ ] Indexes created for performance
 - [ ] Connection from both frontend and backend verified
+- [ ] Template RLS policies tested (users can only access system + own templates)
+- [ ] Component library structure documented and validated
 
 ---
 
@@ -404,11 +694,12 @@ Include error handling and loading states.
 ### **Phase 3: AI Website Generation**
 
 #### Milestone 3.1: Prompt Interface & Template Selection
-**Goal:** Build the UI for users to input prompts and select templates.
+**Goal:** Build the UI for users to input prompts and select or generate templates.
 
 **User Stories:**
 - As a user, I want to easily input my website idea into a text box.
 - As a user, I want to see a selection of professional templates to choose from before I generate my site.
+- As a user, I want to generate a custom template based on my business description.
 - As a small business owner in Africa, I want to see website templates relevant to my business (e.g., local artisan, tourism service), so that I can find a design that fits my needs and feel the product is made for me.
 
 **LLM Prompt:**
@@ -417,11 +708,19 @@ Create the website generation interface:
 
 1. app/dashboard/new/page.tsx - New project page with:
    - Large textarea for prompt input
-   - Template selector (grid of 3-5 templates with previews)
+   - Template selector (grid of 3-5 system templates with previews)
+   - "Generate Custom Template" button/option
    - "Generate Website" button
+   - Tab/toggle to switch between "Use Template" and "Generate Template" modes
    - Character count and helpful prompt examples
 
-2. components/TemplateCard.tsx - Template preview card
+2. components/TemplateCard.tsx - Template preview card with:
+   - Template thumbnail
+   - Template name and description
+   - Category badge
+   - "Use Template" action
+   - "System" or "Custom" indicator
+
 3. components/PromptInput.tsx - Enhanced textarea with suggestions
 4. Add sample templates to Supabase templates table
 
@@ -429,6 +728,7 @@ Design should be inspiring and easy to use. Include helpful prompt examples like
 - "A landing page for a yoga studio with calming colors"
 - "A portfolio website for a photographer with gallery"
 - "A restaurant website with menu and reservations"
+- "A modern business template with blue tones and professional layout"
 ```
 
 **Acceptance Criteria:**
@@ -436,48 +736,370 @@ Design should be inspiring and easy to use. Include helpful prompt examples like
 - [ ] Template selection working
 - [ ] UI is intuitive and attractive
 - [ ] Sample templates available
-- [ ] At least two templates tailored for African SMEs are available and functional.
+- [ ] At least two templates tailored for African SMEs are available and functional
+- [ ] Option to generate custom template is visible and accessible
 ---
 
-#### Milestone 3.2: AI Generation Service (Backend)
-**Goal:** Implement the core AI website generation logic.
+#### Milestone 3.2: Component Library Setup
+**Goal:** Create the foundational component library with sample components for AI generation.
+
+**User Stories:**
+- As a developer, I want a library of pre-validated component samples
+- As a user, I want consistent, professional-looking sections in my templates
+- As a developer, I want components that are reusable and customizable
 
 **LLM Prompt:**
 ```
-Create the AI website generation service in FastAPI:
+Create the component library system:
 
-1. app/services/ai_generator.py with:
-   - generate_website(prompt: str, template_id: str) -> dict
-   - System prompt engineering for consistent HTML/CSS/JS output
-   - Integration with OpenAI API (gpt-4 or gpt-3.5-turbo)
-   - Fallback handling for API failures
-
-2. app/routers/generation.py with:
-   - POST /generate - Generate website from prompt
-   - GET /generation/{id}/status - Check generation status
+Backend (FastAPI):
+1. app/services/components_library.py with:
+   - Define 5-7 core component types with variations
+   - COMPONENT_SAMPLES dictionary with HTML/CSS samples
+   - Component validation functions
+   - Component rendering utilities
    
-3. Use structured output to ensure valid HTML/CSS/JS
-4. Implement rate limiting (max 5 generations per hour for free tier)
-5. Store generation in projects table
+   Core components to create:
+   - Header (2 variations: centered-logo, logo-left-right-aligned-menu)
+   - Hero (3 variations: centered, split, full-width)
+   - Services (3 variations: 2-col, 3-col, carousel)
+   - About (2 variations: two-column, centered)
+   - CTA (2 variations: banner, centered)
+   - Contact (2 variations: form-only, split-info)
+   - Testimonials (2 variations: cards, carousel)
+   - Footer (2 variations: simple, columns)
 
-The AI should generate:
-- Semantic HTML5 code
-- Modern CSS (can use Tailwind classes)
-- Minimal vanilla JavaScript if needed
-- Responsive design
-- Accessible markup
+2. Each component should include:
+   - Multiple variations (e.g., hero-centered, hero-split)
+   - HTML structure with content binding placeholders {{variable}}
+   - CSS using CSS variables for theming
+   - Config object defining customization options
+   - Content bindings schema with types and validation
+
+3. Hero component specifications:
+   - Support background image, color, gradient, or video
+   - Content alignment: left, center, right
+   - Vertical alignment: top, center, bottom
+   - Optional overlay for readability
+   - Optional hero image/video as content
+   - Responsive design
+   - Min height options (50vh, 75vh, 100vh)
+
+4. app/data/component_samples.json - Store component samples:
+   ```json
+   {
+     "hero": {
+       "centered": {
+         "html": "...",
+         "css": "...",
+         "config": {...},
+         "content_bindings": {...}
+       }
+     }
+   }
+   ```
+
+Frontend (Next.js):
+1. lib/components/types.ts - TypeScript types for component structure
+2. lib/components/schema.ts - Validation schemas for components
+3. components/ComponentPreview.tsx - Preview individual components
+
+Documentation:
+- Create docs/COMPONENT_LIBRARY.md documenting all components
+- Include examples and usage patterns
 ```
 
 **Acceptance Criteria:**
-- [ ] AI generates valid HTML/CSS
-- [ ] Output is responsive
-- [ ] Rate limiting enforced
-- [ ] Error handling robust
+- [ ] 5-7 component types defined with 2-3 variations each
+- [ ] Hero component supports all specified options (background types, alignment)
+- [ ] All components use CSS variables for theming
+- [ ] Content bindings properly typed and validated
+- [ ] Components are mobile-responsive
+- [ ] Component library documented
+- [ ] TypeScript types created
 
 ---
 
-#### Milestone 3.3: Real-time Generation Status
-**Goal:** Show users real-time progress during website generation.
+#### Milestone 3.3: AI Template Generation Service
+**Goal:** Implement AI-powered template generation using component library.
+
+**User Stories:**
+- As a user, I want to generate a custom template by describing my design preferences
+- As a user, I want the AI to select appropriate sections for my business type
+- As a user, I want templates that follow professional design patterns
+
+**LLM Prompt:**
+```
+Create the AI template generation system:
+
+Backend (FastAPI):
+1. app/services/template_generator.py with:
+   - generate_template(prompt: str, user_id: str, style_preferences: dict) -> dict
+   - Few-shot learning using component samples from components_library
+   - System prompt that instructs AI to:
+     * Analyze business type from prompt
+     * Select appropriate component types
+     * Choose variations that fit the style
+     * Generate sections_config JSON structure
+     * Create content_schema defining required fields
+     * Extract style_config (colors, fonts, spacing)
+   
+   - Integration with OpenAI API (gpt-4)
+   - Structured output validation (ensure valid JSON)
+   - Component-based generation (not raw HTML)
+   - Generate preview HTML for thumbnail
+
+2. System prompt template:
+   ```
+   You are a UI/UX expert generating website templates using a component library.
+   
+   AVAILABLE COMPONENTS:
+   {component_samples}
+   
+   USER REQUEST: {user_prompt}
+   
+   INSTRUCTIONS:
+   1. Analyze the business type and requirements
+   2. Select 4-6 appropriate sections from the component library
+   3. Choose variations that match the desired style
+   4. Customize colors, fonts, and spacing
+   5. Define content bindings for dynamic content
+   6. Output structured JSON (not raw HTML)
+   
+   OUTPUT FORMAT:
+   {
+     "sections": [...],
+     "style_config": {...},
+     "content_schema": {...},
+     "meta": {
+       "category": "...",
+       "tags": [...]
+     }
+   }
+   ```
+
+3. app/routers/templates.py with:
+   - POST /templates/generate - Generate new template from prompt
+   - GET /templates - List templates (system + user's templates)
+   - GET /templates/{id} - Get specific template
+   - PATCH /templates/{id} - Update user template
+   - DELETE /templates/{id} - Delete user template
+   - GET /templates/{id}/status - Check generation status
+
+4. Template generation flow:
+   - Validate user prompt
+   - Check rate limits (max 3 generations/hour for free tier)
+   - Call OpenAI with component samples as few-shot examples
+   - Parse and validate JSON response
+   - Validate component structure
+   - Generate preview HTML
+   - Store in templates table
+   - Return template ID and status
+
+5. app/services/template_validator.py:
+   - validate_sections_config(sections_config: dict) -> bool
+   - validate_content_schema(content_schema: dict) -> bool
+   - Ensure all referenced components exist
+   - Validate content binding types
+
+Frontend (Next.js):
+1. components/TemplateGenerationModal.tsx - Modal for template generation:
+   - Template prompt input with examples
+   - Style preferences selector
+   - Business category dropdown
+   - Progress indicator with stages
+   - Preview of generated template
+   - Save/edit/regenerate options
+
+2. hooks/useTemplateGeneration.ts - Custom hook:
+   - Handle generation API calls
+   - Poll for status updates
+   - Error handling with retry logic
+   - Success/failure states
+
+3. Prompt examples:
+   - "Modern restaurant with warm colors, menu showcase, and online ordering"
+   - "Professional consultancy with trust-building elements"
+   - "Creative portfolio with large image galleries"
+   - "Local artisan shop with product showcase and WhatsApp ordering"
+```
+
+**Acceptance Criteria:**
+- [ ] AI generates component-based JSON structures (not raw HTML)
+- [ ] Templates use components from the library
+- [ ] Style config properly extracted and applied
+- [ ] Content schema accurately defines required fields
+- [ ] Validation ensures structural integrity
+- [ ] Rate limiting enforced (3 templates/hour)
+- [ ] Generation takes < 30 seconds
+- [ ] Preview HTML generated for thumbnails
+- [ ] Structured output validated before storage
+---
+
+#### Milestone 3.4: AI Website Content Generation Service
+**Goal:** Implement content generation that fills template components with actual business content.
+
+**User Stories:**
+- As a user, I want to generate website content from a simple business description
+- As a user, I want content that fits my selected template structure
+- As a user, I want the content to be customized for my specific business
+
+**LLM Prompt:**
+```
+Create the AI website content generation service in FastAPI:
+
+1. app/services/content_generator.py with:
+   - generate_content(prompt: str, template_id: str, user_id: str) -> dict
+   - Fetch template's sections_config and content_schema
+   - System prompt engineering for content generation
+   - Integration with OpenAI API (gpt-4 or gpt-3.5-turbo)
+   - Generate content that matches content_schema
+   - Fill all required content bindings
+   - Apply template's style_config
+   
+   System prompt structure:
+   ```
+   You are generating website content for a business.
+   
+   BUSINESS DESCRIPTION: {user_prompt}
+   
+   TEMPLATE STRUCTURE: {sections_config}
+   
+   CONTENT SCHEMA: {content_schema}
+   
+   INSTRUCTIONS:
+   1. Extract business details from the description
+   2. Generate content for each section based on bindings
+   3. Ensure all required fields are filled
+   4. Match the tone and style to the business type
+   5. Keep content concise and web-friendly
+   6. Use appropriate CTAs for African market (e.g., WhatsApp)
+   
+   OUTPUT FORMAT:
+   {
+     "content": {
+       "headline": "...",
+       "services": [...],
+       "business_phone": "...",
+       // ... all content bindings
+     }
+   }
+   ```
+
+2. app/services/template_renderer.py:
+   - render_template(template: dict, content: dict) -> dict
+   - Merge template sections_config with generated content
+   - Replace all {{placeholders}} with actual content
+   - Apply style_config (colors, fonts, spacing)
+   - Generate final HTML/CSS/JS
+   - Minify output for performance
+   - Optimize for mobile (African market)
+
+3. app/routers/generation.py with:
+   - POST /generate - Generate website from prompt + template_id
+   - GET /generation/{id}/status - Check generation status
+   - Process flow:
+     * Validate template_id exists
+     * Check user rate limits (5 generations/hour for free tier)
+     * Fetch template structure
+     * Generate content using content_generator
+     * Render final website using template_renderer
+     * Store in projects table with template reference
+     * Return project_id and status
+
+4. app/services/ai_generator.py (legacy support):
+   - Keep for backwards compatibility
+   - Refactor to use content_generator + template_renderer
+   - Add migration path for old-style templates
+
+5. Implement rate limiting:
+   - Check current_period_generations in users table
+   - Free tier: max 5 website generations per hour
+   - Pro tier: unlimited (or higher limit)
+
+The system should generate:
+- Content that matches template's content_schema
+- Properly filled content bindings
+- Semantic, accessible content
+- Mobile-optimized output
+- WhatsApp integration for African market
+```
+
+**Acceptance Criteria:**
+- [ ] Content generation fills template structure correctly
+- [ ] All required content bindings populated
+- [ ] Optional bindings handled gracefully (null/empty)
+- [ ] Template styles applied consistently
+- [ ] Generated HTML is valid and semantic
+- [ ] Output is mobile-responsive
+- [ ] Rate limiting enforced (5 generations/hour)
+- [ ] Generation takes < 30 seconds
+- [ ] Content matches business description
+- [ ] Error handling for missing templates
+
+---
+
+#### Milestone 3.5: Template Management UI
+**Goal:** Build comprehensive template management interface for users.
+
+**User Stories:**
+- As a user, I want to view all my custom templates in one place
+- As a user, I want to edit my saved templates
+- As a user, I want to delete templates I no longer need
+- As a user, I want to preview templates before using them
+
+**LLM Prompt:**
+```
+Create template management interface:
+
+1. app/dashboard/templates/page.tsx - Template library page:
+   - Tabbed interface: "System Templates" | "My Templates"
+   - Grid layout showing template cards
+   - Search and filter by category
+   - Sort by: newest, most used, name
+   - "Generate New Template" button
+   - Empty state for users with no custom templates
+
+2. components/TemplateLibrary.tsx - Template grid component:
+   - Display system and user templates
+   - Template card with hover preview
+   - Quick actions: Use, Edit, Delete, Duplicate
+   - Visual distinction between system and user templates
+
+3. app/dashboard/templates/[id]/page.tsx - Template detail/edit page:
+   - Full preview of template
+   - Edit template metadata (name, description, category)
+   - Edit template HTML/CSS (code editor)
+   - Save changes button
+   - Delete template option
+   - "Use Template" CTA
+
+4. components/TemplateEditor.tsx - Template code editor:
+   - Syntax-highlighted code editor for HTML/CSS
+   - Live preview pane
+   - Split view (code | preview)
+   - Validation feedback
+
+5. Backend endpoints (already in Milestone 3.2):
+   - GET /templates - List all templates
+   - GET /templates/{id} - Get template details
+   - PATCH /templates/{id} - Update template
+   - DELETE /templates/{id} - Delete template
+   - POST /templates/{id}/duplicate - Duplicate template
+```
+
+**Acceptance Criteria:**
+- [ ] Users can view all system and custom templates
+- [ ] Template search and filtering works
+- [ ] Users can edit custom template metadata
+- [ ] Users can edit custom template code
+- [ ] Users can delete their templates
+- [ ] Preview updates in real-time during editing
+- [ ] Confirmation dialog for destructive actions
+---
+
+#### Milestone 3.6: Real-time Generation Status
+**Goal:** Show users real-time progress during website and template generation.
 
 **LLM Prompt:**
 ```
@@ -486,22 +1108,26 @@ Implement real-time generation status updates:
 Frontend:
 1. Create a loading state component with progress indicator
 2. Use polling or Server-Sent Events to check generation status
-3. Show stages: "Analyzing prompt..." → "Generating layout..." → "Creating content..." → "Done!"
-4. components/GenerationProgress.tsx
+3. Show stages for website generation: "Analyzing prompt..." → "Generating layout..." → "Creating content..." → "Done!"
+4. Show stages for template generation: "Analyzing design preferences..." → "Creating layout..." → "Generating styles..." → "Done!"
+5. components/GenerationProgress.tsx
+6. components/TemplateGenerationProgress.tsx
 
 Backend:
-1. Store generation status in database
+1. Store generation status in database (projects and templates tables)
 2. Update status at different stages
 3. Return status in GET /generation/{id}/status endpoint
+4. Return status in GET /templates/{id}/status endpoint
 
 Make the loading experience delightful with smooth animations.
 ```
 
 **Acceptance Criteria:**
-- [ ] Users see generation progress
+- [ ] Users see generation progress for both websites and templates
 - [ ] Status updates in real-time
 - [ ] Smooth UX during waiting
 - [ ] Clear error states
+- [ ] Different progress messages for templates vs websites
 
 ---
 
@@ -1066,16 +1692,25 @@ Aim for >70% code coverage on critical paths.
 ### Primary KPIs
 - **User Sign-ups:** 100+ users in first month
 - **Website Generations:** 500+ generations
+- **Template Generations:** 150+ custom template generations
 - **Paid Conversions:** 5% conversion rate from free to paid
 - **User Retention:** 40% 7-day retention
-- **Percentage of sign-ups from target African countries** 250+ sign-ups from Nigeria
+- **Percentage of sign-ups from target African countries:** 250+ sign-ups from Nigeria
 
 ### Secondary Metrics
 - Average time to first website: < 5 minutes
-- Generation success rate: > 95%
+- Generation success rate: > 95% (websites and templates)
+- Template reuse rate: 30% of users reuse at least one custom template
 - Page load time: < 2 seconds
 - Customer satisfaction: > 4.5/5
 - Activation rate of WhatsApp widget on generated sites: 4/5
+- Template generation to website creation ratio: 1:3 (1 template used for 3 websites)
+
+### Template-Specific Metrics
+- Custom template generation success rate: > 90%
+- Average templates per user: 2-3 custom templates
+- Template edit rate: 40% of custom templates are edited after generation
+- System vs custom template usage: Track adoption of AI-generated templates vs pre-built ones
 
 ---
 
@@ -1085,13 +1720,13 @@ Aim for >70% code coverage on critical paths.
 |-------|----------|-----------------|
 | Phase 1: Foundation | 3-4 days | 2 |
 | Phase 2: Authentication | 3-4 days | 3 |
-| Phase 3: AI Generation | 5-7 days | 3 |
+| Phase 3: AI Generation & Templates | 10-14 days | 6 |
 | Phase 4: Preview & Editing | 5-7 days | 3 |
 | Phase 5: Project Management | 3-4 days | 2 |
 | Phase 6: Publishing | 4-5 days | 2 |
 | Phase 7: Payments | 4-5 days | 3 |
 | Phase 8: Polish & Launch | 5-7 days | 6 |
-| **Total** | **32-45 days** | **24 milestones** |
+| **Total** | **37-54 days** | **27 milestones** |
 
 *Note: Timeline assumes one developer using LLM assistance (Cursor). Can be parallelized with multiple developers.*
 
@@ -1101,11 +1736,16 @@ Aim for >70% code coverage on critical paths.
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| AI generation quality inconsistent | High | Extensive prompt engineering, fallback templates |
+| AI generation quality inconsistent | High | Component-based generation with pre-validated samples, few-shot learning, structured output validation |
+| Component library becomes too complex | Medium | Start with 5-7 core components, add more based on user feedback, clear documentation |
+| AI selects inappropriate components | Medium | Strong system prompts with business-type analysis, validation layer, allow user override |
 | Vercel API changes/limits | Medium | Abstract deployment layer, consider alternatives |
-| High OpenAI API costs | Medium | Implement strict rate limiting, cache common patterns |
-| Security vulnerabilities in generated code | High | Sanitize all outputs, sandbox previews, security audits |
-| Slow generation times | Medium | Set user expectations, async processing, progress updates |
+| High OpenAI API costs | Medium | Component reuse reduces token usage, strict rate limiting, cache template structures, separate template from content generation |
+| Security vulnerabilities in generated code | High | Pre-validated component samples, sanitize content only, sandbox previews, security audits |
+| Slow generation times | Medium | Component-based approach is faster, async processing, progress updates, cache components |
+| Template generation produces invalid JSON | High | Structured output enforcement, validation layer, retry logic with corrections |
+| Users generate too many low-quality templates | Low | Rate limiting (3/hour), storage limits, option to archive/delete templates |
+| Content doesn't fit template structure | Medium | Clear content_schema definitions, graceful fallbacks, allow manual editing |
 
 ---
 
@@ -1119,13 +1759,23 @@ Aim for >70% code coverage on critical paths.
 6. **Analytics integration** - Built-in website analytics
 7. **SEO tools** - Meta tags, sitemap generation
 8. **More AI features** - Regenerate sections, AI copywriting
-9. **Template marketplace** - User-submitted templates
-10. **White-label solution** - Enterprise offering
-11. **Integration with African Payment Gateways** - Paystack, Flutterwave
-12. **Direct WhatsApp Integration** - Beyond a simple link, this could include automated messaging or order notifications.
-13. **SMS Notification** - For user account actions or customer inquiries
-14. **Offline-First Capabilities** - For generated websites using service workers, which would be a game-changer in areas with spotty connectivity.
-15. **Optional (Future Use)** - Google Analytics tracking ID, Sentry DSN for error tracking, App URL for production deployments
+9. **Template marketplace** - User-submitted templates that can be shared publicly or sold
+10. **Template versioning** - Track changes to templates over time
+11. **Advanced component library** - Expand to 20+ component types with more variations
+12. **Component marketplace** - Users can create and sell individual components
+13. **AI template refinement** - Iteratively improve templates with AI suggestions
+14. **Template analytics** - Track which templates perform best for different business types
+15. **Visual component editor** - Drag-and-drop interface for building custom components
+16. **Component A/B testing** - Test different component variations
+17. **Dynamic component loading** - Load components on-demand for performance
+18. **Component animations** - Pre-built animation libraries for components
+19. **White-label solution** - Enterprise offering
+20. **Integration with African Payment Gateways** - Paystack, Flutterwave
+21. **Direct WhatsApp Integration** - Beyond a simple link, this could include automated messaging or order notifications
+22. **SMS Notification** - For user account actions or customer inquiries
+23. **Offline-First Capabilities** - For generated websites using service workers, which would be a game-changer in areas with spotty connectivity
+24. **Template collaboration** - Share templates with team members
+25. **Optional (Future Use)** - Google Analytics tracking ID, Sentry DSN for error tracking, App URL for production deployments
 
 
 
@@ -1165,7 +1815,20 @@ VERCEL_TEAM_ID=
 
 ---
 
-**Document Version:** 1.0  
+**Document Version:** 1.2  
 **Last Updated:** October 3, 2025  
-**Status:** Ready for Development
+**Status:** Ready for Development  
+**Changelog:**
+- v1.2: Updated to component-based architecture
+  - Added component library structure with 5-7 core components
+  - Enhanced hero section with background options (image/color/video) and alignment controls
+  - Separated template generation (structure) from content generation (data)
+  - Added Milestone 3.2: Component Library Setup
+  - Renamed milestones for clarity (3.3→3.4, 3.4→3.5, 3.5→3.6)
+  - Updated database schema with sections_config and content_schema
+  - Enhanced template generation with few-shot learning approach
+  - Updated timeline: 37-54 days, 27 milestones
+  - Added component-specific risks and future enhancements
+- v1.1: Added AI Template Generation feature with custom template creation, management, and reuse capabilities
+- v1.0: Initial PRD release
 
