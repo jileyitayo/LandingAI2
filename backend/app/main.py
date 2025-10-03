@@ -1,11 +1,25 @@
 """Main FastAPI application entry point."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.routers import health
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown."""
+    # Startup
+    print(f"🚀 {settings.app_name} v{settings.app_version} starting up...")
+    print(f"📝 API Documentation: http://localhost:8000/docs")
+    yield
+    # Shutdown
+    print(f"👋 {settings.app_name} shutting down...")
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -14,6 +28,7 @@ app = FastAPI(
     description="AI Website Builder API for African Entrepreneurs",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -42,19 +57,4 @@ async def root():
 
 # Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])
-
-
-# Startup event
-@app.on_event("startup")
-async def startup_event():
-    """Execute on application startup."""
-    print(f"🚀 {settings.app_name} v{settings.app_version} starting up...")
-    print(f"📝 API Documentation: http://localhost:8000/docs")
-
-
-# Shutdown event
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Execute on application shutdown."""
-    print(f"👋 {settings.app_name} shutting down...")
 
