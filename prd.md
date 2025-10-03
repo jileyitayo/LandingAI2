@@ -224,7 +224,7 @@ Create a new Next.js 14 frontend project  with TypeScript and Tailwind CSS. Set 
 **LLM Prompt:**
 ```
 Create a FastAPI backend project with the following structure:
-1. Use Python 3.11+ with virtual environment
+1. Use Python 3.12+ with virtual environment
 2. Set up FastAPI with CORS middleware
 3. Create folder structure: app/, app/routers/, app/models/, app/services/, app/utils/
 4. Add requirements.txt with: fastapi, uvicorn, supabase, stripe, openai, python-dotenv, pydantic
@@ -1125,6 +1125,7 @@ Aim for >70% code coverage on critical paths.
 12. **Direct WhatsApp Integration** - Beyond a simple link, this could include automated messaging or order notifications.
 13. **SMS Notification** - For user account actions or customer inquiries
 14. **Offline-First Capabilities** - For generated websites using service workers, which would be a game-changer in areas with spotty connectivity.
+15. **Optional (Future Use)** - Google Analytics tracking ID, Sentry DSN for error tracking, App URL for production deployments
 
 
 

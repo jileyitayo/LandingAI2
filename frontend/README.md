@@ -38,25 +38,13 @@ yarn install
 
 ### 3. Set up environment variables
 
-Copy the `.env.example` file to `.env.local` and fill in your values:
+Copy the `.env.example` file to `.env.local`:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Edit `.env.local` with your actual values:
-
-```env
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url_here
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
-
-# API Configuration
-NEXT_PUBLIC_API_URL=http://localhost:8000
-
-# Stripe Configuration
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key_here
-```
+Then edit `.env.local` with your actual values. See `.env.example` for detailed instructions on where to get each API key.
 
 ### 4. Run the development server
 

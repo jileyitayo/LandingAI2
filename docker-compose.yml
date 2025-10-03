@@ -12,26 +12,35 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_API_URL=http://backend:8000
       - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+    depends_on:
+      - backend
     restart: unless-stopped
     networks:
       - sitesmith-network
 
-  # Backend service (coming soon)
-  # backend:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile
-  #   container_name: sitesmith-backend
-  #   ports:
-  #     - "8000:8000"
-  #   environment:
-  #     - SUPABASE_URL=${SUPABASE_URL}
-  #     - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
-  #   restart: unless-stopped
-  #   networks:
-  #     - sitesmith-network
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sitesmith-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=SiteSmith API
+      - DEBUG=False
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - VERCEL_API_TOKEN=${VERCEL_API_TOKEN}
+      - VERCEL_TEAM_ID=${VERCEL_TEAM_ID}
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+    restart: unless-stopped
+    networks:
+      - sitesmith-network
 
 networks:
   sitesmith-network:

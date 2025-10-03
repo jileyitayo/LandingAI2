@@ -7,7 +7,7 @@ AI Website Builder for African Entrepreneurs. Create professional websites in mi
 ```
 LandingV2/
 ├── frontend/          # Next.js 15 frontend application
-├── backend/           # FastAPI backend API (coming soon)
+├── backend/           # FastAPI backend API
 ├── prd.md            # Product Requirements Document
 └── README.md         # This file
 ```
@@ -21,15 +21,17 @@ LandingV2/
 - **Deployment:** Vercel
 
 ### Backend
-- **Framework:** FastAPI (Python 3.11+)
+- **Framework:** FastAPI (Python 3.12+)
 - **Database:** Supabase (PostgreSQL)
 - **Authentication:** Supabase Auth
 - **Payments:** Stripe
+- **Package Manager:** uv (fast Python package installer)
 
 ## 📋 Prerequisites
 
 - Node.js 20.x or higher
-- Python 3.11 or higher
+- Python 3.12 or higher
+- uv (Python package installer)
 - Docker (optional)
 - npm or yarn
 
@@ -47,13 +49,13 @@ npm run dev
 
 The frontend will be available at [http://localhost:3000](http://localhost:3000)
 
-### Backend Development (Coming Soon)
+### Backend Development
 
 ```bash
 cd backend
-python -m venv venv
+uv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
@@ -76,7 +78,7 @@ docker-compose down
 
 - [Frontend README](./frontend/README.md) - Frontend setup and development
 - [Product Requirements](./prd.md) - Complete product specification
-- [Backend README](./backend/README.md) - Backend setup (coming soon)
+- [Backend README](./backend/README.md) - Backend setup and API docs
 
 ## 🎯 MVP Features
 
@@ -92,7 +94,7 @@ docker-compose down
 
 ### Phase 1: Foundation ✅ (In Progress)
 - [x] Frontend project setup
-- [ ] Backend project setup
+- [x] Backend project setup
 - [ ] Supabase configuration
 - [ ] Database schema
 
