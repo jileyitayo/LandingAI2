@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { UserProfileCard } from "@/components/UserProfileCard";
 
 /**
  * Dashboard page - Protected route
@@ -62,43 +63,66 @@ export default function DashboardPage() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">
-            Welcome to your Dashboard! 🎉
-          </h2>
-          <p className="text-gray-600 mb-8">
-            You&apos;re successfully authenticated. This is a placeholder
-            dashboard page.
-          </p>
+        <div className="space-y-8">
+          <div className="text-center">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Welcome to your Dashboard! 🎉
+            </h2>
+            <p className="text-gray-600 mb-8">
+              You&apos;re successfully authenticated. This dashboard demonstrates
+              both frontend Supabase auth and backend API integration.
+            </p>
+          </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 max-w-2xl mx-auto">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-700">Email:</span>
-                <span className="text-gray-900">{user.email}</span>
+          {/* Frontend Supabase User Info */}
+          <div className="max-w-2xl mx-auto">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Frontend Supabase Session
+            </h3>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-700">Email:</span>
+                  <span className="text-gray-900">{user.email}</span>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-700">User ID:</span>
+                  <span className="text-gray-900 font-mono text-sm">
+                    {user.id}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
+                  <span className="font-medium text-green-700">
+                    Email Verified:
+                  </span>
+                  <span className="text-green-900">
+                    {user.email_confirmed_at ? "✓ Yes" : "✗ No"}
+                  </span>
+                </div>
               </div>
-
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-700">User ID:</span>
-                <span className="text-gray-900 font-mono text-sm">
-                  {user.id}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
-                <span className="font-medium text-green-700">
-                  Email Verified:
-                </span>
-                <span className="text-green-900">
-                  {user.email_confirmed_at ? "✓ Yes" : "✗ No"}
-                </span>
+              
+              <div className="mt-4 p-3 bg-blue-50 rounded-md">
+                <p className="text-xs text-blue-800">
+                  <strong>Source:</strong> This data comes from the Supabase client
+                  session stored in your browser (frontend only).
+                </p>
               </div>
             </div>
           </div>
 
-          <div className="mt-8">
+          {/* Backend API User Info */}
+          <div className="max-w-2xl mx-auto">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Backend API Verified User
+            </h3>
+            <UserProfileCard />
+          </div>
+
+          <div className="text-center mt-8">
             <p className="text-sm text-gray-500">
-              Phase 2: Authentication - Milestone 2.1 Complete ✓
+              Phase 2: Authentication - Frontend + Backend Integration Complete ✓
             </p>
           </div>
         </div>

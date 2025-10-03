@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import health
+from app.routers import health, auth
 
 
 @asynccontextmanager
@@ -57,4 +57,5 @@ async def root():
 
 # Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 

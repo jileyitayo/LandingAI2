@@ -12,7 +12,8 @@
 
 ## Documentation
 - Read from prd.md to get the context of the requirements of the application if available
-- Update README.md in frontend/backend respectively when adding major features
+- Update README.md found at the project root
+- Dont generate readme files
 - Keep setup instructions current
 
 ## Code Review Standards
