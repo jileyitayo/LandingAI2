@@ -796,7 +796,7 @@ Backend (FastAPI):
        }
      }
    }
-   ```
+
 
 Frontend (Next.js):
 1. lib/components/types.ts - TypeScript types for component structure
@@ -849,7 +849,7 @@ Backend (FastAPI):
    - Generate preview HTML for thumbnail
 
 2. System prompt template:
-   ```
+   
    You are a UI/UX expert generating website templates using a component library.
    
    AVAILABLE COMPONENTS:
@@ -875,7 +875,7 @@ Backend (FastAPI):
        "tags": [...]
      }
    }
-   ```
+   
 
 3. app/routers/templates.py with:
    - POST /templates/generate - Generate new template from prompt
@@ -957,7 +957,7 @@ Create the AI website content generation service in FastAPI:
    - Apply template's style_config
    
    System prompt structure:
-   ```
+   
    You are generating website content for a business.
    
    BUSINESS DESCRIPTION: {user_prompt}
@@ -983,7 +983,7 @@ Create the AI website content generation service in FastAPI:
        // ... all content bindings
      }
    }
-   ```
+   
 
 2. app/services/template_renderer.py:
    - render_template(template: dict, content: dict) -> dict

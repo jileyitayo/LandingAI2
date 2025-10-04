@@ -263,27 +263,251 @@ export const api = {
   },
 
   /**
-   * Example of how to add more API endpoints
-   * 
-   * projects: {
-   *   list: () => apiRequest<Project[]>("/api/v1/projects"),
-   *   get: (id: string) => apiRequest<Project>(`/api/v1/projects/${id}`),
-   *   create: (data: CreateProjectData) =>
-   *     apiRequest<Project>("/api/v1/projects", {
-   *       method: "POST",
-   *       body: JSON.stringify(data),
-   *     }),
-   *   update: (id: string, data: UpdateProjectData) =>
-   *     apiRequest<Project>(`/api/v1/projects/${id}`, {
-   *       method: "PUT",
-   *       body: JSON.stringify(data),
-   *     }),
-   *   delete: (id: string) =>
-   *     apiRequest<void>(`/api/v1/projects/${id}`, {
-   *       method: "DELETE",
-   *     }),
-   * },
+   * Template endpoints
    */
+  templates: {
+    /**
+     * List all templates (system + user's templates)
+     * Requires: Authorization header with valid access token
+     */
+    list: () =>
+      apiRequest<
+        Array<{
+          id: string;
+          user_id: string | null;
+          name: string;
+          description: string | null;
+          preview_image: string | null;
+          category: string | null;
+          tags: string[] | null;
+          is_system_template: boolean;
+          is_active: boolean;
+          is_public: boolean;
+          use_count: number;
+          created_at: string;
+          updated_at: string;
+        }>
+      >("/api/v1/templates"),
+
+    /**
+     * Get specific template by ID
+     * Requires: Authorization header with valid access token
+     */
+    get: (id: string) =>
+      apiRequest<{
+        id: string;
+        user_id: string | null;
+        name: string;
+        description: string | null;
+        preview_image: string | null;
+        preview_html: string | null;
+        category: string | null;
+        tags: string[] | null;
+        base_html: string | null;
+        base_css: string | null;
+        base_js: string | null;
+        generation_prompt: string | null;
+        style_config: Record<string, any> | null;
+        sections_config: Record<string, any>;
+        content_schema: Record<string, any> | null;
+        is_system_template: boolean;
+        is_active: boolean;
+        is_public: boolean;
+        generation_status: string;
+        generation_error: string | null;
+        use_count: number;
+        created_at: string;
+        updated_at: string;
+      }>(`/api/v1/templates/${id}`),
+
+    /**
+     * Generate new template from prompt
+     * Requires: Authorization header with valid access token
+     */
+    generate: (data: { prompt: string; style_preferences?: Record<string, any> }) =>
+      apiRequest<{
+        id: string;
+        name: string;
+        description: string;
+        sections_config: Array<Record<string, any>>;
+        style_config: Record<string, any>;
+        content_schema: Record<string, any>;
+        preview_html: string | null;
+        preview_url: string | null;
+        category: string;
+        tags: string[];
+        is_public: boolean;
+        created_by: string | null;
+        created_at: string;
+        updated_at: string | null;
+      }>("/api/v1/templates/generate", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    /**
+     * Check template generation status
+     * Requires: Authorization header with valid access token
+     */
+    getStatus: (id: string) =>
+      apiRequest<{
+        status: string;
+        template_id: string | null;
+        error: string | null;
+      }>(`/api/v1/templates/${id}/status`),
+
+    /**
+     * Update user's template
+     * Requires: Authorization header with valid access token
+     */
+    update: (
+      id: string,
+      data: {
+        name?: string;
+        description?: string;
+        category?: string;
+        tags?: string[];
+      }
+    ) =>
+      apiRequest<{
+        id: string;
+        message: string;
+      }>(`/api/v1/templates/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+
+    /**
+     * Delete user's template
+     * Requires: Authorization header with valid access token
+     */
+    delete: (id: string) =>
+      apiRequest<{ message: string }>(`/api/v1/templates/${id}`, {
+        method: "DELETE",
+      }),
+  },
+
+  /**
+   * Project endpoints
+   */
+  projects: {
+    /**
+     * List all user projects
+     * Requires: Authorization header with valid access token
+     */
+    list: () =>
+      apiRequest<
+        Array<{
+          id: string;
+          user_id: string;
+          name: string;
+          description: string | null;
+          prompt: string | null;
+          template_id: string | null;
+          published: boolean;
+          subdomain: string | null;
+          deployment_url: string | null;
+          generation_status: string;
+          created_at: string;
+          updated_at: string;
+        }>
+      >("/api/v1/projects"),
+
+    /**
+     * Get specific project by ID
+     * Requires: Authorization header with valid access token
+     */
+    get: (id: string) =>
+      apiRequest<{
+        id: string;
+        user_id: string;
+        name: string;
+        description: string | null;
+        prompt: string | null;
+        template_id: string | null;
+        html_content: string | null;
+        css_content: string | null;
+        js_content: string | null;
+        published: boolean;
+        subdomain: string | null;
+        deployment_url: string | null;
+        theme_settings: Record<string, any> | null;
+        whatsapp_number: string | null;
+        generation_status: string;
+        generation_error: string | null;
+        created_at: string;
+        updated_at: string;
+      }>(`/api/v1/projects/${id}`),
+
+    /**
+     * Create/Generate new project
+     * Requires: Authorization header with valid access token
+     */
+    create: (data: { name: string; prompt: string; template_id?: string }) =>
+      apiRequest<{
+        id: string;
+        status: string;
+        message: string;
+      }>("/api/v1/projects", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    /**
+     * Update project
+     * Requires: Authorization header with valid access token
+     */
+    update: (
+      id: string,
+      data: {
+        name?: string;
+        description?: string;
+        html_content?: string;
+        css_content?: string;
+        js_content?: string;
+        theme_settings?: Record<string, any>;
+        whatsapp_number?: string;
+      }
+    ) =>
+      apiRequest<{
+        id: string;
+        message: string;
+      }>(`/api/v1/projects/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+
+    /**
+     * Delete project
+     * Requires: Authorization header with valid access token
+     */
+    delete: (id: string) =>
+      apiRequest<{ message: string }>(`/api/v1/projects/${id}`, {
+        method: "DELETE",
+      }),
+
+    /**
+     * Publish/Deploy project
+     * Requires: Authorization header with valid access token
+     */
+    publish: (id: string) =>
+      apiRequest<{
+        id: string;
+        deployment_url: string;
+        message: string;
+      }>(`/api/v1/projects/${id}/publish`, {
+        method: "POST",
+      }),
+
+    /**
+     * Unpublish project
+     * Requires: Authorization header with valid access token
+     */
+    unpublish: (id: string) =>
+      apiRequest<{ message: string }>(`/api/v1/projects/${id}/unpublish`, {
+        method: "POST",
+      }),
+  },
 };
 
 /**

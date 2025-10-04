@@ -1,0 +1,127 @@
+{
+  "header": {
+    "centered-logo": {
+      "name": "Centered Logo Header",
+      "description": "Header with centered logo and navigation menu below",
+      "tags": ["header", "centered", "navigation"],
+      "preview_url": null
+    },
+    "logo-left": {
+      "name": "Logo Left Header",
+      "description": "Header with logo on left and right-aligned navigation menu",
+      "tags": ["header", "left-aligned", "navigation"],
+      "preview_url": null
+    }
+  },
+  "hero": {
+    "centered": {
+      "name": "Centered Hero",
+      "description": "Full-width hero with centered content and optional background",
+      "tags": ["hero", "centered", "full-width"],
+      "preview_url": null
+    },
+    "split": {
+      "name": "Split Hero",
+      "description": "Hero with content on left and image/media on right",
+      "tags": ["hero", "split", "two-column"],
+      "preview_url": null
+    },
+    "full-width": {
+      "name": "Full Width Hero",
+      "description": "Minimalist full-width hero with large typography",
+      "tags": ["hero", "full-width", "minimalist"],
+      "preview_url": null
+    }
+  },
+  "services": {
+    "three-column": {
+      "name": "Three Column Services",
+      "description": "Service cards in a 3-column grid layout",
+      "tags": ["services", "grid", "three-column"],
+      "preview_url": null
+    },
+    "two-column": {
+      "name": "Two Column Services",
+      "description": "Service cards in a 2-column grid with larger cards",
+      "tags": ["services", "grid", "two-column"],
+      "preview_url": null
+    },
+    "list": {
+      "name": "Services List",
+      "description": "Simple list layout for services",
+      "tags": ["services", "list", "vertical"],
+      "preview_url": null
+    }
+  },
+  "about": {
+    "two-column": {
+      "name": "Two Column About",
+      "description": "About section with image on one side and content on the other",
+      "tags": ["about", "two-column", "stats"],
+      "preview_url": null
+    },
+    "centered": {
+      "name": "Centered About",
+      "description": "Centered about section with focused content",
+      "tags": ["about", "centered", "features"],
+      "preview_url": null
+    }
+  },
+  "cta": {
+    "banner": {
+      "name": "CTA Banner",
+      "description": "Full-width banner call-to-action",
+      "tags": ["cta", "banner", "full-width"],
+      "preview_url": null
+    },
+    "centered": {
+      "name": "Centered CTA",
+      "description": "Simple centered call-to-action box",
+      "tags": ["cta", "centered", "boxed"],
+      "preview_url": null
+    }
+  },
+  "contact": {
+    "form-only": {
+      "name": "Contact Form Only",
+      "description": "Simple contact form centered on page",
+      "tags": ["contact", "form", "simple"],
+      "preview_url": null
+    },
+    "split-info": {
+      "name": "Split Contact with Info",
+      "description": "Contact form on one side, contact information on the other",
+      "tags": ["contact", "split", "info", "whatsapp"],
+      "preview_url": null
+    }
+  },
+  "testimonials": {
+    "cards": {
+      "name": "Testimonial Cards",
+      "description": "Grid of testimonial cards",
+      "tags": ["testimonials", "cards", "grid"],
+      "preview_url": null
+    },
+    "simple": {
+      "name": "Simple Testimonials",
+      "description": "Minimal testimonial list",
+      "tags": ["testimonials", "simple", "list"],
+      "preview_url": null
+    }
+  },
+  "footer": {
+    "simple": {
+      "name": "Simple Footer",
+      "description": "Simple centered footer with copyright and links",
+      "tags": ["footer", "simple", "centered"],
+      "preview_url": null
+    },
+    "columns": {
+      "name": "Column Footer",
+      "description": "Multi-column footer with detailed information",
+      "tags": ["footer", "columns", "detailed"],
+      "preview_url": null
+    }
+  }
+}
+

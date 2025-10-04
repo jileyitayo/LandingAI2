@@ -5,7 +5,9 @@ from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, status, UploadFile, File, Depends
 from fastapi.responses import JSONResponse
 from app.utils.auth import get_current_user, get_current_user_optional
+import logging
 
+logger = logging.getLogger(__name__)
 
 from app.models.auth import (
     ProfileUpdateRequest,
@@ -84,6 +86,7 @@ async def get_current_user_profile(request: Request):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to fetche user profile: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch user profile: {str(e)}",
@@ -163,6 +166,7 @@ async def update_current_user_profile(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to update user profile: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update user profile: {str(e)}",
@@ -235,6 +239,7 @@ async def upload_avatar(
                     file_options={"content-type": file.content_type},
                 )
             except Exception:
+                logger.error(f"Failed to upload avatar: {str(upload_error)}")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Failed to upload avatar: {str(upload_error)}",
@@ -257,7 +262,7 @@ async def upload_avatar(
                 supabase.storage.from_("avatars").remove([unique_filename])
             except Exception:
                 pass  # Ignore cleanup errors
-
+            logger.error(f"Failed to update user profile with avatar URL")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update user profile with avatar URL",

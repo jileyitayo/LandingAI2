@@ -175,6 +175,8 @@ export interface Database {
           generation_error: string | null;
           created_at: string;
           updated_at: string;
+          created_by: string | null;
+          preview_url: string | null;
         };
         Insert: {
           id?: string;
@@ -206,6 +208,8 @@ export interface Database {
           generation_error?: string | null;
           created_at?: string;
           updated_at?: string;
+          created_by: string | null;
+          preview_url: string | null;
         };
         Update: {
           id?: string;
@@ -237,6 +241,8 @@ export interface Database {
           generation_error?: string | null;
           created_at?: string;
           updated_at?: string;
+          created_by: string | null;
+          preview_url: string | null;
         };
       };
     };
