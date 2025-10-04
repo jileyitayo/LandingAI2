@@ -46,9 +46,13 @@ async function apiRequest<T>(
   const token = await getAccessToken();
 
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
+
+  // Only add Content-Type if not already set (for file uploads)
+  if (!headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
   // Add Authorization header if token exists
   if (token) {
@@ -176,6 +180,86 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ refresh_token: refreshToken }),
       }),
+  },
+
+  /**
+   * User profile endpoints
+   */
+  users: {
+    /**
+     * Get current user profile
+     * Requires: Authorization header with valid access token
+     */
+    getProfile: () =>
+      apiRequest<{
+        id: string;
+        email: string;
+        first_name: string | null;
+        last_name: string | null;
+        avatar_url: string | null;
+        subscription_tier: string;
+        generation_count: number;
+        current_period_generations: number;
+        email_verified: boolean;
+        created_at: string;
+        updated_at: string;
+      }>("/api/v1/users/profile"),
+
+    /**
+     * Update current user profile
+     * Requires: Authorization header with valid access token
+     */
+    updateProfile: (data: { first_name?: string; last_name?: string }) =>
+      apiRequest<{
+        id: string;
+        email: string;
+        first_name: string | null;
+        last_name: string | null;
+        avatar_url: string | null;
+        subscription_tier: string;
+        generation_count: number;
+        current_period_generations: number;
+        email_verified: boolean;
+        created_at: string;
+        updated_at: string;
+      }>("/api/v1/users/profile", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+
+    /**
+     * Upload user avatar
+     * Requires: Authorization header with valid access token
+     * @param file - Image file to upload (jpg, png, gif, webp)
+     */
+    uploadAvatar: async (file: File) => {
+      const token = await getAccessToken();
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/users/avatar`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Don't set Content-Type for FormData - browser sets it automatically with boundary
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new ApiError(
+          response.status,
+          errorData.detail || response.statusText,
+          errorData
+        );
+      }
+
+      return response.json() as Promise<{
+        avatar_url: string;
+        message: string;
+      }>;
+    },
   },
 
   /**

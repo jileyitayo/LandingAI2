@@ -675,8 +675,8 @@ Frontend (Next.js):
 3. Avatar upload with Supabase Storage
 
 Backend (FastAPI):
-1. GET /users/me - Get current user profile
-2. PATCH /users/me - Update user profile
+1. GET /users/profile - Get current user profile
+2. PATCH /users/profile - Update user profile
 3. POST /users/avatar - Upload avatar
 
 Include error handling and loading states.

@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import health, auth
+from app.routers import health, auth, users
+from app.middleware.auth_middleware import AuthenticationMiddleware
 
 
 @asynccontextmanager
@@ -40,6 +41,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configure Authentication Middleware
+app.add_middleware(AuthenticationMiddleware)
+
 
 # Root endpoint
 @app.get("/", tags=["Root"])
@@ -58,4 +62,5 @@ async def root():
 # Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 

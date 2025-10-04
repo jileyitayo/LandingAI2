@@ -8,8 +8,13 @@ import { createClient } from "@/lib/supabase/client";
 interface UserProfile {
   id: string;
   email: string;
-  first_name?: string;
-  last_name?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  avatar_url?: string | null;
+  subscription_tier: string;
+  generation_count: number;
+  current_period_generations: number;
+  email_verified: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -33,7 +38,7 @@ export function UserProfileCard() {
 
         // Call backend API - it will automatically include the Authorization header
         // with the access token from the current Supabase session
-        const userData = await api.auth.getUser();
+        const userData = await api.users.getProfile();
         setUser(userData);
       } catch (err) {
         if (err instanceof ApiError) {
@@ -43,6 +48,7 @@ export function UserProfileCard() {
           if (err.status === 401) {
             // Token expired or invalid - redirect to login
             console.error("Authentication failed, redirecting to login");
+            await api.auth.logout();
             router.push("/auth/login");
           } else if (err.status === 403) {
             // Forbidden

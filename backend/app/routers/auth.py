@@ -14,6 +14,8 @@ from app.models.auth import (
 )
 from app.utils.auth import get_current_user
 from app.utils.supabase_client import supabase
+from app.utils.action_logger import log_action
+
 
 
 router = APIRouter()
@@ -26,6 +28,7 @@ router = APIRouter()
     summary="Create new user account",
     description="Register a new user with email and password. Returns authentication tokens.",
 )
+@log_action(action_type='AUTH', target_resource_type='user_signup')
 async def signup(request: SignupRequest) -> AuthResponse:
     """
     Create a new user account.
@@ -97,6 +100,7 @@ async def signup(request: SignupRequest) -> AuthResponse:
     summary="Login user",
     description="Authenticate user with email and password. Returns authentication tokens.",
 )
+@log_action(action_type='AUTH', target_resource_type='user_login')
 async def login(request: LoginRequest) -> AuthResponse:
     """
     Login user with email and password.
@@ -153,6 +157,7 @@ async def login(request: LoginRequest) -> AuthResponse:
     summary="Logout user",
     description="Invalidate the current user session. Requires authentication.",
 )
+@log_action(action_type='AUTH', target_resource_type='user_logout')
 async def logout(current_user: dict = Depends(get_current_user)) -> MessageResponse:
     """
     Logout the current user by invalidating their session.
@@ -185,6 +190,7 @@ async def logout(current_user: dict = Depends(get_current_user)) -> MessageRespo
     summary="Refresh access token",
     description="Get a new access token using a refresh token.",
 )
+@log_action(action_type='AUTH', target_resource_type='user_refresh_token')
 async def refresh_token(request: RefreshTokenRequest) -> AuthResponse:
     """
     Refresh the access token using a refresh token.
@@ -236,6 +242,7 @@ async def refresh_token(request: RefreshTokenRequest) -> AuthResponse:
     summary="Get current user",
     description="Get information about the currently authenticated user. Requires authentication.",
 )
+@log_action(action_type='AUTH', target_resource_type='user_get_user_info')
 async def get_user(current_user: dict = Depends(get_current_user)) -> UserResponse:
     """
     Get the current authenticated user's information.

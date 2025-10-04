@@ -30,7 +30,6 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             "/docs",
             "/redoc",
             "/openapi.json",
-            "/",
             "/api/v1/health",
             "/api/v1/auth/signup",
             "/api/v1/auth/login",
@@ -51,10 +50,14 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         # Check if path is excluded from authentication
         path = request.url.path
         
-        if any(path.startswith(excluded) for excluded in self.excluded_paths):
+        if path == "/" or any(path.startswith(excluded) for excluded in self.excluded_paths):
             # Skip authentication for excluded paths
             return await call_next(request)
         
+        # Allow OPTIONS requests to pass through for CORS preflight
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Extract token from Authorization header
         auth_header = request.headers.get("Authorization")
         

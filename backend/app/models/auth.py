@@ -117,3 +117,69 @@ class MessageResponse(BaseModel):
         }
     }
 
+
+class ProfileUpdateRequest(BaseModel):
+    """User profile update request model."""
+
+    first_name: Optional[str] = Field(None, description="User's first name")
+    last_name: Optional[str] = Field(None, description="User's last name")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "first_name": "Jane",
+                "last_name": "Smith",
+            }
+        }
+    }
+
+
+class ProfileResponse(BaseModel):
+    """User profile response model."""
+
+    id: str = Field(..., description="User ID")
+    email: str = Field(..., description="User email")
+    first_name: Optional[str] = Field(None, description="User's first name")
+    last_name: Optional[str] = Field(None, description="User's last name")
+    avatar_url: Optional[str] = Field(None, description="Avatar image URL")
+    subscription_tier: str = Field(..., description="User's subscription tier")
+    generation_count: int = Field(..., description="Total generation count")
+    current_period_generations: int = Field(..., description="Current period generation count")
+    email_verified: bool = Field(..., description="Email verification status")
+    created_at: str = Field(..., description="Account creation timestamp")
+    updated_at: str = Field(..., description="Last update timestamp")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": "123e4567-e89b-12d3-a456-426614174000",
+                "email": "user@example.com",
+                "first_name": "John",
+                "last_name": "Doe",
+                "avatar_url": "https://example.com/avatar.jpg",
+                "subscription_tier": "free",
+                "generation_count": 5,
+                "current_period_generations": 2,
+                "email_verified": True,
+                "created_at": "2025-10-03T12:00:00Z",
+                "updated_at": "2025-10-03T12:00:00Z",
+            }
+        }
+    }
+
+
+class AvatarUploadResponse(BaseModel):
+    """Avatar upload response model."""
+
+    avatar_url: str = Field(..., description="URL of the uploaded avatar")
+    message: str = Field(..., description="Success message")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "avatar_url": "https://example.com/avatars/user123.jpg",
+                "message": "Avatar uploaded successfully",
+            }
+        }
+    }
+

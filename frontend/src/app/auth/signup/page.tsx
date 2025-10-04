@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthForm, InputField, SubmitButton } from "@/components/AuthForm";
+import { api } from "@/lib/api";
 
 // Validation schema
 const signupSchema = z
@@ -89,6 +90,20 @@ export default function SignupPage() {
         message: error,
       });
     } else {
+      // After successful signup, update the user profile with first/last names
+      try {
+        // Only update if we have names to save
+        if (data.firstName || data.lastName) {
+          await api.users.updateProfile({
+            first_name: data.firstName?.trim() || undefined,
+            last_name: data.lastName?.trim() || undefined,
+          });
+        }
+      } catch (profileError) {
+        // Log the error but don't block the signup flow
+        console.error("Failed to update profile:", profileError);
+      }
+      
       // Show verification message
       setShowVerificationMessage(true);
     }

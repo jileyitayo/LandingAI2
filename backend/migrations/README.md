@@ -49,6 +49,19 @@ psql "postgresql://postgres:[YOUR-PASSWORD]@[YOUR-PROJECT-REF].supabase.co:5432/
 - **Triggers** - Auto-update timestamps and user profile creation
 - **Indexes** - Performance optimization
 
+### 002_storage_avatars.sql
+
+**Version:** 1.1  
+**Status:** ✅ Ready to Apply  
+**Description:** Supabase Storage setup for user avatars:
+
+- **avatars bucket** - Public storage bucket for user profile pictures
+- **Storage RLS Policies** - 4 security policies for avatar management
+- **File Constraints** - 5MB limit, image types only (JPG, PNG, GIF, WebP)
+- **Cleanup Function** - Optional function for old avatar cleanup
+
+**Prerequisites:** Run `001_initial_schema.sql` first
+
 ## Database Schema Overview
 
 ### Users Table
@@ -119,9 +132,18 @@ All tables have triggers that automatically update `updated_at` on modifications
 ### User Profile Creation
 New users in `auth.users` automatically get a profile in `public.users`.
 
+## Storage Setup
+
+The `002_storage_avatars.sql` migration sets up Supabase Storage for user avatars. This creates:
+- A public `avatars` bucket for profile pictures
+- RLS policies ensuring users can only manage their own avatars
+- File size and type constraints
+
+**Important:** After running this migration, the avatar upload feature in the profile page will work automatically.
+
 ## Seed Data
 
-System templates and sample data will be added in a separate migration (`002_seed_templates.sql`) to keep schema migrations clean.
+System templates and sample data will be added in a separate migration (e.g., `003_seed_templates.sql`) to keep schema migrations clean.
 
 ## Rollback
 
@@ -174,13 +196,15 @@ ORDER BY tablename, indexname;
 
 ## Next Steps
 
-After applying this migration:
+After applying migrations:
 
-1. ✅ Update frontend `.env.local` with Supabase credentials
-2. ✅ Verify TypeScript types match schema
-3. ⏭️ Apply `002_seed_templates.sql` (coming next)
-4. ⏭️ Test authentication flow
-5. ⏭️ Test RLS policies
+1. ✅ Apply `001_initial_schema.sql` - Core database schema
+2. ✅ Apply `002_storage_avatars.sql` - Avatar storage setup
+3. ✅ Update frontend `.env.local` with Supabase credentials
+4. ✅ Verify TypeScript types match schema
+5. ⏭️ Test authentication flow
+6. ⏭️ Test profile management and avatar upload
+7. ⏭️ Apply seed data migrations (coming next)
 
 ## Troubleshooting
 

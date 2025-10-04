@@ -16,6 +16,11 @@ async def verify_token(token: str) -> dict:
     """
     Verify and decode a Supabase JWT token.
     
+    Returns a dictionary containing user information with the following structure:
+    - id: User ID (Supabase user UUID)
+    - sub: Subject (same as id, for JWT compatibility)
+    - email: User's email address
+    - user: Full Supabase user object
         
     Raises:
         HTTPException: If token is invalid or expired
@@ -31,8 +36,11 @@ async def verify_token(token: str) -> dict:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
+        # Return user info with both 'id' and 'sub' for compatibility
         return {
-            "user_id": response.user.id,
+            "id": response.user.id,
+            "sub": response.user.id,  # JWT standard claim
+            "user_id": response.user.id,  # Alias for convenience
             "email": response.user.email,
             "user": response.user,
         }
