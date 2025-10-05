@@ -3,42 +3,41 @@
 /**
  * DashboardPage.tsx
  *
- * This file contains the DashboardPage component, which is used to display the dashboard page.
+ * Main dashboard displaying all user projects with search and filter capabilities
  */
-
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { api } from "@/lib/api";  
-import { TemplateCard } from "@/components/TemplateCard";
-import { PromptInput } from "@/components/PromptInput";
-import { useUnifiedGeneration } from "@/hooks/useUnifiedGeneration";
+import { api } from "@/lib/api";
+import ProjectCard from "@/components/ProjectCard";
+import { Plus, Search, Filter } from "lucide-react";
 
-interface Template {
+interface Project {
   id: string;
+  user_id: string;
   name: string;
   description: string | null;
-  category: string | null;
-  preview_image: string | null;
-  preview_url?: string | null;
-  is_system_template: boolean;
+  prompt: string | null;
+  template_id: string | null;
+  published: boolean;
+  subdomain: string | null;
+  deployment_url: string | null;
+  generation_status: string;
+  created_at: string;
+  updated_at: string;
 }
 
-const BUSINESS_CATEGORIES = [
-  { value: "restaurant", label: "Restaurant & Food" },
-  { value: "consultancy", label: "Consultancy & Services" },
-  { value: "portfolio", label: "Portfolio & Creative" },
-  { value: "retail", label: "Retail & E-commerce" },
-  { value: "health", label: "Health & Fitness" },
-  { value: "realestate", label: "Real Estate" },
-  { value: "education", label: "Education & Training" },
-  { value: "other", label: "Other" },
+const STATUS_FILTERS = [
+  { value: "all", label: "All Projects" },
+  { value: "completed", label: "Completed" },
+  { value: "generating", label: "Generating" },
+  { value: "failed", label: "Failed" },
 ];
 
 /**
  * Dashboard page - Protected route
- * Requires authentication to access
+ * Displays all user projects with search and filter
  */
 export default function DashboardPage() {
   const router = useRouter();
@@ -51,16 +50,13 @@ export default function DashboardPage() {
   } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Website generation state
-  const { generateWebsite, isGenerating, error, generatedProject } = useUnifiedGeneration();
-  const [prompt, setPrompt] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [primaryColor, setPrimaryColor] = useState("#6366f1");
-  const [showExamples, setShowExamples] = useState(false);
-
-  // Templates state
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [templatesLoading, setTemplatesLoading] = useState(true);
+  // Projects state
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -84,27 +80,49 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  // Fetch templates on mount
+  // Fetch projects on mount
   useEffect(() => {
-    const fetchTemplates = async () => {
+    const fetchProjects = async () => {
       try {
-        setTemplatesLoading(true);
-        // UNCOMMENT THIS WHEN TEMPLATES ARE READY
-        // const data = await api.templates.list();
-        // setTemplates(data);
-        setTemplates([]);
+        setProjectsLoading(true);
+        const data = await api.projects.list();
+        setProjects(data);
+        setFilteredProjects(data);
       } catch (error) {
-        console.error("Failed to fetch templates:", error);
-        setTemplates([]);
+        console.error("Failed to fetch projects:", error);
+        setProjects([]);
+        setFilteredProjects([]);
       } finally {
-        setTemplatesLoading(false);
+        setProjectsLoading(false);
       }
     };
 
     if (user) {
-      fetchTemplates();
+      fetchProjects();
     }
   }, [user]);
+
+  // Apply filters when search or status filter changes
+  useEffect(() => {
+    let filtered = [...projects];
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (project) =>
+          project.name.toLowerCase().includes(query) ||
+          (project.description && project.description.toLowerCase().includes(query))
+      );
+    }
+
+    // Apply status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((project) => project.generation_status === statusFilter);
+    }
+
+    setFilteredProjects(filtered);
+  }, [searchQuery, statusFilter, projects]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -123,32 +141,28 @@ export default function DashboardPage() {
     router.push("/auth/login");
   };
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return;
-
-    const result = await generateWebsite(
-      prompt.trim(),
-      undefined, // projectName
-      {
-        primaryColor,
-      }
-    );
-
-    if (result) {
-      // Website generated successfully
-      console.log("Website generated:", result);
-      // Could navigate to the project or show success message
+  const handleDeleteProject = async (projectId: string) => {
+    try {
+      await api.projects.delete(projectId);
+      // Remove from state
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    } catch (error) {
+      console.error("Failed to delete project:", error);
+      alert("Failed to delete project. Please try again.");
     }
   };
 
-  const handleTemplateSelect = (templateId: string) => {
-    if (templateId === "blank") {
-      // Handle blank template
-      console.log("Start blank template");
-      return;
+  const handleDuplicateProject = async (projectId: string) => {
+    try {
+      const result = await api.projects.duplicate(projectId);
+      // Refresh projects list to show the duplicate
+      const data = await api.projects.list();
+      setProjects(data);
+      setFilteredProjects(data);
+    } catch (error) {
+      console.error("Failed to duplicate project:", error);
+      alert("Failed to duplicate project. Please try again.");
     }
-    // Navigate to template editor or preview
-    console.log("Selected template:", templateId);
   };
 
   const getInitials = () => {
@@ -188,9 +202,6 @@ export default function DashboardPage() {
   if (!user) {
     return null;
   }
-
-  // Limit to 5 templates for main dashboard
-  const displayedTemplates = templates.slice(0, 5);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -243,8 +254,9 @@ export default function DashboardPage() {
 
                   {/* Dropdown Arrow */}
                   <svg
-                    className={`w-4 h-4 text-gray-500 transition-transform ${dropdownOpen ? "rotate-180" : ""
-                      }`}
+                    className={`w-4 h-4 text-gray-500 transition-transform ${
+                      dropdownOpen ? "rotate-180" : ""
+                    }`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -324,231 +336,155 @@ export default function DashboardPage() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        {/* Hero Section */}
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
-            Create a new website with AI
-          </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Simply describe your business or project, and our AI will generate a
-            beautiful, professional website for you in minutes.
-          </p>
-        </div>
-
-        {/* Prompt Input Section */}
-        <div className="max-w-4xl mx-auto mb-12">
-          <div className="relative">
-            <div className="flex items-center gap-3 bg-white rounded-xl border-2 border-gray-200 focus-within:border-indigo-500 transition-colors shadow-sm">
-              <input
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="e.g., 'A modern coffee shop in downtown Seattle'"
-                className="flex-1 px-6 py-4 text-base text-gray-900 placeholder-gray-400 bg-transparent border-0 focus:outline-none focus:ring-0"
-                maxLength={500}
-                disabled={isGenerating}
-              />
-              <button
-                onClick={handleGenerate}
-                disabled={!prompt.trim() || isGenerating}
-                className="mr-3 px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200 whitespace-nowrap"
-              >
-                {isGenerating ? (
-                  <span className="flex items-center gap-2">
-                    <svg
-                      className="animate-spin h-4 w-4"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                    Generating...
-                  </span>
-                ) : (
-                  "Generate"
-                )}
-              </button>
-            </div>
-            <div className="absolute -bottom-6 right-0 text-xs text-gray-400">
-              {prompt.length}/500
-            </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header Section */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">My Projects</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              {filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}
+            </p>
           </div>
+
+          <button
+            onClick={() => router.push("/dashboard/new")}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+          >
+            <Plus className="w-5 h-5" />
+            New Project
+          </button>
         </div>
 
-        {/* Template Generation Options (Collapsible) */}
-        {prompt.length > 0 && (
-          <div className="max-w-4xl mx-auto mb-12">
+        {/* Search and Filter Bar */}
+        <div className="mb-6 flex flex-col sm:flex-row gap-3">
+          {/* Search Input */}
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+          </div>
+
+          {/* Status Filter */}
+          <div className="relative">
             <button
-              onClick={() => setShowExamples(!showExamples)}
-              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium mb-4"
+              onClick={() => setShowFilterMenu(!showFilterMenu)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors min-w-[160px] justify-between"
             >
-              {showExamples ? "Hide" : "Show"} advanced options
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">
+                  {STATUS_FILTERS.find((f) => f.value === statusFilter)?.label}
+                </span>
+              </div>
+              <svg
+                className={`w-4 h-4 text-gray-500 transition-transform ${
+                  showFilterMenu ? "rotate-180" : ""
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
             </button>
 
-            {showExamples && (
-              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-                {/* Business Category */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Business Category (Optional)
-                  </label>
-                  <select
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
+            {/* Filter Dropdown */}
+            {showFilterMenu && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
+                {STATUS_FILTERS.map((filter) => (
+                  <button
+                    key={filter.value}
+                    onClick={() => {
+                      setStatusFilter(filter.value);
+                      setShowFilterMenu(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                      statusFilter === filter.value
+                        ? "bg-indigo-50 text-indigo-700 font-medium"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
                   >
-                    <option value="">Select a category...</option>
-                    {BUSINESS_CATEGORIES.map((category) => (
-                      <option key={category.value} value={category.value}>
-                        {category.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Primary Color */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Primary Color (Optional)
-                  </label>
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="color"
-                      value={primaryColor}
-                      onChange={(e) => setPrimaryColor(e.target.value)}
-                      className="h-12 w-20 rounded border border-gray-300 cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={primaryColor}
-                      onChange={(e) => setPrimaryColor(e.target.value)}
-                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      placeholder="#6366f1"
-                    />
-                  </div>
-                </div>
+                    {filter.label}
+                  </button>
+                ))}
               </div>
             )}
           </div>
-        )}
+        </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="max-w-4xl mx-auto mb-8">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex">
-                <svg
-                  className="h-5 w-5 text-red-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                <p className="ml-3 text-sm text-red-700">{error}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Success Display */}
-        {generatedProject && (
-          <div className="max-w-4xl mx-auto mb-8">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-start">
-                <svg
-                  className="h-5 w-5 text-green-400 mt-0.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-green-800">
-                    Website Generated Successfully!
-                  </h3>
-                  <p className="mt-1 text-sm text-green-700">
-                    Your website is ready to use.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Divider */}
-        {displayedTemplates ? (
-          <div></div>
-        ) : (
-          <div className="relative mb-12">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200"></div>
-            </div>
-            <div className="relative flex justify-center">
-              <span className="px-4 bg-gray-50 text-base text-gray-500 font-medium text-center">
-                OR
-                <br />
-                start with a template
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Template Grid */}
-        {/* COMMENTED OUT FOR NOW WHILE FOCUSING ON JUST UNIFIED GENERATION */}
-        {templatesLoading ? (
+        {/* Projects Grid */}
+        {projectsLoading ? (
           <div className="text-center py-12">
-            {/* <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading templates...</p> */}
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading projects...</p>
+          </div>
+        ) : filteredProjects.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <svg
+                className="w-12 h-12 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {searchQuery || statusFilter !== "all" ? "No projects found" : "No projects yet"}
+            </h3>
+            <p className="text-gray-500 mb-6 max-w-sm mx-auto">
+              {searchQuery || statusFilter !== "all"
+                ? "Try adjusting your search or filter to find what you're looking for."
+                : "Get started by creating your first website project."}
+            </p>
+            {!searchQuery && statusFilter === "all" && (
+              <button
+                onClick={() => router.push("/dashboard/new")}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                Create Your First Project
+              </button>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {/* Start Blank Option */}
-            {/* <TemplateCard
-              id="blank"
-              name="Start Blank"
-              onSelect={handleTemplateSelect}
-              isBlank
-            /> */}
-
-            {/* Display up to 5 templates */}
-            {/* {displayedTemplates.map((template) => (
-              <TemplateCard
-                key={template.id}
-                id={template.id}
-                name={template.name}
-                description={template.description || undefined}
-                category={template.category || undefined}
-                previewImage={template.preview_image || undefined}
-                isSystemTemplate={template.is_system_template}
-                onSelect={handleTemplateSelect}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredProjects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={{
+                  id: project.id,
+                  name: project.name,
+                  description: project.description || undefined,
+                  html_content: "",
+                  css_content: "",
+                  js_content: "",
+                  user_id: project.user_id,
+                  created_at: project.created_at,
+                  updated_at: project.updated_at,
+                  is_published: project.published,
+                  preview_url: project.deployment_url || undefined,
+                }}
+                onDelete={handleDeleteProject}
+                onDuplicate={handleDuplicateProject}
               />
-            ))} */}
+            ))}
           </div>
         )}
       </main>

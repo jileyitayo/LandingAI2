@@ -1,25 +1,63 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Calendar, Edit, Trash2 } from 'lucide-react';
+import { Calendar, Edit, Trash2, Copy, ExternalLink, Clock } from 'lucide-react';
 import { Project } from '@/types/project.types';
+import { useState } from 'react';
 
 interface ProjectCardProps {
   project: Project;
   onDelete?: (id: string) => void;
+  onDuplicate?: (id: string) => void;
 }
 
-export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
+export default function ProjectCard({ project, onDelete, onDuplicate }: ProjectCardProps) {
   const router = useRouter();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
 
   const handleEdit = () => {
     router.push(`/dashboard/projects/${project.id}`);
   };
 
-  const handleDelete = (e: React.MouseEvent) => {
+  const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onDelete && confirm('Are you sure you want to delete this project?')) {
-      onDelete(project.id);
+    if (isDeleting) return;
+
+    if (confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+      setIsDeleting(true);
+      try {
+        if (onDelete) {
+          await onDelete(project.id);
+        }
+      } catch (error) {
+        console.error('Failed to delete project:', error);
+      } finally {
+        setIsDeleting(false);
+      }
+    }
+  };
+
+  const handleDuplicate = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isDuplicating) return;
+
+    setIsDuplicating(true);
+    try {
+      if (onDuplicate) {
+        await onDuplicate(project.id);
+      }
+    } catch (error) {
+      console.error('Failed to duplicate project:', error);
+    } finally {
+      setIsDuplicating(false);
+    }
+  };
+
+  const handleViewLive = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (project.preview_url) {
+      window.open(project.preview_url, '_blank');
     }
   };
 
@@ -32,66 +70,126 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
     });
   };
 
+  const getStatusBadge = () => {
+    // If project has preview_url or is_published, it's completed
+    if (project.is_published || project.preview_url) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-600"></div>
+          Published
+        </span>
+      );
+    }
+    return null;
+  };
+
   return (
     <div
-      className="bg-white rounded-lg border border-gray-200 hover:border-blue-500 transition-all cursor-pointer group"
+      className="bg-white rounded-lg border border-gray-200 hover:border-indigo-400 hover:shadow-lg transition-all duration-200 cursor-pointer group overflow-hidden"
       onClick={handleEdit}
     >
       {/* Preview Thumbnail */}
-      <div className="h-40 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-t-lg flex items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/10 flex items-center justify-center">
-          <div className="bg-white rounded-full p-3 shadow-lg">
-            <Edit className="w-5 h-5 text-blue-600" />
+      <div className="h-48 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 relative overflow-hidden">
+        {project.preview_url ? (
+          <>
+            <img
+              src={project.preview_url}
+              alt={project.name}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          </>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-6xl font-bold text-indigo-200 mb-2">
+                {project.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="text-sm text-indigo-300 font-medium">
+                {project.name}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Hover Overlay with Edit Button */}
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <div className="bg-white rounded-full p-3 shadow-xl transform scale-90 group-hover:scale-100 transition-transform">
+            <Edit className="w-6 h-6 text-indigo-600" />
           </div>
         </div>
-        {project.preview_url ? (
-          <img
-            src={project.preview_url}
-            alt={project.name}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="text-6xl font-bold text-blue-200">
-            {project.name.charAt(0).toUpperCase()}
+
+        {/* Status Badge */}
+        {getStatusBadge() && (
+          <div className="absolute top-3 right-3">
+            {getStatusBadge()}
           </div>
         )}
       </div>
 
       {/* Project Info */}
-      <div className="p-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-1 truncate">
+      <div className="p-5">
+        <h3 className="text-lg font-semibold text-gray-900 mb-2 truncate group-hover:text-indigo-600 transition-colors">
           {project.name}
         </h3>
+        
         {project.description && (
-          <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+          <p className="text-sm text-gray-600 mb-4 line-clamp-2 min-h-[40px]">
             {project.description}
           </p>
         )}
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Calendar className="w-3 h-3" />
-            <span>{formatDate(project.updated_at)}</span>
+        {/* Meta Information */}
+        <div className="flex items-center justify-between text-xs text-gray-500 mb-4">
+          <div className="flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Updated {formatDate(project.updated_at)}</span>
           </div>
-
-          <button
-            onClick={handleDelete}
-            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-            title="Delete project"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
         </div>
 
-        {project.is_published && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-              Published
-            </span>
-          </div>
-        )}
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 pt-4 border-t border-gray-100">
+          {/* View Live Button */}
+          {project.is_published && project.preview_url && (
+            <button
+              onClick={handleViewLive}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+              title="View live site"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              View Live
+            </button>
+          )}
+
+          {/* Duplicate Button */}
+          <button
+            onClick={handleDuplicate}
+            disabled={isDuplicating}
+            className="inline-flex items-center justify-center p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Duplicate project"
+          >
+            {isDuplicating ? (
+              <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <Copy className="w-4 h-4" />
+            )}
+          </button>
+
+          {/* Delete Button */}
+          <button
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="inline-flex items-center justify-center p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Delete project"
+          >
+            {isDeleting ? (
+              <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
-

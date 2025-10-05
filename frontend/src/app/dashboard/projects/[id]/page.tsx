@@ -16,28 +16,28 @@ export default function ProjectEditorPage() {
   // Load project from API
   const loadProject = useCallback(async (id: string): Promise<Project> => {
     try {
-      // const response = await api.projects.get(id);
-      // return {
-      //   id: response.id,
-      //   name: response.name,
-      //   html_content : response.html_content || '',
-      //   css_content : response.css_content || '',
-      //   js_content : response.js_content || '',
-      //   user_id: response.user_id, // Not needed for editor
-      //   created_at: response.created_at, // Not needed for editor
-      //   updated_at: response.updated_at, // Not needed for editor 
-      // };
+      const response = await api.projects.get(id);
+      return {
+        id: response.id,
+        name: response.name,
+        html_content : response.html_content || '',
+        css_content : response.css_content || '',
+        js_content : response.js_content || '',
+        user_id: response.user_id, // Not needed for editor
+        created_at: response.created_at, // Not needed for editor
+        updated_at: response.updated_at, // Not needed for editor 
+      };
       // Mock data for now
-    return {
-      id,
-      name: 'My Website Project',
-      html_content: '<div class="container">\n  <h1>Welcome to Your Website</h1>\n  <p>Start editing to see changes in real-time!</p>\n</div>',
-      css_content: '.container {\n  max-width: 1200px;\n  margin: 0 auto;\n  padding: 2rem;\n  text-align: center;\n}\n\nh1 {\n  color: #2563eb;\n  font-size: 2.5rem;\n  margin-bottom: 1rem;\n}\n\np {\n  color: #6b7280;\n  font-size: 1.125rem;\n}',
-      js_content: '// Add your JavaScript here\nconsole.log("Website loaded successfully!");',
-      user_id: 'user-123',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+    // return {
+    //   id,
+    //   name: 'My Website Project',
+    //   html_content: '<div class="container">\n  <h1>Welcome to Your Website</h1>\n  <p>Start editing to see changes in real-time!</p>\n</div>',
+    //   css_content: '.container {\n  max-width: 1200px;\n  margin: 0 auto;\n  padding: 2rem;\n  text-align: center;\n}\n\nh1 {\n  color: #2563eb;\n  font-size: 2.5rem;\n  margin-bottom: 1rem;\n}\n\np {\n  color: #6b7280;\n  font-size: 1.125rem;\n}',
+    //   js_content: '// Add your JavaScript here\nconsole.log("Website loaded successfully!");',
+    //   user_id: 'user-123',
+    //   created_at: new Date().toISOString(),
+    //   updated_at: new Date().toISOString(),
+    // };
     } catch (error) {
       console.error('Failed to load project:', error);
       throw error;

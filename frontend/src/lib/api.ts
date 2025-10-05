@@ -481,6 +481,20 @@ export const api = {
       apiRequest<{ message: string }>(`/api/v1/projects/${id}/unpublish`, {
         method: "POST",
       }),
+
+    /**
+     * Duplicate project
+     * Requires: Authorization header with valid access token
+     */
+    duplicate: (id: string, newName?: string) =>
+      apiRequest<{
+        id: string;
+        message: string;
+        name: string;
+      }>(`/api/v1/projects/${id}/duplicate`, {
+        method: "POST",
+        body: JSON.stringify({ new_name: newName }),
+      }),
   },
 
   /**
