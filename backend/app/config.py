@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: Union[list[str], str] = ["http://localhost:3000"]
 
+    # Set's open ai calls to use already existing data instead of generating new data
+    training_wheels: bool = True 
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):

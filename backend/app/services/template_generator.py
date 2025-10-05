@@ -13,7 +13,7 @@ from app.services.components_library import component_library, ComponentType
 from app.services.template_validator import validate_template_structure
 import logging
 import sys
-from app.data.response_sample import open_ai_response_sample
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -57,37 +57,39 @@ class TemplateGenerator:
             TemplateGenerationError: If generation fails
         """
         try:
-
-            test_response = open_ai_response_sample()
-            logger.info(f"Test response: {test_response}")
+            test_response = None
+            if settings.training_wheels:
+                from app.data.response_sample import open_ai_response_sample
+                test_response = open_ai_response_sample()
 
             logger.info(f"[STEP 1/8] Starting template generation for user {user_id}")
             logger.info(f"User prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}")
             
-            if not test_response:
-            # Prepare component samples for few-shot learning
-                logger.info("[STEP 2/8] Preparing component samples from library")
-                component_samples = self._prepare_component_samples()
-                logger.info(f"Loaded {len(component_samples)} component types with variations")
-                
-                # Build system prompt with instructions
-                logger.info("[STEP 3/8] Building system prompt with component library")
-                system_prompt = self._build_system_prompt(component_samples)
-                logger.info(f"System prompt prepared ({len(system_prompt)} characters)")
             
-                # Build user prompt with preferences
-                logger.info("[STEP 4/8] Building user prompt with preferences")
-                user_prompt = self._build_user_prompt(prompt, style_preferences)
-                if style_preferences:
-                    logger.info(f"Applied style preferences: {list(style_preferences.keys())}")
+            # Prepare component samples for few-shot learning
+            logger.info("[STEP 2/8] Preparing component samples from library")
+            component_samples = self._prepare_component_samples()
+            logger.info(f"Loaded {len(component_samples)} component types with variations")
+            
+            # Build system prompt with instructions
+            logger.info("[STEP 3/8] Building system prompt with component library")
+            system_prompt = self._build_system_prompt(component_samples)
+            logger.info(f"System prompt prepared ({len(system_prompt)} characters)")
+        
+            # Build user prompt with preferences
+            logger.info("[STEP 4/8] Building user prompt with preferences")
+            user_prompt = self._build_user_prompt(prompt, style_preferences)
+            if style_preferences:
+                logger.info(f"Applied style preferences: {list(style_preferences.keys())}")
                 
+            if not test_response:
                 # Call OpenAI API
                 logger.info(f"[STEP 5/8] Calling OpenAI API (model: {self.model})")
                 response = self._call_openai_api(system_prompt, user_prompt)
                 logger.info(f"Received response from OpenAI ({len(response)} characters)")
                 
             else:
-                logger.info("Skipping STEP 2-5")
+                logger.info("Skipping STEP 5")
                 
             response = test_response
             # Parse and validate response

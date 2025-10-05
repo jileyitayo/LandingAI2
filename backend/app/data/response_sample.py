@@ -259,3 +259,84 @@ def open_ai_response_sample():
         }
         }
     """
+
+def content_generator_response_sample():
+    return """
+    {
+    "content": {
+        "business_name": "Savannah Bites Restaurant",
+        "logo_url": "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=200&h=200&fit=crop",
+        "nav_items": [
+        {"label": "Home", "url": "#home"},
+        {"label": "Menu", "url": "#menu"},
+        {"label": "About", "url": "#about"},
+        {"label": "Contact", "url": "#contact"}
+        ],
+        "headline": "Authentic African Flavors in the Heart of Lagos",
+        "subheadline": "Experience the rich culinary heritage of West Africa with our signature dishes",
+        "cta_text": "Reserve Table",
+        "cta_url": "#contact",
+        "secondary_cta_text": "View Menu",
+        "secondary_cta_url": "#menu",
+        "section_title": "Our Signature Dishes",
+        "section_description": "Handcrafted meals using traditional recipes and fresh local ingredients",
+        "services": [
+        {
+            "icon": "utensils",
+            "title": "Traditional Jollof Rice",
+            "description": "Our signature jollof rice cooked with premium ingredients and secret spices"
+        },
+        {
+            "icon": "fish",
+            "title": "Grilled Fish",
+            "description": "Fresh fish grilled to perfection with local herbs and spices"
+        },
+        {
+            "icon": "bowl",
+            "title": "Pepper Soup",
+            "description": "Hearty pepper soup with your choice of meat or fish"
+        }
+        ],
+        "about_text": "Founded in 2018, Savannah Bites brings authentic West African cuisine to Lagos. Our chefs use traditional cooking methods passed down through generations, combined with fresh local ingredients to create unforgettable dining experiences.",
+        "about_image": "https://images.unsplash.com/photo-1551218808-94e220e084d2?w=600&h=400&fit=crop",
+        "about_image_alt": "Chef preparing traditional African dishes",
+        "highlights": [
+        {"value": "5+", "label": "Years Experience"},
+        {"value": "1000+", "label": "Happy Customers"},
+        {"value": "50+", "label": "Signature Dishes"}
+        ],
+        "testimonials": [
+        {
+            "quote": "The best jollof rice in Lagos! The flavors take me back to my grandmother's kitchen.",
+            "author_name": "Adebayo Johnson",
+            "author_title": "Regular Customer"
+        },
+        {
+            "quote": "Authentic taste and excellent service. Highly recommended for anyone wanting to experience true African cuisine.",
+            "author_name": "Fatima Ibrahim",
+            "author_title": "Food Blogger"
+        }
+        ],
+        "cta_title": "Ready to Experience Authentic African Cuisine?",
+        "cta_text": "Book your table today and taste the difference",
+        "cta_button_text": "Reserve Now",
+        "cta_url": "#contact",
+        "business_email": "info@savannahbites.com",
+        "business_phone": "+234 801 234 5678",
+        "whatsapp_number": "+2348012345678",
+        "submit_button_text": "Send Message",
+        "form_action": "/api/contact",
+        "business_description": "Authentic West African restaurant serving traditional dishes with modern presentation",
+        "copyright_text": "© 2025 Savannah Bites Restaurant. All rights reserved.",
+        "footer_links": [
+        {"label": "Privacy Policy", "url": "/privacy"},
+        {"label": "Terms of Service", "url": "/terms"}
+        ]
+    },
+    "metadata": {
+        "business_type": "restaurant",
+        "tone": "friendly",
+        "target_audience": "Food enthusiasts and families looking for authentic African dining experience"
+    }
+    }
+    """

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import health, auth, users, templates
+from app.routers import health, auth, users, templates, generation
 from app.middleware.auth_middleware import AuthenticationMiddleware
 
 import logging
@@ -84,4 +84,5 @@ app.include_router(health.router, prefix="/api/v1", tags=["Health"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(templates.router, prefix="/api/v1/templates", tags=["Templates"])
+app.include_router(generation.router, prefix="/api/v1", tags=["Generation"])
 

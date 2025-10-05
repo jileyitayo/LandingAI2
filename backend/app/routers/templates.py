@@ -176,9 +176,7 @@ async def save_template_to_db(template_data: Dict[str, Any], supabase_client) ->
 # ============================================================================
 # API Endpoints
 # ============================================================================
-
-@router.post("/generate", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
-@log_action(action_type='CREATE', target_resource_type='template_generation')
+# TODO: OBSOLETE, REMOVE THIS ENDPOINT - MIGHT BE GOOD FOR JUST GENERATING TEMPLATES
 async def generate_template(
     request: GenerateTemplateRequest,
     background_tasks: BackgroundTasks,

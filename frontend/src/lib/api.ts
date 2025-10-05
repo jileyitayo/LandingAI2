@@ -319,32 +319,6 @@ export const api = {
         created_at: string;
         updated_at: string;
       }>(`/api/v1/templates/${id}`),
-
-    /**
-     * Generate new template from prompt
-     * Requires: Authorization header with valid access token
-     */
-    generate: (data: { prompt: string; style_preferences?: Record<string, any> }) =>
-      apiRequest<{
-        id: string;
-        name: string;
-        description: string;
-        sections_config: Array<Record<string, any>>;
-        style_config: Record<string, any>;
-        content_schema: Record<string, any>;
-        preview_html: string | null;
-        preview_url: string | null;
-        category: string;
-        tags: string[];
-        is_public: boolean;
-        created_by: string | null;
-        created_at: string;
-        updated_at: string | null;
-      }>("/api/v1/templates/generate", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-
     /**
      * Check template generation status
      * Requires: Authorization header with valid access token
@@ -507,6 +481,39 @@ export const api = {
       apiRequest<{ message: string }>(`/api/v1/projects/${id}/unpublish`, {
         method: "POST",
       }),
+  },
+
+  /**
+   * Generation endpoints
+   */
+  generation: {
+    /**
+     * Generate website from prompt
+     * Requires: Authorization header with valid access token
+     */
+    generateWebsite: (data: {
+      prompt: string;
+      project_name?: string;
+      style_preferences?: Record<string, any>;
+    }) =>
+      apiRequest<{
+        project_id: string;
+        status: string;
+        message: string;
+      }>("/api/v1/generate_website", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    /**
+     * Check generation status
+     * Requires: Authorization header with valid access token
+     */
+    getStatus: (projectId: string) =>
+      apiRequest<{
+        status: string;
+        error?: string;
+      }>(`/api/v1/generation/${projectId}/status`),
   },
 };
 

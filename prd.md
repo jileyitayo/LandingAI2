@@ -951,7 +951,7 @@ Create the AI website content generation service in FastAPI:
    - generate_content(prompt: str, template_id: str, user_id: str) -> dict
    - Fetch template's sections_config and content_schema
    - System prompt engineering for content generation
-   - Integration with OpenAI API (gpt-4 or gpt-3.5-turbo)
+   - Integration with OpenAI API (gpt-4o-mini)
    - Generate content that matches content_schema
    - Fill all required content bindings
    - Apply template's style_config

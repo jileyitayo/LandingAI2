@@ -10,9 +10,10 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { api } from "@/lib/api";
+import { api } from "@/lib/api";  
 import { TemplateCard } from "@/components/TemplateCard";
-import { useTemplateGeneration } from "@/hooks/useTemplateGeneration";
+import { PromptInput } from "@/components/PromptInput";
+import { useUnifiedGeneration } from "@/hooks/useUnifiedGeneration";
 
 interface Template {
   id: string;
@@ -50,8 +51,8 @@ export default function DashboardPage() {
   } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Template generation state
-  const { generateTemplate, isGenerating, error, generatedTemplate } = useTemplateGeneration();
+  // Website generation state
+  const { generateWebsite, isGenerating, error, generatedProject } = useUnifiedGeneration();
   const [prompt, setPrompt] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#6366f1");
@@ -88,8 +89,10 @@ export default function DashboardPage() {
     const fetchTemplates = async () => {
       try {
         setTemplatesLoading(true);
-        const data = await api.templates.list();
-        setTemplates(data);
+        // UNCOMMENT THIS WHEN TEMPLATES ARE READY
+        // const data = await api.templates.list();
+        // setTemplates(data);
+        setTemplates([]);
       } catch (error) {
         console.error("Failed to fetch templates:", error);
         setTemplates([]);
@@ -123,17 +126,18 @@ export default function DashboardPage() {
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
 
-    const result = await generateTemplate({
-      prompt: prompt.trim(),
-      style_preferences: {
+    const result = await generateWebsite(
+      prompt.trim(),
+      undefined, // projectName
+      {
         primaryColor,
-      },
-    });
+      }
+    );
 
     if (result) {
-      // Template generated successfully
-      console.log("Template generated:", result);
-      // Could navigate to the template or show success message
+      // Website generated successfully
+      console.log("Website generated:", result);
+      // Could navigate to the project or show success message
     }
   };
 
@@ -467,7 +471,7 @@ export default function DashboardPage() {
         )}
 
         {/* Success Display */}
-        {generatedTemplate && (
+        {generatedProject && (
           <div className="max-w-4xl mx-auto mb-8">
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <div className="flex items-start">
@@ -486,10 +490,10 @@ export default function DashboardPage() {
                 </svg>
                 <div className="ml-3">
                   <h3 className="text-sm font-medium text-green-800">
-                    Template Generated Successfully!
+                    Website Generated Successfully!
                   </h3>
                   <p className="mt-1 text-sm text-green-700">
-                    Your template "{generatedTemplate.name}" is ready to use.
+                    Your website is ready to use.
                   </p>
                 </div>
               </div>
@@ -516,10 +520,11 @@ export default function DashboardPage() {
         )}
 
         {/* Template Grid */}
+        {/* COMMENTED OUT FOR NOW WHILE FOCUSING ON JUST UNIFIED GENERATION */}
         {templatesLoading ? (
           <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading templates...</p>
+            {/* <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading templates...</p> */}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
@@ -532,7 +537,7 @@ export default function DashboardPage() {
             /> */}
 
             {/* Display up to 5 templates */}
-            {displayedTemplates.map((template) => (
+            {/* {displayedTemplates.map((template) => (
               <TemplateCard
                 key={template.id}
                 id={template.id}
@@ -543,7 +548,7 @@ export default function DashboardPage() {
                 isSystemTemplate={template.is_system_template}
                 onSelect={handleTemplateSelect}
               />
-            ))}
+            ))} */}
           </div>
         )}
       </main>
