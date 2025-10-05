@@ -117,20 +117,20 @@ function ProjectEditor({ projectId }: { projectId: string }) {
   if (isLoading) return <LoadingSpinner />;
   if (error) return <ErrorMessage error={error} />;
 
-  const { html, css, js, activeTab, hasUnsavedChanges } = editorState;
+  const { html_content, css_content, js_content, activeTab, hasUnsavedChanges } = editorState;
 
   return (
     <div>
       {/* Editor tabs */}
       <div>
-        <button onClick={() => setActiveTab('html')}>HTML</button>
-        <button onClick={() => setActiveTab('css')}>CSS</button>
-        <button onClick={() => setActiveTab('js')}>JavaScript</button>
+        <button onClick={() => setActiveTab('html_content')}>HTML</button>
+        <button onClick={() => setActiveTab('css_content')}>CSS</button>
+        <button onClick={() => setActiveTab('js_content')}>JavaScript</button>
       </div>
 
       {/* Code editor */}
       <textarea
-        value={activeTab === 'html' ? html : activeTab === 'css' ? css : js}
+        value={activeTab === 'html_content' ? html_content : activeTab === 'css_content' ? css_content : js_content}
         onChange={(e) => updateCode(e.target.value)}
       />
 
@@ -144,7 +144,7 @@ function ProjectEditor({ projectId }: { projectId: string }) {
       <button onClick={downloadProject}>Download</button>
 
       {/* Preview */}
-      <WebsitePreview html={html} css={css} js={js} />
+      <WebsitePreview html_content={html_content} css_content={css_content} js_content={js_content} />
     </div>
   );
 }

@@ -29,7 +29,7 @@ export interface ProjectUpdateInput {
   is_published?: boolean;
 }
 
-export type EditorTab = 'html' | 'css' | 'js';
+export type EditorTab = 'html_content' | 'css_content' | 'js_content';
 
 export type ViewportSize = 'desktop' | 'tablet' | 'mobile';
 

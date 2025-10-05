@@ -98,7 +98,7 @@ export default function ProjectEditorPage() {
   }
 
   const { html_content, css_content, js_content, activeTab, hasUnsavedChanges } = editorState;
-  const currentCode = activeTab === 'html' ? html_content : activeTab === 'css' ? css_content : js_content;
+  const currentCode = activeTab === 'html_content' ? html_content : activeTab === 'css_content' ? css_content : js_content;
 
   return (
     <div className="h-screen flex flex-col bg-gray-900">
@@ -156,9 +156,9 @@ export default function ProjectEditorPage() {
           {/* Editor Tabs */}
           <div className="flex items-center bg-gray-800 border-b border-gray-700">
             <button
-              onClick={() => setActiveTab('html')}
+              onClick={() => setActiveTab('html_content')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'html'
+                activeTab === 'html_content'
                   ? 'border-blue-500 text-white bg-gray-900'
                   : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
               }`}
@@ -167,9 +167,9 @@ export default function ProjectEditorPage() {
               <span className="font-medium">HTML</span>
             </button>
             <button
-              onClick={() => setActiveTab('css')}
+              onClick={() => setActiveTab('css_content')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'css'
+                activeTab === 'css_content'
                   ? 'border-blue-500 text-white bg-gray-900'
                   : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
               }`}
@@ -178,9 +178,9 @@ export default function ProjectEditorPage() {
               <span className="font-medium">CSS</span>
             </button>
             <button
-              onClick={() => setActiveTab('js')}
+              onClick={() => setActiveTab('js_content')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'js'
+                activeTab === 'js_content'
                   ? 'border-blue-500 text-white bg-gray-900'
                   : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
               }`}

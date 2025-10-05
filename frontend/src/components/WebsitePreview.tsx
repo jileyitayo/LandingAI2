@@ -27,20 +27,10 @@ export default function WebsitePreview({
   const [viewport, setViewport] = useState<ViewportSize>('desktop');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Inject content into iframe safely
-  useEffect(() => {
-    if (!iframeRef.current) return;
-
-    const iframe = iframeRef.current;
-    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-
-    if (!iframeDoc) return;
-
-    // Create complete HTML document with injected CSS and JS
-    const fullHTML = `
+  // Create complete HTML document with injected CSS and JS
+  const fullHTML = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -77,12 +67,6 @@ export default function WebsitePreview({
 </body>
 </html>
     `;
-
-    // Write content to iframe
-    iframeDoc.open();
-    iframeDoc.write(fullHTML);
-    iframeDoc.close();
-  }, [html, css, js, refreshKey]);
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
@@ -193,12 +177,12 @@ export default function WebsitePreview({
             </div>
           ) : (
             <iframe
-              ref={iframeRef}
               key={refreshKey}
               title="Website Preview"
               sandbox="allow-scripts allow-same-origin"
               className="w-full h-full border-0"
               style={{ backgroundColor: 'white' }}
+              srcDoc={fullHTML}
             />
           )}
         </div>

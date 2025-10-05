@@ -17,7 +17,7 @@ export function useProjectEditor({
     html_content: '',
     css_content: '',
     js_content: '',
-    activeTab: 'html',
+    activeTab: 'html_content',
     hasUnsavedChanges: false,
   });
   const [isLoading, setIsLoading] = useState(true);
