@@ -209,7 +209,7 @@ class ComponentLibrary:
             <ul class="header__nav-list">
                 <!-- nav_item_start -->
                 <li class="header__nav-item">
-                    <a href="{{nav.url}}" class="header__nav-link">{{nav.label}}</a>
+                    <a href="{{nav_items.url}}" class="header__nav-link">{{nav_items.label}}</a>
                 </li>
                 <!-- nav_item_end -->
             </ul>
@@ -321,7 +321,7 @@ class ComponentLibrary:
             <ul class="header__nav-list">
                 <!-- nav_item_start -->
                 <li class="header__nav-item">
-                    <a href="{{nav.url}}" class="header__nav-link">{{nav.label}}</a>
+                    <a href="{{nav_items.url}}" class="header__nav-link">{{nav_items.label}}</a>
                 </li>
                 <!-- nav_item_end -->
             </ul>

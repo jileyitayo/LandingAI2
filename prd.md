@@ -1213,8 +1213,6 @@ Add theme customization features:
    - Update preview in real-time
    - Save theme settings to database
 
-3. Backend: Add theme_settings JSONB column to projects table
-
 Keep it simple - focus on colors and fonts only for MVP.
 ```
 

@@ -1,6 +1,254 @@
 def open_ai_response_sample():
     return """
     {
+  "name": "Photography Business Template",
+  "description": "A sleek and modern website template for a photography business based in Lagos.",
+  "sections": [
+    {
+      "component_type": "header",
+      "variation": "logo-left",
+      "order": 0,
+      "config": {}
+    },
+    {
+      "component_type": "hero",
+      "variation": "full-width",
+      "order": 1,
+      "config": {}
+    },
+    {
+      "component_type": "services",
+      "variation": "three-column",
+      "order": 2,
+      "config": {}
+    },
+    {
+      "component_type": "about",
+      "variation": "two-column",
+      "order": 3,
+      "config": {}
+    },
+    {
+      "component_type": "testimonials",
+      "variation": "cards",
+      "order": 4,
+      "config": {}
+    },
+    {
+      "component_type": "cta",
+      "variation": "banner",
+      "order": 5,
+      "config": {}
+    },
+    {
+      "component_type": "contact",
+      "variation": "split-info",
+      "order": 6,
+      "config": {}
+    },
+    {
+      "component_type": "footer",
+      "variation": "simple",
+      "order": 7,
+      "config": {}
+    }
+  ],
+  "style_config": {
+    "colors": {
+      "primary": "#6366f1",
+      "secondary": "#8b5cf6",
+      "text": "#1f2937",
+      "heading": "#111827",
+      "background": "#ffffff",
+      "border": "#e5e7eb"
+    },
+    "typography": {
+      "fontFamily": "'Inter', sans-serif",
+      "headingFontFamily": "'Inter', sans-serif",
+      "fontSize": "16px",
+      "lineHeight": "1.5"
+    },
+    "spacing": {
+      "containerMaxWidth": "1200px",
+      "sm": "1rem",
+      "md": "1.5rem",
+      "lg": "2rem",
+      "xl": "3rem",
+      "2xl": "5rem"
+    }
+  },
+  "content_schema": {
+    "business_name": {
+      "type": "text",
+      "required": true,
+      "placeholder": "Your Business Name"
+    },
+    "logo_url": {
+      "type": "image",
+      "required": true,
+      "placeholder": "Logo URL"
+    },
+    "nav_items": {
+      "type": "array",
+      "required": true,
+      "itemSchema": {
+        "label": "string",
+        "url": "string"
+      },
+      "default": [
+        {
+          "label": "Home",
+          "url": "#home"
+        },
+        {
+          "label": "Portfolio",
+          "url": "#portfolio"
+        },
+        {
+          "label": "About",
+          "url": "#about"
+        },
+        {
+          "label": "Contact",
+          "url": "#contact"
+        }
+      ]
+    },
+    "headline": {
+      "type": "text",
+      "required": true,
+      "placeholder": "Capture Your Moments"
+    },
+    "subheadline": {
+      "type": "text",
+      "required": true,
+      "placeholder": "Professional photography services in Lagos"
+    },
+    "cta_text": {
+      "type": "text",
+      "required": true,
+      "default": "Book Now"
+    },
+    "cta_url": {
+      "type": "url",
+      "required": false,
+      "default": "#contact"
+    },
+    "section_title": {
+      "type": "text",
+      "required": true,
+      "default": "Our Services"
+    },
+    "services": {
+      "type": "array",
+      "required": true,
+      "itemSchema": {
+        "icon": "string",
+        "title": "string",
+        "description": "string"
+      }
+    },
+    "section_title": {
+      "type": "text",
+      "required": true,
+      "default": "About Us"
+    },
+    "about_text": {
+      "type": "text",
+      "required": true,
+      "placeholder": "Tell your story"
+    },
+    "about_image": {
+      "type": "image",
+      "required": true,
+      "placeholder": "About image URL"
+    },
+    "business_email": {
+      "type": "email",
+      "required": true,
+      "placeholder": "your@email.com"
+    },
+    "business_phone": {
+      "type": "phone",
+      "required": false,
+      "placeholder": "+234 xxx xxx xxxx"
+    },
+    "whatsapp_number": {
+      "type": "phone",
+      "required": false,
+      "placeholder": "234xxxxxxxxxx"
+    },
+    "testimonials": {
+      "type": "array",
+      "required": true,
+      "itemSchema": {
+        "quote": "string",
+        "author_name": "string",
+        "author_title": "string"
+      }
+    },
+    "cta_title": {
+      "type": "text",
+      "required": true,
+      "placeholder": "Ready to capture your moments?"
+    },
+    "cta_text": {
+      "type": "text",
+      "required": true,
+      "placeholder": "Join thousands of satisfied clients"
+    },
+    "cta_button_text": {
+      "type": "text",
+      "required": true,
+      "default": "Get Started Today"
+    },
+    "form_action": {
+      "type": "url",
+      "required": false,
+      "default": "/api/contact"
+    },
+    "section_description": {
+      "type": "text",
+      "required": false,
+      "placeholder": "We'd love to hear from you"
+    },
+    "submit_button_text": {
+      "type": "text",
+      "required": true,
+      "default": "Send Message"
+    },
+    "copyright_text": {
+      "type": "text",
+      "required": true,
+      "default": "\u00169 2025 Your Photography Business. All rights reserved."
+    },
+    "footer_links": {
+      "type": "array",
+      "required": false,
+      "itemSchema": {
+        "label": "string",
+        "url": "string"
+      },
+      "default": [
+        {
+          "label": "Privacy Policy",
+          "url": "/privacy"
+        },
+        {
+          "label": "Terms of Service",
+          "url": "/terms"
+        }
+      ]
+    }
+  },
+  "meta": {
+    "category": "service",
+    "tags": ["modern", "professional", "photography"]
+  }
+}
+    """
+    return """
+    {
         "name": "Modern Restaurant Template",
         "description": "A contemporary restaurant website with elegant design and user-friendly navigation",
         "sections": [

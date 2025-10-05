@@ -5,8 +5,10 @@ Validates generated template structures and content schemas.
 
 from typing import Dict, Any, Tuple, Optional, List
 from app.services.components_library import component_library, ComponentType
+from app.utils.action_logger import log_action
 
-
+# TEMPORARY DISABLED
+# @log_action(action_type='VALIDATE', target_resource_type='template_structure')
 def validate_template_structure(template_data: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
     """
     Validate the overall template structure.
@@ -49,6 +51,7 @@ def validate_template_structure(template_data: Dict[str, Any]) -> Tuple[bool, Op
     return True, None
 
 
+# @log_action(action_type='VALIDATE', target_resource_type='template_structure_sections')
 def validate_sections_config(sections: List[Dict[str, Any]]) -> Tuple[bool, Optional[str]]:
     """
     Validate sections configuration.
@@ -120,6 +123,7 @@ def validate_sections_config(sections: List[Dict[str, Any]]) -> Tuple[bool, Opti
     return True, None
 
 
+# @log_action(action_type='VALIDATE', target_resource_type='template_structure_style_config')
 def validate_style_config(style_config: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
     """
     Validate style configuration.
@@ -168,6 +172,7 @@ def validate_style_config(style_config: Dict[str, Any]) -> Tuple[bool, Optional[
     return True, None
 
 
+# @log_action(action_type='VALIDATE', target_resource_type='template_structure_content_schema')
 def validate_content_schema(content_schema: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
     """
     Validate content schema.
@@ -209,7 +214,7 @@ def validate_content_schema(content_schema: Dict[str, Any]) -> Tuple[bool, Optio
     
     return True, None
 
-
+# @log_action(action_type='VALIDATE', target_resource_type='template_structure_content_bindings')
 def validate_content_bindings(
     sections: List[Dict[str, Any]],
     content_schema: Dict[str, Any]

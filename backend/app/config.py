@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     cors_origins: Union[list[str], str] = ["http://localhost:3000"]
 
     # Set's open ai calls to use already existing data instead of generating new data
-    training_wheels: bool = True 
+    training_wheels: bool = False 
 
     @field_validator("cors_origins", mode="before")
     @classmethod

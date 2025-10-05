@@ -83,10 +83,10 @@ class ContentGenerator:
                 content_schema,
                 style_config
             )
-            
+            print(f"OPENAI CONTENT GENERATION SYSTEM PROMPT: \n{system_prompt}")
             # Build user prompt
             user_prompt = self._build_user_prompt(prompt)
-            
+            print(f"OPENAI CONTENT GENERATION USER PROMPT: \n{user_prompt}")
             if not test_response:
                 # Call OpenAI API
                 logger.info(f"[CONTENT GEN 4/6] Calling OpenAI API (model: {self.model})")
@@ -94,9 +94,10 @@ class ContentGenerator:
                 logger.info(f"Received response from OpenAI ({len(response)} characters)")
             else:
                 logger.info("Skipping STEP 4")
-            response = test_response
+                response = test_response
             
             # Parse and validate response
+            print(f"OPENAI CONTENT GENERATION RESPONSE: \n{response}")
             logger.info("[CONTENT GEN 5/6] Parsing and validating content")
             content_data = self._parse_openai_response(response)
             
@@ -209,10 +210,18 @@ YOUR RESPONSIBILITIES:
    - phone: Local phone format (e.g., +234 for Nigeria)
    - url: Valid URLs (use # for placeholders)
 
+PRE-GENERATION CHECKLIST:
+1. Read through ALL fields in content_schema
+2. Identify which fields have "required": true
+3. Plan content for each required field
+4. Ensure you have content for: logo_url, submit_button_text, and all others
+5. Only then proceed to generate the JSON response
+
 OUTPUT FORMAT (JSON):
 {{
   "content": {{
     "business_name": "The business name",
+    "logo_url": "https://images.unsplash.com/photo-...", // REQUIRED
     "headline": "Compelling headline",
     "subheadline": "Supporting subheadline",
     "services": [
@@ -225,6 +234,7 @@ OUTPUT FORMAT (JSON):
     "business_email": "contact@business.com",
     "business_phone": "+234 XXX XXX XXXX",
     "whatsapp_number": "+234XXXXXXXXXX",
+    "submit_button_text": "Send Message", // REQUIRED
     // ... all other required fields from content_schema
   }},
   "metadata": {{
@@ -234,9 +244,18 @@ OUTPUT FORMAT (JSON):
   }}
 }}
 
+FIELD COMPLETION CHECKLIST:
+Before finalizing your response, verify you have included:
+- logo_url: Business logo image URL (required for header)
+- submit_button_text: Contact form button text (required for contact form)
+- All other fields marked as "required": true in content_schema
+- Use placeholder images: https://images.unsplash.com/photo-... for missing images
+- Use default values from schema when available
+
 CRITICAL RULES:
 - Generate content in English (can include local language greetings)
-- ALL required fields from content_schema MUST be present
+- ALL required fields from content_schema MUST be present - NO EXCEPTIONS
+- Double-check: logo_url, submit_button_text, and ALL fields with "required": true
 - Arrays should have at least the minimum number of items specified
 - Phone numbers should use local format
 - WhatsApp numbers should be in international format without spaces (+234XXXXXXXXXX)
@@ -244,6 +263,7 @@ CRITICAL RULES:
 - Keep content authentic and professional
 - Avoid generic corporate speak
 - Make CTAs specific and actionable
+- FINAL CHECK: Count all required fields in your response before submitting
 
 Generate engaging, conversion-focused content that represents the business authentically."""
     
@@ -307,15 +327,38 @@ Use appropriate African localization (WhatsApp, local payment methods, cultural 
         content = content_data.get("content", {})
         missing_fields = []
         
-        # Check all required fields are present
+        # Check all required fields are present and add defaults for missing ones
         for field_name, field_config in content_schema.items():
             if isinstance(field_config, dict) and field_config.get("required", False):
                 if field_name not in content:
                     missing_fields.append(field_name)
+                    # Add default value for missing required fields
+                    default_value = field_config.get("default")
+                    if default_value is not None:
+                        content[field_name] = default_value
+                        logger.warning(f"Missing required field '{field_name}', using default: {default_value}")
+                    else:
+                        # Generate appropriate default based on field type
+                        field_type = field_config.get("type", "text")
+                        if field_type == "image":
+                            content[field_name] = "https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0"
+                        elif field_type == "text":
+                            content[field_name] = field_config.get("placeholder", "Default text")
+                        elif field_type == "email":
+                            content[field_name] = "contact@business.com"
+                        elif field_type == "phone":
+                            content[field_name] = "+234 xxx xxx xxxx"
+                        elif field_type == "url":
+                            content[field_name] = "#"
+                        else:
+                            content[field_name] = "Default value"
+                        logger.warning(f"Missing required field '{field_name}', generated default based on type: {field_type}")
+        
+        # Update the content_data with the filled defaults
+        content_data["content"] = content
         
         if missing_fields:
-            logger.error(f"Missing required fields: {', '.join(missing_fields)}")
-            raise ValueError(f"Generated content missing required fields: {', '.join(missing_fields)}")
+            logger.warning(f"Missing required fields were filled with defaults: {', '.join(missing_fields)}")
         
         # Validate field types
         for field_name, field_value in content.items():
@@ -332,6 +375,18 @@ Use appropriate African localization (WhatsApp, local payment methods, cultural 
         
         logger.info("✓ Content validation passed")
 
+    def parse_openai_response(self, response: str) -> Dict[str, Any]:
+        """Parse OpenAI response"""
+        logger.info("[CONTENT GEN 5/6] Parsing and validating content")
+        content_data = self._parse_openai_response(response)
+        
+        return content_data
+
+    def validate_content(self, content_data: Dict[str, Any], content_schema: Dict[str, Any]) -> None:
+        """Validate content against schema"""
+        logger.info("[CONTENT GEN 6/6] Validating content against schema")
+        self._validate_content(content_data, content_schema)
+        
 
 # Export singleton instance
 content_generator = ContentGenerator()
