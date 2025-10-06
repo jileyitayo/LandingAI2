@@ -53,6 +53,8 @@ class ProjectDetail(BaseModel):
     deployment_url: Optional[str]
     theme_settings: Optional[dict]
     whatsapp_number: Optional[str]
+    seo_title: Optional[str]
+    seo_description: Optional[str]
     generation_status: str
     generation_error: Optional[str]
     created_at: str
@@ -69,6 +71,9 @@ class ProjectUpdateRequest(BaseModel):
     theme_settings: Optional[dict] = None
     whatsapp_number: Optional[str] = Field(None, max_length=20)
     published: Optional[bool] = None
+    subdomain: Optional[str] = Field(None, min_length=3, max_length=20, pattern="^[a-z0-9-]+$")
+    seo_title: Optional[str] = Field(None, max_length=60)
+    seo_description: Optional[str] = Field(None, max_length=160)
 
 
 class ProjectDuplicateRequest(BaseModel):
@@ -99,6 +104,7 @@ async def list_projects(
     search: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
+    deleted: Optional[bool] = True,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -108,6 +114,7 @@ async def list_projects(
     - **search**: Search projects by name or description
     - **limit**: Maximum number of projects to return (default: 50)
     - **offset**: Number of projects to skip (default: 0)
+    - **deleted**: Filter by deleted projects (default: False)
     """
     user_id = current_user["id"]
     supabase = get_supabase_client()
@@ -118,6 +125,9 @@ async def list_projects(
             "id, user_id, name, description, prompt, template_id, published, "
             "subdomain, deployment_url, generation_status, created_at, updated_at"
         ).eq("user_id", user_id)
+
+        if deleted:
+            query = query.is_("deleted_at", "null")
         
         # Apply status filter
         if status_filter:
@@ -233,6 +243,19 @@ async def update_project(
             update_data["whatsapp_number"] = request.whatsapp_number
         if request.published is not None:
             update_data["published"] = request.published
+        if request.subdomain is not None:
+            # Check subdomain uniqueness if subdomain is being updated
+            existing = supabase.table("projects").select("id").eq("subdomain", request.subdomain).execute()
+            if existing.data and existing.data[0]["id"] != project_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This subdomain is already taken"
+                )
+            update_data["subdomain"] = request.subdomain.lower()
+        if request.seo_title is not None:
+            update_data["seo_title"] = request.seo_title
+        if request.seo_description is not None:
+            update_data["seo_description"] = request.seo_description
         
         # Always update the updated_at timestamp
         update_data["updated_at"] = datetime.utcnow().isoformat()
@@ -271,16 +294,28 @@ async def delete_project(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Delete a project.
+    Soft delete a project (marks as deleted but keeps data).
     
     Only the project owner can delete the project.
     """
     user_id = current_user["id"]
     supabase = get_supabase_client()
+
+    # Delete project deployment
+    try:    
+        from app.routers.deployment import delete_project_deployment
+        logger.info(f"Deleting project deployment for project {project_id}")
+        await delete_project_deployment(project_id, current_user=current_user)
+    except Exception as e:
+        logger.error(f"Error deleting project deployment: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete project deployment"
+        )
     
     try:
         # First, verify project exists and user owns it
-        response = supabase.table("projects").select("user_id").eq("id", project_id).execute()
+        response = supabase.table("projects").select("user_id, deleted_at").eq("id", project_id).execute()
         
         if not response.data:
             raise HTTPException(
@@ -291,8 +326,18 @@ async def delete_project(
         project = response.data[0]
         verify_project_ownership(project, user_id)
         
-        # Delete project
-        response = supabase.table("projects").delete().eq("id", project_id).execute()
+        # Check if already deleted
+        if project.get("deleted_at"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Project is already deleted"
+            )
+        
+        # Soft delete by setting deleted_at timestamp
+        response = supabase.table("projects").update({
+            "deleted_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("id", project_id).execute()
         
         return {
             "message": "Project deleted successfully"
@@ -305,6 +350,62 @@ async def delete_project(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete project"
+        )
+
+
+@router.get("/subdomain/check/{subdomain}")
+async def check_subdomain(
+    subdomain: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Check if a subdomain is available.
+    
+    Returns:
+        - available: bool - Whether the subdomain is available
+        - suggestions: list - Alternative suggestions if unavailable
+    """
+    import re
+    
+    supabase = get_supabase_client()
+    
+    # Validate subdomain format
+    if not re.match(r"^[a-z0-9-]{3,20}$", subdomain.lower()):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Subdomain must be 3-20 characters long and contain only lowercase letters, numbers, and hyphens"
+        )
+    
+    try:
+        # Check if subdomain exists
+        response = supabase.table("projects").select("id").eq("subdomain", subdomain.lower()).execute()
+        
+        available = not response.data or len(response.data) == 0
+        suggestions = []
+        
+        # Generate suggestions if subdomain is taken
+        if not available:
+            import random
+            base = subdomain.lower().rstrip("-0123456789")
+            suggestions = [
+                f"{base}-{random.randint(10, 99)}",
+                f"{base}-{random.randint(100, 999)}",
+                f"{base}-site",
+                f"{base}-web",
+                f"my-{base}",
+            ]
+        
+        return {
+            "available": available,
+            "subdomain": subdomain.lower(),
+            "suggestions": suggestions[:3] if suggestions else []
+        }
+    
+    except Exception as e:
+        logger.error(f"Error checking subdomain: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to check subdomain availability"
         )
 
 

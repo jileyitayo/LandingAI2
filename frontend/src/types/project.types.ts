@@ -9,7 +9,14 @@ export interface Project {
   created_at: string;
   updated_at: string;
   is_published?: boolean;
+  published?: boolean;
   preview_url?: string;
+  subdomain?: string;
+  deployment_url?: string;
+  whatsapp_number?: string;
+  seo_title?: string;
+  seo_description?: string;
+  theme_settings?: Record<string, any>;
 }
 
 export interface ProjectCreateInput {
@@ -27,6 +34,12 @@ export interface ProjectUpdateInput {
   css_content?: string;
   js_content?: string;
   is_published?: boolean;
+  published?: boolean;
+  subdomain?: string;
+  whatsapp_number?: string;
+  seo_title?: string;
+  seo_description?: string;
+  theme_settings?: Record<string, any>;
 }
 
 export type EditorTab = 'html_content' | 'css_content' | 'js_content';

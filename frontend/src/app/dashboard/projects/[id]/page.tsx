@@ -1,43 +1,46 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback } from 'react';
-import { ArrowLeft, Save, Download, Eye, Code, FileText } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { ArrowLeft, Save, Download, Eye, Code, FileText, Settings } from 'lucide-react';
 import WebsitePreview from '@/components/WebsitePreview';
+import PublishButton from '@/components/PublishButton';
+import PublishModal from '@/components/PublishModal';
+import DeploymentHistory from '@/components/DeploymentHistory';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { Project } from '@/types/project.types';
 import { api } from '@/lib/api';
+import Link from 'next/link';
 
 export default function ProjectEditorPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [deploymentUrl, setDeploymentUrl] = useState<string | null>(null);
+  const [isPublished, setIsPublished] = useState(false);
 
   // Load project from API
   const loadProject = useCallback(async (id: string): Promise<Project> => {
     try {
       const response = await api.projects.get(id);
+      
+      // Update deployment status
+      setDeploymentUrl(response.deployment_url ?? null);
+      setIsPublished(response.published ?? false);
+      
       return {
         id: response.id,
         name: response.name,
         html_content : response.html_content || '',
         css_content : response.css_content || '',
         js_content : response.js_content || '',
-        user_id: response.user_id, // Not needed for editor
-        created_at: response.created_at, // Not needed for editor
-        updated_at: response.updated_at, // Not needed for editor 
+        user_id: response.user_id,
+        created_at: response.created_at,
+        updated_at: response.updated_at,
+        deployment_url: response.deployment_url ?? undefined,
+        published: response.published ?? undefined,
       };
-      // Mock data for now
-    // return {
-    //   id,
-    //   name: 'My Website Project',
-    //   html_content: '<div class="container">\n  <h1>Welcome to Your Website</h1>\n  <p>Start editing to see changes in real-time!</p>\n</div>',
-    //   css_content: '.container {\n  max-width: 1200px;\n  margin: 0 auto;\n  padding: 2rem;\n  text-align: center;\n}\n\nh1 {\n  color: #2563eb;\n  font-size: 2.5rem;\n  margin-bottom: 1rem;\n}\n\np {\n  color: #6b7280;\n  font-size: 1.125rem;\n}',
-    //   js_content: '// Add your JavaScript here\nconsole.log("Website loaded successfully!");',
-    //   user_id: 'user-123',
-    //   created_at: new Date().toISOString(),
-    //   updated_at: new Date().toISOString(),
-    // };
     } catch (error) {
       console.error('Failed to load project:', error);
       throw error;
@@ -69,6 +72,17 @@ export default function ProjectEditorPage() {
     onLoad: loadProject,
     onSave: saveProject,
   });
+
+  const handlePublishSuccess = (url: string) => {
+    setDeploymentUrl(url);
+    setIsPublished(true);
+    setShowPublishModal(true);
+  };
+
+  const handleUnpublishSuccess = () => {
+    setDeploymentUrl(null);
+    setIsPublished(false);
+  };
 
   if (isLoading) {
     return (
@@ -123,6 +137,14 @@ export default function ProjectEditorPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link
+            href={`/dashboard/projects/${projectId}/settings`}
+            className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+            title="Project settings"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="hidden sm:inline">Settings</span>
+          </Link>
           <button
             onClick={handleDownload}
             className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
@@ -146,6 +168,14 @@ export default function ProjectEditorPage() {
               {isSaving ? 'Saving...' : 'Save'}
             </span>
           </button>
+          <PublishButton
+            projectId={projectId}
+            projectName={project?.name || 'Untitled Project'}
+            deploymentUrl={deploymentUrl}
+            isPublished={isPublished}
+            onPublishSuccess={handlePublishSuccess}
+            onUnpublishSuccess={handleUnpublishSuccess}
+          />
         </div>
       </header>
 
@@ -222,16 +252,31 @@ export default function ProjectEditorPage() {
               <span className="font-medium">Live Preview</span>
             </div>
           </div>
-          <div className="flex-1 overflow-hidden">
-            <WebsitePreview
-              html={html_content}
-              css={css_content}
-              js={js_content}
-              isLoading={false}
-            />
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-hidden">
+              <WebsitePreview
+                html={html_content}
+                css={css_content}
+                js={js_content}
+                isLoading={false}
+              />
+            </div>
+            
+            {/* Deployment History */}
+            {/* <div className="p-4 bg-gray-50 border-t border-gray-200">
+              <DeploymentHistory projectId={projectId} />
+            </div> */}
           </div>
         </div>
       </div>
+
+      {/* Publish Success Modal */}
+      <PublishModal
+        isOpen={showPublishModal}
+        onClose={() => setShowPublishModal(false)}
+        deploymentUrl={deploymentUrl || ''}
+        projectName={project?.name || 'Untitled Project'}
+      />
     </div>
   );
 }

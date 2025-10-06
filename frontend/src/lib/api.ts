@@ -407,6 +407,8 @@ export const api = {
         deployment_url: string | null;
         theme_settings: Record<string, any> | null;
         whatsapp_number: string | null;
+        seo_title: string | null;
+        seo_description: string | null;
         generation_status: string;
         generation_error: string | null;
         created_at: string;
@@ -441,6 +443,10 @@ export const api = {
         js_content?: string;
         theme_settings?: Record<string, any>;
         whatsapp_number?: string;
+        subdomain?: string;
+        seo_title?: string;
+        seo_description?: string;
+        published?: boolean;
       }
     ) =>
       apiRequest<{
@@ -495,6 +501,17 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ new_name: newName }),
       }),
+
+    /**
+     * Check subdomain availability
+     * Requires: Authorization header with valid access token
+     */
+    // checkSubdomain: (subdomain: string) =>
+    //   apiRequest<{
+    //     available: boolean;
+    //     subdomain: string;
+    //     suggestions: string[];
+    //   }>(`/api/v1/projects/subdomain/check/${subdomain}`),
   },
 
   /**
@@ -528,6 +545,50 @@ export const api = {
         status: string;
         error?: string;
       }>(`/api/v1/generation/${projectId}/status`),
+  },
+
+  /**
+   * Deployment endpoints
+   */
+  deployment: {
+    /**
+     * Deploy project to Vercel
+     * Requires: Authorization header with valid access token
+     */
+    deploy: (projectId: string) =>
+      apiRequest<{
+        deployment_id: string;
+        deployment_url: string;
+        status: string;
+        deployed_at: string;
+      }>(`/api/v1/projects/${projectId}/deploy`, {
+        method: "POST",
+      }),
+
+    /**
+     * Delete project deployment from Vercel
+     * Requires: Authorization header with valid access token
+     */
+    deleteDeployment: (projectId: string) =>
+      apiRequest<{
+        message: string;
+        project_id: string;
+      }>(`/api/v1/projects/${projectId}/deploy`, {
+        method: "DELETE",
+      }),
+
+    /**
+     * Get deployment status
+     * Requires: Authorization header with valid access token
+     */
+    getStatus: (projectId: string) =>
+      apiRequest<{
+        deployment_id: string | null;
+        deployment_url: string | null;
+        state: string;
+        ready: boolean;
+        last_deployed_at: string | null;
+      }>(`/api/v1/projects/${projectId}/deployment-status`),
   },
 };
 

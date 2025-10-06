@@ -1267,20 +1267,40 @@ Use a modern card-based layout with hover effects.
 
 **LLM Prompt:**
 ```
-Create project settings page:
+Create a project settings page for MVP:
 
-1. app/dashboard/projects/[id]/settings/page.tsx with:
-   - Project name editing
-   - Subdomain configuration (alphanumeric only)
-   - Delete project (with confirmation)
-   - SEO settings (title, description) - nice to have
+1. app/dashboard/projects/[id]/settings/page.tsx with essential settings:
+   - Project name editing with validation
+   - Subdomain configuration (alphanumeric only, real-time availability check)
+   - Basic SEO settings (title, description)
+   - WhatsApp business number integration
+   - Delete project with confirmation dialog
+   - Project visibility toggle (public/private)
 
-2. Backend validation:
-   - Ensure subdomain uniqueness
-   - Validate subdomain format
-   - Update projects table
+2. Backend validation and endpoints:
+   - Validate subdomain uniqueness and format (alphanumeric, 3-20 chars)
+   - Update project metadata in database
+   - Handle subdomain conflicts gracefully
+   - Soft delete with confirmation
+   - Basic SEO meta tag generation
 
-3. Add optimistic UI updates
+3. UI components:
+   - components/ProjectSettingsForm.tsx - Main settings form
+   - components/SubdomainInput.tsx - Real-time validation with suggestions
+   - components/DeleteProjectModal.tsx - Confirmation with project name input
+   - components/SEOPreview.tsx - Live preview of meta tags
+   - components/WhatsAppConfig.tsx - Simple phone number input
+
+4. Essential features only:
+   - Project renaming with character limits
+   - Subdomain validation and conflict resolution
+   - Basic meta tag editing (title, description)
+   - WhatsApp number for contact integration
+   - Project deletion
+   - Form validation and error handling
+   - Optimistic UI updates for better UX
+
+Keep it simple and focused on core functionality needed for MVP launch.
 ```
 
 **Acceptance Criteria:**
