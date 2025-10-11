@@ -176,6 +176,33 @@ async def check_user_rate_limit(user_id: str, supabase_client) -> tuple[bool, Di
             "resets_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
         }
 
+async def business_analyzer(prompt: str, ) -> tuple[bool, Dict[str, Any]]:
+    """
+    Check if user has exceeded rate limit.
+    I'm building a website generator and I need to analyze the prompt to determine the site requirements/business analysis to be able to generate a template stucture for a website
+    This analysis will be an input to another AI model to generate a template stucture for a website
+    generate a business analysis for the prompt in json format
+    """
+    return True, {
+        "tier": "unknown",
+        "limit": 5,
+        "used": 0,
+        "remaining": 5,
+        "resets_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
+    }
+
+async def template_creation_analyzer(prompt: str, business_analysis: Dict[str, Any]) -> tuple[bool, Dict[str, Any]]:
+    """
+    Check if user has exceeded rate limit.
+    """
+    return True, {
+        "tier": "unknown",
+        "limit": 5,
+        "used": 0,
+        "remaining": 5,
+        "resets_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
+    }
+
 @log_action(action_type='UPDATE', target_resource_type='generation_count')
 async def increment_generation_count(user_id: str, supabase_client) -> None:
     """Increment user's generation count"""
@@ -450,6 +477,8 @@ async def generate_website_background(
         
         # Step 3: Render template with content
         logger.info(f"[BG] Rendering template...")
+        logger.info(f"Template: \n{template}")
+        logger.info(f"Content: \n{content}")
         rendered = template_renderer.render_template(template, content)
         
         # Step 4: Save to database

@@ -24,6 +24,18 @@ class TemplateRenderer:
         """Initialize the template renderer"""
         pass
     
+    # TODO: RENDER with just template and content, no components library
+    def render_template_with_content(
+        self,
+        template: Dict[str, Any],
+        content: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Render a complete website by merging template with content.
+        """
+        return None
+    
+
     def render_template(
         self,
         template: Dict[str, Any],

@@ -9,7 +9,7 @@ import logging
 from openai import OpenAI, OpenAIError
 from app.config import settings
 from app.utils.supabase_client import get_supabase_client
-
+from app.services.prompt_open_ai import PromptOpenAI
 logger = logging.getLogger(__name__)
 
 
@@ -26,9 +26,9 @@ class ContentGenerator:
         if not settings.openai_api_key:
             raise ContentGenerationError("OpenAI API key not configured")
         
-        self.client = OpenAI(api_key=settings.openai_api_key)
-        self.model = "gpt-4o-mini"
-        self.max_retries = 3
+        self.prompt_open_ai = PromptOpenAI()
+        self.model = self.prompt_open_ai.model
+        self.max_retries = self.prompt_open_ai.max_retries
     
     async def generate_content(
         self,
@@ -83,10 +83,10 @@ class ContentGenerator:
                 content_schema,
                 style_config
             )
-            print(f"OPENAI CONTENT GENERATION SYSTEM PROMPT: \n{system_prompt}")
+            # print(f"OPENAI CONTENT GENERATION SYSTEM PROMPT: \n{system_prompt}")
             # Build user prompt
             user_prompt = self._build_user_prompt(prompt)
-            print(f"OPENAI CONTENT GENERATION USER PROMPT: \n{user_prompt}")
+            # print(f"OPENAI CONTENT GENERATION USER PROMPT: \n{user_prompt}")
             if not test_response:
                 # Call OpenAI API
                 logger.info(f"[CONTENT GEN 4/6] Calling OpenAI API (model: {self.model})")
@@ -211,19 +211,37 @@ YOUR RESPONSIBILITIES:
    - url: Valid URLs (use # for placeholders)
 
 PRE-GENERATION CHECKLIST:
-1. Read through ALL fields in content_schema
+1. Read through ALL fields in content_schema and sections_config
 2. Identify which fields have "required": true
 3. Plan content for each required field
 4. Ensure you have content for: logo_url, submit_button_text, and all others
 5. Only then proceed to generate the JSON response
-
-OUTPUT FORMAT (JSON):
+Below is a sample output format but ensure to generate the right content for the content_schema and sections_config fields.
+SAMPLE OUTPUT FORMAT (JSON):
 {{
   "content": {{
     "business_name": "The business name",
-    "logo_url": "https://images.unsplash.com/photo-...", // REQUIRED
-    "headline": "Compelling headline",
-    "subheadline": "Supporting subheadline",
+    "logo_url": "https://images.unsplash.com/photo-...", // REQUIRED | Generate a related image url using images.unsplash.com
+    "sections": [ // REQUIRED | Generate the right content for the sections_config fields
+        {{
+        "component_type": "header", // can be found in the sections_config fields for header
+            "nav_items": [
+            {{
+                "label": "Home",
+                "url": "#home"
+            }}
+            ],
+        }},
+      {{
+        "component_type": "hero", // can be found in the sections_config fields for hero
+        "title": "Compelling headline goes here",
+        "subheadline": "Supporting subheadline goes here",
+        "description": "description value goes here",
+        "image": "image url goes here",
+        "cta_text": "cta text value goes here",
+        "cta_url": "#cta",
+      }}
+    ],
     "services": [
       {{
         "title": "Service name",
@@ -231,11 +249,62 @@ OUTPUT FORMAT (JSON):
         "icon": "icon-name"
       }}
     ],
-    "business_email": "contact@business.com",
-    "business_phone": "+234 XXX XXX XXXX",
-    "whatsapp_number": "+234XXXXXXXXXX",
-    "submit_button_text": "Send Message", // REQUIRED
-    // ... all other required fields from content_schema
+    "testimonials": [
+      {{
+        "quote": "Testimonial quote",
+        "author_name": "Testimonial author name",
+        "author_title": "Testimonial author title"
+      }}
+    ],
+    "about": [
+      {{
+        "title": "About title",
+        "description": "About description",
+        "image": "https://images.unsplash.com/photo-..,"
+      }}
+    ],
+    "contact": [
+      {{
+        "title": "Contact title",
+        "description": "Contact description",
+        "image": "https://images.unsplash.com/photo-..,"
+        "business_email": "contact@business.com",
+        "business_phone": "+234 XXX XXX XXXX",
+        "whatsapp_number": "+234XXXXXXXXXX",
+        "submit_button_text": "Send Message",
+        "section_title": "Contact Us",
+        "section_description": "We'd love to hear from you",
+        "form_action": "#contact",
+        "form_fields": [
+          {{
+            "type": "text",
+            "label": "Name",
+            "placeholder": "Your name"
+          }}
+          {{
+            "type": "email",
+            "label": "Email",
+            "placeholder": "Your email"
+          }}
+          {{
+        ]
+      }}
+    ],
+    "cta": [
+      {{
+        "title": "CTA title",
+        "description": "CTA description",
+        "image": "https://images.unsplash.com/photo-..,"
+      }}
+    ],
+    ...,
+    "footer": [
+      {{
+        "title": "Footer title",
+        "description": "Footer description",
+        "image": "https://images.unsplash.com/photo-..,"
+      }}
+    ]
   }},
   "metadata": {{
     "business_type": "restaurant|consultancy|retail|service|portfolio",
@@ -249,7 +318,7 @@ Before finalizing your response, verify you have included:
 - logo_url: Business logo image URL (required for header)
 - submit_button_text: Contact form button text (required for contact form)
 - All other fields marked as "required": true in content_schema
-- Use placeholder images: https://images.unsplash.com/photo-... for missing images
+- Use placeholder images: https://images.unsplash.com/photo-... for missing images | Generate a related image url using images.unsplash.com
 - Use default values from schema when available
 
 CRITICAL RULES:
@@ -259,7 +328,7 @@ CRITICAL RULES:
 - Arrays should have at least the minimum number of items specified
 - Phone numbers should use local format
 - WhatsApp numbers should be in international format without spaces (+234XXXXXXXXXX)
-- Placeholder images should use https://images.unsplash.com/photo-... format
+- Placeholder images should use https://images.unsplash.com/photo-... format | Generate using images.unsplash.com
 - Keep content authentic and professional
 - Avoid generic corporate speak
 - Make CTAs specific and actionable
@@ -279,30 +348,8 @@ Use appropriate African localization (WhatsApp, local payment methods, cultural 
     
     def _call_openai_api(self, system_prompt: str, user_prompt: str) -> str:
         """Call OpenAI API with retry logic"""
-        for attempt in range(self.max_retries):
-            try:
-                logger.info(f"Sending request to OpenAI (attempt {attempt + 1}/{self.max_retries})")
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=3000,
-                    response_format={"type": "json_object"}
-                )
-                
-                logger.info(f"OpenAI API call successful")
-                return response.choices[0].message.content
-                
-            except OpenAIError as e:
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"⚠ OpenAI API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
-                    continue
-                logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
-                raise
-    
+        return self.prompt_open_ai.call_openai_api(system_prompt, user_prompt)
+        
     def _parse_openai_response(self, response: str) -> Dict[str, Any]:
         """Parse and clean OpenAI response"""
         data = json.loads(response)

@@ -8,9 +8,11 @@ import json
 import re
 from datetime import datetime
 from openai import OpenAI, OpenAIError
+from app.services.prompt_open_ai import PromptOpenAI
 from app.config import settings
 from app.services.components_library import component_library, ComponentType
 from app.services.template_validator import validate_template_structure
+from app.services.business_analyzer import BusinessAnalysis
 import logging
 import sys
 from app.config import settings
@@ -31,10 +33,48 @@ class TemplateGenerator:
         if not settings.openai_api_key:
             raise TemplateGenerationError("OpenAI API key not configured")
         
-        self.client = OpenAI(api_key=settings.openai_api_key)
-        self.model = "gpt-4o-mini"
-        # self.model = "gpt-4-turbo-preview"
-        self.max_retries = 3
+        self.prompt_open_ai = PromptOpenAI(model="gpt-4.1")
+        self.model = self.prompt_open_ai.model
+        self.max_retries = self.prompt_open_ai.max_retries
+    
+    def generate_template_from_business_analysis(self, business_analysis: BusinessAnalysis) -> Dict[str, Any]:
+        """Generate a template from a business analysis
+        
+        Generate 
+        each template should be generated pa
+
+        - Vite
+        - TypeScript
+        - React
+        - shadcn-ui
+        - Tailwind CSS
+
+
+        variable
+        - tailwind.config.ts
+        - index.html
+        - index.css
+        - 
+        """
+        
+        pass
+    
+    def _generate_section(self, section: str) -> str:
+        """Generate a section for the template"""
+        pass
+
+    def _generate_page(self, page: str) -> str:
+        """Generate a page for the template"""
+        pass
+
+
+    #  Generate multiple sites efficiently
+    async def batch_generate(analyses: List[BusinessAnalysis]):
+        # tasks = [generate_site(a) for a in analyses]
+        # return await asyncio.gather(*tasks)
+        pass
+
+
     
     def _normalize_category(self, category: str) -> str:
         """
@@ -118,13 +158,13 @@ class TemplateGenerator:
             # Build system prompt with instructions
             logger.info("[STEP 3/8] Building system prompt with component library")
             system_prompt = self._build_system_prompt(component_samples)
-            print(f"OPENAI TEMPLATE GENERATION SYSTEM PROMPT: \n{system_prompt}")
+            # print(f"OPENAI TEMPLATE GENERATION SYSTEM PROMPT: \n{system_prompt}")
             logger.info(f"System prompt prepared ({len(system_prompt)} characters)")
         
             # Build user prompt with preferences
             logger.info("[STEP 4/8] Building user prompt with preferences")
             user_prompt = self._build_user_prompt(prompt, style_preferences)
-            print(f"OPENAI TEMPLATE GENERATION USER PROMPT: \n{user_prompt}")
+            # print(f"OPENAI TEMPLATE GENERATION USER PROMPT: \n{user_prompt}")
             if style_preferences:
                 logger.info(f"Applied style preferences: {list(style_preferences.keys())}")
                 
@@ -133,8 +173,7 @@ class TemplateGenerator:
                 logger.info(f"[STEP 5/8] Calling OpenAI API (model: {self.model})")
                 response = self._call_openai_api(system_prompt, user_prompt)
                 logger.info(f"Received response from OpenAI ({len(response)} characters)")
-
-                logger.info(f"OpenAI response: {response}")
+                # logger.info(f"OpenAI response: {response}")
             else:
                 logger.info("Skipping STEP 5")
                 response = test_response
@@ -368,43 +407,11 @@ Before submitting your response:
         user_prompt += "\nPlease generate a website template that matches this description."
         return user_prompt
     
+    
     def _call_openai_api(self, system_prompt: str, user_prompt: str) -> str:
         """Call OpenAI API with retry logic"""
-        for attempt in range(self.max_retries):
-            try:
-                logger.info(f"Sending request to OpenAI (attempt {attempt + 1}/{self.max_retries})")
-                if self.model == "gpt-5-mini" or self.model == "gpt-5":
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        max_completion_tokens=4000,
-                        response_format={"type": "json_object"}
-                    )
-                else:
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        temperature=0.7,
-                        max_tokens=4000,
-                        response_format={"type": "json_object"}
-                    )
-                
-                logger.info(f"OpenAI API call successful (tokens used: ~{len(response.choices[0].message.content) // 4})")
-                return response.choices[0].message.content
-                
-            except OpenAIError as e:
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"⚠ OpenAI API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
-                    logger.info(f"Retrying in next attempt...")
-                    continue
-                logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
-                raise
+        return self.prompt_open_ai.call_openai_api(system_prompt, user_prompt)
+
     
     def _parse_openai_response(self, response: str) -> Dict[str, Any]:
         """Parse and clean OpenAI response"""
