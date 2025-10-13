@@ -12,6 +12,13 @@
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp", "--api-key", "ctx7sk-249b4a07-9863-4895-8ffe-c4501cb4b26b"]
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": [
+        "shadcn@latest",
+        "mcp"
+      ]
     }
   }
 }
