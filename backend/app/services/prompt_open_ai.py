@@ -8,12 +8,17 @@ class PromptOpenAI:
         self.client = OpenAI(api_key=settings.openai_api_key)
         self.model = model
         self.max_retries = 3
+        self.max_completion_tokens = 10000
     
     def set_model(self, model: str):
         self.model = model
     
     def set_max_retries(self, max_retries: int):
         self.max_retries = max_retries
+
+    def set_max_completion_tokens(self, max_completion_tokens: int):
+        self.max_completion_tokens = max_completion_tokens
+
     
     def call_openai_api(self, system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
         """Call OpenAI API with retry logic"""
@@ -27,7 +32,7 @@ class PromptOpenAI:
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
                         ],
-                        max_completion_tokens=10000,
+                        max_completion_tokens=self.max_completion_tokens,
                         reasoning_effort="medium",
                         response_format={"type": "json_object"}
                     )
@@ -39,12 +44,26 @@ class PromptOpenAI:
                             {"role": "user", "content": user_prompt}
                         ],
                         temperature=temperature,
-                        max_tokens=10000,
+                        max_tokens=self.max_completion_tokens,
                         response_format={"type": "json_object"}
                     )
                 
                 logger.info(f"OpenAI API call successful (tokens used: ~{len(response.choices[0].message.content) // 4})")
-                return response.choices[0].message.content
+                # Get actual token usage
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+                
+                logger.info(
+                    f"✓ OpenAI API call successful | "
+                    f"Prompt: {usage['prompt_tokens']} tokens | "
+                    f"Completion: {usage['completion_tokens']} tokens | "
+                    f"Total: {usage['total_tokens']} tokens"
+                )
+                
+                return response.choices[0].message.parsed, usage
                 
             except OpenAIError as e:
                 if attempt < self.max_retries - 1:
@@ -54,35 +73,65 @@ class PromptOpenAI:
                 logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
                 raise
 
-    def call_openai_api_structured(self, system_prompt: str, user_prompt: str, response_format: dict) -> str:
-        """Call OpenAI API with retry logic"""
+    def call_openai_api_structured(self, system_prompt: str, user_prompt: str, response_format: dict, model: str = "gpt-4o-mini", raw=False) -> tuple:
+        """Call OpenAI API with retry logic - returns (parsed_response, usage_info)"""
+        json_format = response_format if not raw else {
+            "type": "json_schema",
+            "json_schema": {
+                "name": response_format.__class__.__name__,
+                "schema": response_format.model_json_schema()
+            }
+        }
+        model = model if model != "gpt-4o-mini" else self.model
         for attempt in range(self.max_retries):
             try:
-                if self.model == "gpt-5-mini" or self.model == "gpt-5":
+                if model == "gpt-5-mini" or model == "gpt-5":
                     response = self.client.beta.chat.completions.parse(
-                        model=self.model,
+                        model=model,
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
                         ],
-                        max_completion_tokens=10000,
-                        reasoning_effort="medium",
-                        response_format=response_format
+                        max_completion_tokens=self.max_completion_tokens,
+                        response_format=json_format
+                    )
+                elif model == "o4-mini" or model == "o3-mini":
+                    response = self.client.beta.chat.completions.parse(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        max_completion_tokens=self.max_completion_tokens,
+                        response_format=json_format
                     )
                 else:
                     response = self.client.beta.chat.completions.parse(
-                        model=self.model,
+                        model=model,
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
                         ],
                         temperature=0.7,
-                        max_tokens=10000,
-                        response_format=response_format
+                        max_tokens=self.max_completion_tokens,
+                        response_format=json_format
                     )
                 
-                logger.info(f"OpenAI API call successful (tokens used: ~{len(response.choices[0].message.content) // 4})")
-                return response.choices[0].message.parsed
+                # Get actual token usage
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+                
+                logger.info(
+                    f"✓ OpenAI API call successful | "
+                    f"Prompt: {usage['prompt_tokens']} tokens | "
+                    f"Completion: {usage['completion_tokens']} tokens | "
+                    f"Total: {usage['total_tokens']} tokens"
+                )
+                
+                return response.choices[0].message.parsed, usage
                 
             except OpenAIError as e:
                 if attempt < self.max_retries - 1:

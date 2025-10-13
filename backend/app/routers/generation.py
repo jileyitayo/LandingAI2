@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, validator
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import uuid
+import json
 import logging
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import ActionLogger, log_action
@@ -16,6 +17,7 @@ from app.services.content_generator import content_generator, ContentGenerationE
 from app.services.template_renderer import template_renderer, TemplateRenderError
 from app.services.template_generator import template_generator
 from app.routers.templates import save_template_to_db
+from app.services.react_website_generator import react_website_generator
 
 
 logger = logging.getLogger(__name__)
@@ -82,6 +84,38 @@ class RateLimitInfo(BaseModel):
     used: int
     remaining: int
     resets_at: str
+
+
+class GenerateReactWebsiteRequest(BaseModel):
+    """Request model for React website generation"""
+    prompt: str = Field(
+        ...,
+        min_length=20,
+        max_length=2000,
+        description="Business description for React website generation"
+    )
+    project_name: Optional[str] = Field(
+        None,
+        max_length=200,
+        description="Optional project name"
+    )
+    
+    @validator('prompt')
+    def validate_prompt(cls, v):
+        """Validate prompt is meaningful"""
+        if not v.strip():
+            raise ValueError("Prompt cannot be empty")
+        return v.strip()
+
+
+class GenerateReactWebsiteResponse(BaseModel):
+    """Response model for React website generation"""
+    project_id: str
+    status: str
+    message: str
+    website_structure: Optional[Dict[str, Any]] = None
+    business_analysis: Optional[Dict[str, Any]] = None
+    files_count: Optional[int] = None
 
 
 # ============================================================================
@@ -506,6 +540,61 @@ async def generate_website_background(
         )
 
 
+@log_action(action_type='CREATE', target_resource_type='generate_react_website_background')
+async def generate_react_website_background(
+    project_id: str,
+    prompt: str,
+    user_id: str,
+):
+    """Background task for React website generation"""
+    supabase = get_supabase_client()
+    
+    try:
+        logger.info(f"[REACT BG] Starting React generation for project {project_id}")
+        
+        # Generate complete React website structure
+        logger.info(f"[REACT BG] Generating React website structure...")
+        result = react_website_generator.generate_website_structure(prompt)
+        
+        website_structure = result["website_structure"]
+        business_analysis = result["business_analysis"]
+        files = result["files"]
+        
+        # Store the generated files as JSON in the database
+        logger.info(f"[REACT BG] Saving React website data...")
+        
+        # Convert files dict to JSON string
+        files_json = json.dumps(files)
+        website_structure_json = json.dumps(website_structure)
+        business_analysis_json = json.dumps(business_analysis)
+        
+        update_data = {
+            "react_files": files_json,
+            "website_structure": website_structure_json,
+            "business_analysis": business_analysis_json,
+            "generation_status": "completed",
+            "last_generated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        supabase.table("projects")\
+            .update(update_data)\
+            .eq("id", project_id)\
+            .execute()
+        
+        logger.info(f"[REACT BG] ✓ React generation completed for project {project_id}")
+        logger.info(f"[REACT BG] Generated {len(files)} files")
+        
+    except Exception as e:
+        logger.error(f"[REACT BG] ✗ React generation failed: {str(e)}")
+        await update_project_status(
+            project_id=project_id,
+            status_value="failed",
+            error=str(e),
+            supabase_client=supabase
+        )
+
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
@@ -745,4 +834,199 @@ def _get_status_message(status: str) -> str:
         "failed": "Generation failed. Please try again"
     }
     return messages.get(status, "Unknown status")
+
+
+@router.post("/generate_react_website", response_model=GenerateReactWebsiteResponse, status_code=status.HTTP_202_ACCEPTED)
+async def generate_react_website(
+    request: GenerateReactWebsiteRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Generate a complete React/TypeScript website from a prompt.
+    
+    This endpoint:
+    1. Analyzes the business requirements using BusinessAnalyzer
+    2. Generates a complete website structure (pages, components, routing)
+    3. Creates React components based on the analysis
+    4. Returns a full React project structure
+    
+    The generation includes:
+    - Business analysis (business type, audience, features, etc.)
+    - Page structures with appropriate sections
+    - Reusable React components
+    - Routing configuration
+    - Styling with Tailwind CSS
+    - TypeScript definitions
+    
+    Process:
+    1. Check user rate limits
+    2. Analyze business requirements from prompt
+    3. Generate website structure and pages
+    4. Create React components
+    5. Save project to database
+    
+    Rate Limits:
+    - Free tier: 5 generations per hour
+    - Pro tier: 100 generations per hour
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    
+    logger.info(f"React website generation requested by user {user_id}")
+    
+    try:
+        # Step 1: Check rate limits
+        logger.info("Checking rate limits...")
+        is_allowed, rate_info = await check_user_rate_limit(user_id, supabase)
+        
+        if not is_allowed:
+            logger.warning(f"Rate limit exceeded for user {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded. You have used {rate_info['used']}/{rate_info['limit']} generations. Resets at {rate_info['resets_at']}",
+                headers={
+                    "X-RateLimit-Limit": str(rate_info['limit']),
+                    "X-RateLimit-Remaining": str(rate_info['remaining']),
+                    "X-RateLimit-Reset": rate_info['resets_at']
+                }
+            )
+        
+        # Step 2: Create project record
+        logger.info("Creating project...")
+        project_id = str(uuid.uuid4())
+        
+        project_data = {
+            "id": project_id,
+            "user_id": user_id,
+            "name": request.project_name or f"React Website - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+            "description": request.prompt[:500],
+            "prompt": request.prompt,
+            "project_type": "react",  # Mark as React project
+            "generation_status": "generating",
+            "published": False,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        response = supabase.table("projects").insert(project_data).execute()
+        
+        if not response.data:
+            raise Exception("Failed to create project")
+        
+        # Step 3: Increment generation count
+        await increment_generation_count(user_id, supabase)
+        
+        # Step 4: Log action
+        action_logger = ActionLogger(supabase)
+        await action_logger.log_action(
+            user_id=user_id,
+            action="react_website_generation_started",
+            details={
+                "project_id": project_id,
+                "prompt_length": len(request.prompt),
+                "project_type": "react"
+            }
+        )
+        
+        # Step 5: Start background generation
+        logger.info(f"Starting React background generation for project {project_id}")
+        background_tasks.add_task(
+            generate_react_website_background,
+            project_id=project_id,
+            prompt=request.prompt,
+            user_id=user_id,
+        )
+        
+        logger.info(f"✓ React generation initiated for project {project_id}")
+        
+        return GenerateReactWebsiteResponse(
+            project_id=project_id,
+            status="generating",
+            message="React website generation started. This will analyze your business and create a complete React application. Check status endpoint for progress.",
+            website_structure=None,
+            business_analysis=None,
+            files_count=None
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during React generation: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="React website generation failed"
+        )
+
+
+@router.get("/react_website/{project_id}", response_model=Dict[str, Any])
+async def get_react_website(
+    project_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get the generated React website structure and files.
+    
+    Returns:
+    - website_structure: Page structures and components
+    - business_analysis: Original business analysis
+    - files: Dictionary of file paths to contents
+    - generation_status: Current status
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    
+    try:
+        # Fetch project
+        response = supabase.table("projects")\
+            .select("*")\
+            .eq("id", project_id)\
+            .execute()
+        
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        project = response.data[0]
+        
+        # Check ownership
+        if project["user_id"] != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Check if it's a React project
+        if project.get("project_type") != "react":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This is not a React project"
+            )
+        
+        # Parse stored JSON data
+        files = json.loads(project.get("react_files", "{}"))
+        website_structure = json.loads(project.get("website_structure", "{}"))
+        business_analysis = json.loads(project.get("business_analysis", "{}"))
+        
+        return {
+            "project_id": project_id,
+            "status": project.get("generation_status", "idle"),
+            "website_structure": website_structure,
+            "business_analysis": business_analysis,
+            "files": files,
+            "files_count": len(files),
+            "created_at": project.get("created_at"),
+            "completed_at": project.get("last_generated_at")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching React website: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch React website"
+        )
 
