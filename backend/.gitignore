@@ -52,3 +52,5 @@ logs/
 *.sqlite
 *.sqlite3
 
+# Generated sites
+*/data/
