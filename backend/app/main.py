@@ -5,13 +5,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.routers import health, auth, users, templates, generation, projects, deployment
 from app.middleware.auth_middleware import AuthenticationMiddleware
+from app.services.vite_preview_service import vite_preview_service
 
 import logging
 import os
+import asyncio
 
 def setup_logging():
     """Configure logging based on environment."""
@@ -37,8 +40,25 @@ async def lifespan(app: FastAPI):
     print(f"🚀 {settings.app_name} v{settings.app_version} starting up...")
     print(f"📝 API Documentation: http://localhost:8000/docs")
     setup_logging()
+    
+    # Ensure shared template is initialized
+    vite_preview_service._ensure_shared_template()
+    
+    # Start background cleanup task
+    async def cleanup_task():
+        while True:
+            await asyncio.sleep(1800)  # Run every 30 minutes
+            try:
+                vite_preview_service.cleanup_old_previews(max_age_hours=1)
+            except Exception as e:
+                logging.error(f"Preview cleanup failed: {e}")
+    
+    cleanup_task_handle = asyncio.create_task(cleanup_task())
+    
     yield
+    
     # Shutdown
+    cleanup_task_handle.cancel()
     print(f"👋 {settings.app_name} shutting down...")
 
 
@@ -59,11 +79,19 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # Configure Authentication Middleware
 app.add_middleware(AuthenticationMiddleware)
 
+# Mount static files for previews
+previews_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "previews")
+if os.path.exists(previews_path):
+    app.mount("/previews", StaticFiles(directory=previews_path), name="previews")
+    # app.mount("/previews/builds", StaticFiles(directory=previews_path + "/builds"), name="previews")
+else:
+    print(f"Warning: Previews directory not found at {previews_path}")
 
 # Root endpoint
 @app.get("/", tags=["Root"])

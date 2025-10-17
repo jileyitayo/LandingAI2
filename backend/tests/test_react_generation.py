@@ -1,28 +1,48 @@
 """
-Test React Website Generation
+Test React Website Generation with Validation
 """
 
 import pytest
-import asyncio
 from app.services.react_website_generator import react_website_generator
+from app.services.vercel_deployer import VercelDeployer
+from app.services.code_validator import code_validator
+from app.services.build_tester import build_tester
+from app.services.error_fixer import error_fixer
 
 
-def test_generate_react_website():
-    """Test React website generation from a simple prompt"""
+def test_generate_react_website_with_validation():
+    """Test React website generation with validation enabled"""
     
-    prompt = "Create a photography website that has portfolio of a carosel of photos and a contact form. It should also include about section"
+    prompt = "Create an ecommerce website for books"
     
-    # Generate website
-    result = react_website_generator.generate_website_structure(prompt)
+    # Generate website with validation (but disable build validation for speed in tests)
+    result = react_website_generator.generate_website_structure(
+        prompt,
+        enable_build_validation=False  # Disable for faster testing
+    )
     
     # Verify structure
     assert "website_structure" in result
     assert "business_analysis" in result
     assert "files" in result
+    assert "validation" in result
+    assert "retry_count" in result
+    assert "fixed_errors" in result
+    assert "generation_time" in result
     
     website_structure = result["website_structure"]
     business_analysis = result["business_analysis"]
     files = result["files"]
+    validation = result["validation"]
+    
+    # Check validation results
+    assert validation["total_files_validated"] > 0
+    print(f"\n✓ Validation: {validation['total_files_validated']} files validated")
+    print(f"✓ Errors: {len(validation['errors'])}")
+    print(f"✓ Warnings: {len(validation['warnings'])}")
+    print(f"✓ Retries: {result['retry_count']}")
+    print(f"✓ Fixed errors: {len(result['fixed_errors'])}")
+    print(f"✓ Generation time: {result['generation_time']:.2f}s")
     
     # Check business analysis
     assert business_analysis["business_type"]
@@ -48,11 +68,138 @@ def test_generate_react_website():
         assert f"src/pages/{page_filename}.tsx" in files
     
     print(f"\n✓ Generated {len(files)} files")
-    print(f"✓ Files: {', '.join(files.keys())}")
     print(f"✓ Business Type: {business_analysis['business_type']}")
     print(f"✓ Pages: {', '.join([p['name'] for p in website_structure['pages']])}")
     print(f"✓ Website Name: {website_structure['name']}")
+    
+    # Validation should pass or have minimal errors after auto-fix
+    if validation["errors"]:
+        print(f"\n⚠ Remaining validation errors:")
+        for error in validation["errors"][:5]:  # Show first 5
+            print(f"  - {error['file_path']}: {error['message']}")
 
+    # print(f"\nDeploying website to Vercel...")
+    # try:
+    #     deployer = VercelDeployer()
+    #     deployment = deployer.deploy(
+    #         project_files=files,
+    #         project_name=website_structure["name"]
+    #     )
+        
+    #     # Optionally check deployment status
+    #     deployment_id = deployment.get('id')
+    #     status = deployer.get_deployment_status(deployment_id)
+    #     print(f"\nDeployment Status: {status.get('readyState')}")
+
+    #     # Wait for deployment to complete
+    #     deployer.wait_for_deployment(deployment_id)
+        
+    #     print(f"✓ Website deployed to Vercel successfully")
+        
+    # except Exception as e:
+    #     print(f"Deployment error: {e}")
+    #     raise
+
+
+# def test_generate_react_website():
+#     """Test React website generation with deployment (original test)"""
+    
+#     prompt = "Create a photography website that has portfolio of a carousel of photos and a contact form. It should also include about section"
+    
+#     # Generate website (with validation but no build test for speed)
+#     result = react_website_generator.generate_website_structure(
+#         prompt,
+#         enable_build_validation=False
+#     )
+    
+#     website_structure = result["website_structure"]
+#     files = result["files"]
+    
+#     print(f"\n✓ Generated {len(files)} files")
+#     print(f"✓ Website Name: {website_structure['name']}")
+
+#     print(f"\nDeploying website to Vercel...")
+#     deployer = VercelDeployer()
+#     try:
+#         deployment = deployer.deploy(
+#             project_files=files,
+#             project_name=website_structure["name"]
+#         )
+        
+#         # Optionally check deployment status
+#         deployment_id = deployment.get('id')
+#         status = deployer.get_deployment_status(deployment_id)
+#         print(f"\nDeployment Status: {status.get('readyState')}")
+
+#         # Wait for deployment to complete
+#         deployer.wait_for_deployment(deployment_id)
+        
+#         print(f"✓ Website deployed to Vercel successfully")
+        
+#     except Exception as e:
+#         print(f"Deployment error: {e}")
+#         raise
+
+
+# def test_code_validator():
+#     """Test code validator with sample files"""
+    
+#     test_files = {
+#         "src/components/Hero.tsx": """
+# import { Button } from '@/components/ui/button'
+# import { ArrowRight } from 'lucide-react'
+
+# interface HeroProps {
+#   title: string
+#   subtitle?: string
+# }
+
+# export function Hero({ title, subtitle }: HeroProps) {
+#   return (
+#     <section className="hero">
+#       <h1>{title}</h1>
+#       {subtitle && <p>{subtitle}</p>}
+#       <Button>Get Started <ArrowRight /></Button>
+#     </section>
+#   )
+# }
+# """,
+#         "src/pages/home-page.tsx": """
+# import { Hero } from '@/components/Hero'
+
+# export default function HomePage() {
+#   return (
+#     <main>
+#       <Hero title="Welcome" subtitle="My website" />
+#     </main>
+#   )
+# }
+# """,
+#         "src/components/ui/button.tsx": """
+# interface ButtonProps {
+#   children: React.ReactNode
+#   onClick?: () => void
+# }
+
+# export function Button({ children, onClick }: ButtonProps) {
+#   return <button onClick={onClick}>{children}</button>
+# }
+# """
+#     }
+    
+#     errors, warnings = code_validator.validate_all_files(test_files)
+    
+#     print(f"\n✓ Code validation test")
+#     print(f"  Errors: {len(errors)}")
+#     print(f"  Warnings: {len(warnings)}")
+    
+#     if errors:
+#         print("  Error details:")
+#         for error in errors[:3]:
+#             print(f"    - {error}")
+    
+#     # Should have minimal or no errors in valid code
+#     assert len(errors) < 5  # Allow some minor issues
 
 # def test_complex_react_website():
 #     """Test React website generation with a more complex prompt"""

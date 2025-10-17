@@ -18,7 +18,8 @@ from app.services.template_renderer import template_renderer, TemplateRenderErro
 from app.services.template_generator import template_generator
 from app.routers.templates import save_template_to_db
 from app.services.react_website_generator import react_website_generator
-
+from app.services.project_file_manager import project_file_manager
+from app.services.vite_preview_service import vite_preview_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["generation"])
@@ -291,6 +292,7 @@ async def create_project(
             "prompt": prompt,
             "template_id": template_id,
             "generation_status": "generating",
+            "project_type": "react",
             "published": False,
             "created_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat()
@@ -541,52 +543,157 @@ async def generate_website_background(
 
 
 @log_action(action_type='CREATE', target_resource_type='generate_react_website_background')
-async def generate_react_website_background(
-    project_id: str,
+def generate_react_website_background(
     prompt: str,
-    user_id: str,
 ):
     """Background task for React website generation"""
     supabase = get_supabase_client()
     
-    try:
-        logger.info(f"[REACT BG] Starting React generation for project {project_id}")
-        
+    try:        
         # Generate complete React website structure
         logger.info(f"[REACT BG] Generating React website structure...")
+        result = react_website_generator.generate_website_structure(prompt)
+        return result
+        
+        
+    except Exception as e:
+        logger.error(f"[REACT BG] ✗ React generation failed: {str(e)}")
+
+
+# ============================================================================
+# API Endpoints
+# ============================================================================
+
+@router.post("/generate_website", response_model=GenerateWebsiteResponse, status_code=status.HTTP_202_ACCEPTED)
+async def generate_react_website_from_prompt(
+    request: GenerateWebsiteRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Generate a complete website from prompt only.
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    
+    logger.info(f"Website generation requested by user {user_id}")
+    try:
+        # Step 1: Check rate limits first
+        logger.info("Checking rate limits...")
+        is_allowed, rate_info = await check_user_rate_limit(user_id, supabase)
+        
+        if not is_allowed:
+            logger.warning(f"Rate limit exceeded for user {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded. You have used {rate_info['used']}/{rate_info['limit']} generations. Resets at {rate_info['resets_at']}",
+                headers={
+                    "X-RateLimit-Limit": str(rate_info['limit']),
+                    "X-RateLimit-Remaining": str(rate_info['remaining']),
+                    "X-RateLimit-Reset": rate_info['resets_at']
+                }
+            )
+        
+
+        # Step 2: Create project
+        logger.info("Creating project...")
+        project_id = await create_project(
+            user_id=user_id,
+            project_name=request.project_name or f"React Website - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+            prompt=request.prompt,
+            template_id=None,
+            supabase_client=supabase
+        )
+        # Step 4: Start BACKGROUND generation
+        logger.info(f"Starting background generation for project {project_id}")
+        background_tasks.add_task(
+            process_react_generation,  # New function below
+            project_id=project_id,
+            prompt=request.prompt,
+            user_id=user_id
+        )
+
+        logger.info(f"✓ Generation initiated for project {project_id}")
+        
+        # Return immediately with "generating" status
+        return GenerateWebsiteResponse(
+            project_id=project_id,
+            status="generating",
+            message="React website generation started. Check status endpoint for progress."
+        )
+
+    except Exception as e:
+        logger.error(f"Unexpected error during generation: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="React website generation failed"
+        )
+
+
+async def process_react_generation( project_id: str,prompt: str, user_id: str):
+    """Background task that actually does the generation"""
+    supabase = get_supabase_client()
+
+    try:
+        logger.info(f"[BG] Starting React generation for project {project_id}")
+        
+        # Step 1: Generate React website (SYNC function)
         result = react_website_generator.generate_website_structure(prompt)
         
         website_structure = result["website_structure"]
         business_analysis = result["business_analysis"]
+        validation_result = result["validation"]
         files = result["files"]
+
+        # Step 2: Save files to database (ASYNC)
+        logger.info(f"[BG] Saving {len(files)} files to database...")
+        stats = await project_file_manager.save_project_files(
+            project_id=project_id,
+            files=files,
+            overwrite=True
+        )
         
-        # Store the generated files as JSON in the database
-        logger.info(f"[REACT BG] Saving React website data...")
-        
-        # Convert files dict to JSON string
-        files_json = json.dumps(files)
-        website_structure_json = json.dumps(website_structure)
-        business_analysis_json = json.dumps(business_analysis)
-        
+        logger.info(f"[BG] ✓ Saved {stats['inserted']} files ({stats['total_size'] / 1024:.2f} KB)")
+
+        # Step 3: Update project with metadata
+        logger.info(f"[BG] Updating project metadata...")
         update_data = {
-            "react_files": files_json,
-            "website_structure": website_structure_json,
-            "business_analysis": business_analysis_json,
+            "website_structure": website_structure,
+            "business_analysis": business_analysis,
+            "validation_result": validation_result,
+            "generation_metadata": {
+                "retry_count": result.get("retry_count", 0),
+                "fixed_errors": result.get("fixed_errors", []),
+                "generation_time": result.get("generation_time", 0),
+                "files_count": stats.get("inserted", 0),
+                "total_size_bytes": stats.get("total_size", 0)
+            },
             "generation_status": "completed",
             "last_generated_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat()
         }
+
+        supabase.table("projects").update(update_data).eq("id", project_id).execute()
+
+        await increment_generation_count(user_id, supabase)
         
-        supabase.table("projects")\
-            .update(update_data)\
-            .eq("id", project_id)\
-            .execute()
-        
-        logger.info(f"[REACT BG] ✓ React generation completed for project {project_id}")
-        logger.info(f"[REACT BG] Generated {len(files)} files")
+        logger.info(f"[BG] ✓ React generation completed for project {project_id}")
+
+        return GenerateReactWebsiteResponse(
+            project_id=project_id,
+            status="completed",
+            message="React website generation completed",
+
+            website_structure=website_structure,
+            business_analysis=business_analysis,
+            validation_result=validation_result,
+            files_count=len(files)
+        )
         
     except Exception as e:
-        logger.error(f"[REACT BG] ✗ React generation failed: {str(e)}")
+        logger.error(f"[BG] ✗ React generation failed: {str(e)}", exc_info=True)
+        
+        # Update project status to failed
         await update_project_status(
             project_id=project_id,
             status_value="failed",
@@ -595,11 +702,6 @@ async def generate_react_website_background(
         )
 
 
-# ============================================================================
-# API Endpoints
-# ============================================================================
-
-@router.post("/generate_website", response_model=GenerateWebsiteResponse, status_code=status.HTTP_202_ACCEPTED)
 async def generate_website(
     request: GenerateWebsiteRequest,
     background_tasks: BackgroundTasks,
@@ -979,7 +1081,12 @@ async def get_react_website(
     try:
         # Fetch project
         response = supabase.table("projects")\
-            .select("*")\
+            .select(
+                "id, user_id, name, description, prompt, project_type, "
+                "website_structure, business_analysis, validation_result, generation_metadata, "
+                "generation_status, generation_error, files_count, "
+                "created_at, last_generated_at, updated_at"
+            )\
             .eq("id", project_id)\
             .execute()
         
@@ -1005,18 +1112,34 @@ async def get_react_website(
                 detail="This is not a React project"
             )
         
-        # Parse stored JSON data
-        files = json.loads(project.get("react_files", "{}"))
-        website_structure = json.loads(project.get("website_structure", "{}"))
-        business_analysis = json.loads(project.get("business_analysis", "{}"))
+         # JSONB columns are automatically parsed as dicts by Supabase client
+        website_structure = project.get("website_structure", {})
+        business_analysis = project.get("business_analysis", {})
+        validation_result = project.get("validation_result", {})
+        generation_metadata = project.get("generation_metadata", {})
+
+        # (only if user needs them - lazy loading)
+        from app.services.project_file_manager import project_file_manager
         
+        # Option 1: Fetch all files
+        files = await project_file_manager.get_project_files(project_id)
+
         return {
             "project_id": project_id,
+            "name": project["name"],
             "status": project.get("generation_status", "idle"),
+            
+            # Metadata from projects table (JSONB)
             "website_structure": website_structure,
             "business_analysis": business_analysis,
+            "validation_result": validation_result,
+            "generation_metadata": generation_metadata,
+            
+            # Files from project_files table
             "files": files,
             "files_count": len(files),
+            
+            # Timestamps
             "created_at": project.get("created_at"),
             "completed_at": project.get("last_generated_at")
         }
@@ -1028,5 +1151,157 @@ async def get_react_website(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch React website"
+        )
+
+
+# ============================================================================
+# Preview Endpoints
+# ============================================================================
+
+@router.post("/preview/{project_id}", response_model=Dict[str, Any])
+async def create_project_preview(
+    project_id: str,
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Create a temporary preview of the generated React project.
+    
+    - Builds the project using shared node_modules (fast: ~5-10s)
+    - Serves static files
+    - Preview expires after 1 hour
+    
+    Returns:
+        {
+            "preview_id": "abc-123-def",
+            "preview_url": "/previews/builds/abc-123-def/dist/index.html",
+            "expires_at": "2025-10-17T10:00:00Z"
+        }
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    
+    try:
+        # Fetch project
+        response = supabase.table("projects")\
+            .select("id, name, project_type, generation_status, user_id")\
+            .eq("id", project_id)\
+            .execute()
+        
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        project = response.data[0]
+        
+        # Check ownership
+        if project["user_id"] != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Check if it's a React project
+        if project.get("project_type") != "react":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This is not a React project"
+            )
+        
+        # Check if project is completed
+        if project.get("generation_status") != "completed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Project generation is not completed yet"
+            )
+        
+        # Get project files
+        files = await project_file_manager.get_project_files(project_id)
+        
+        if not files:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No files found for this project"
+            )
+        
+        # Create preview
+        result = vite_preview_service.create_preview(project_id, files)
+        
+        logger.info(f"✓ Preview created for project {project_id}: {result['preview_id']}")
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating preview: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create preview"
+        )
+
+
+@router.get("/preview/{preview_id}/status")
+async def get_preview_status(
+    preview_id: str,
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Check if a preview exists and when it expires.
+    
+    Returns:
+        {
+            "exists": true,
+            "preview_url": "/previews/builds/abc-123/dist/index.html",
+            "created_at": "2025-10-16T09:00:00Z",
+            "expires_at": "2025-10-16T10:00:00Z"
+        }
+    """
+    try:
+        status_info = vite_preview_service.get_preview_status(preview_id)
+        
+        if not status_info:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Preview not found"
+            )
+        
+        return status_info
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting preview status: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get preview status"
+        )
+
+
+@router.delete("/preview/{preview_id}")
+async def delete_preview(
+    preview_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Manually delete a preview before it expires."""
+    try:
+        success = vite_preview_service.delete_preview(preview_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete preview"
+            )
+        
+        return {"message": "Preview deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting preview: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete preview"
         )
 

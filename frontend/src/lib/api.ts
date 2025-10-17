@@ -413,6 +413,7 @@ export const api = {
         generation_error: string | null;
         created_at: string;
         updated_at: string;
+        project_type?: 'html' | 'react';
       }>(`/api/v1/projects/${id}`),
 
     /**
@@ -545,6 +546,31 @@ export const api = {
         status: string;
         error?: string;
       }>(`/api/v1/generation/${projectId}/status`),
+
+    /**
+     * Create preview of React project
+     * Builds project and returns preview URL
+     */
+    createPreview: (projectId: string) =>
+      apiRequest<{
+        preview_id: string;
+        preview_url: string;
+        expires_at: string;
+      }>(`/api/v1/preview/${projectId}`, {
+        method: "POST",
+      }),
+
+    /**
+     * Get React project files
+     */
+    getReactProject: (projectId: string) =>
+      apiRequest<{
+        project_id: string;
+        name: string;
+        status: string;
+        files: Record<string, string>;
+        files_count: number;
+      }>(`/api/v1/react_website/${projectId}`),
   },
 
   /**

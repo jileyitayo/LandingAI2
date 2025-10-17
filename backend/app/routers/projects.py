@@ -49,6 +49,8 @@ class ProjectDetail(BaseModel):
     css_content: Optional[str]
     js_content: Optional[str]
     published: bool
+    project_type: Optional[str]
+    files_count: Optional[int]
     subdomain: Optional[str]
     deployment_url: Optional[str]
     theme_settings: Optional[dict]

@@ -60,7 +60,6 @@ def test_code_validator():
     
     # Test with code that has invalid icons
     test_code = """
-import React from 'react'
 import { Handshake, Heart } from 'lucide-react'
 
 export function TestComponent() {

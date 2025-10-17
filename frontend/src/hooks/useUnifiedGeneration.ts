@@ -44,9 +44,10 @@ export const useUnifiedGeneration = () => {
         setError(err instanceof Error ? err.message : 'Generation failed');
       }
       throw err;
-    } finally {
-      setIsGenerating(false);
-    }
+    } 
+    // finally {
+    //   setIsGenerating(false);
+    // }
   };
 
   const pollStatus = async (projectId: string) => {
@@ -59,17 +60,20 @@ export const useUnifiedGeneration = () => {
         
         if (status.status === 'completed') {
           setGeneratedProject((prev: any) => prev ? { ...prev, status: 'completed' } : { status: 'completed' });
+          setIsGenerating(false);
           return;
         } else if (status.status === 'failed') {
           setError(status.error || 'Generation failed');
+          setIsGenerating(false);
           return;
         }
 
         attempts++;
         if (attempts < maxAttempts) {
-          setTimeout(poll, 10000); // Poll every 10 seconds
+          setTimeout(poll, 15000); // Poll every 10 seconds
         } else {
           setError('Generation timed out');
+          setIsGenerating(false);
         }
       } catch (err) {
         if (err instanceof ApiError) {
@@ -77,6 +81,7 @@ export const useUnifiedGeneration = () => {
         } else {
           setError('Failed to check generation status');
         }
+        setIsGenerating(false);
       }
     };
 

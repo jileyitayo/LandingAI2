@@ -1,12 +1,15 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
-import { ArrowLeft, Save, Download, Eye, Code, FileText, Settings } from 'lucide-react';
+import { useCallback, useState, useEffect } from 'react';
+import { ArrowLeft, Save, Download, Eye, Code, FileText, Settings, MessageSquare } from 'lucide-react';
 import WebsitePreview from '@/components/WebsitePreview';
 import PublishButton from '@/components/PublishButton';
 import PublishModal from '@/components/PublishModal';
 import DeploymentHistory from '@/components/DeploymentHistory';
+import FileTree from '@/components/FileTree';
+import CodeViewer from '@/components/CodeViewer';
+import ReactPreview from '@/components/ReactPreview';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { Project } from '@/types/project.types';
 import { api } from '@/lib/api';
@@ -19,6 +22,14 @@ export default function ProjectEditorPage() {
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [deploymentUrl, setDeploymentUrl] = useState<string | null>(null);
   const [isPublished, setIsPublished] = useState(false);
+
+  // React project state
+  const [reactActiveTab, setReactActiveTab] = useState<'code' | 'preview'>('code');
+  const [reactFiles, setReactFiles] = useState<Record<string, string>>({});
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [buildError, setBuildError] = useState<string | null>(null);
 
   // Load project from API
   const loadProject = useCallback(async (id: string): Promise<Project> => {
@@ -35,6 +46,7 @@ export default function ProjectEditorPage() {
         html_content : response.html_content || '',
         css_content : response.css_content || '',
         js_content : response.js_content || '',
+        project_type: response.project_type || 'react',
         user_id: response.user_id,
         created_at: response.created_at,
         updated_at: response.updated_at,
@@ -84,6 +96,48 @@ export default function ProjectEditorPage() {
     setIsPublished(false);
   };
 
+  // Load React project files
+  const loadReactFiles = useCallback(async () => {
+    try {
+      const data = await api.generation.getReactProject(projectId);
+      setReactFiles(data.files);
+      // Auto-select first file
+      const firstFile = Object.keys(data.files)[0];
+      setSelectedFile(firstFile);
+    } catch (error) {
+      console.error('Failed to load React files:', error);
+    }
+  }, [projectId]);
+
+  // Build preview
+  const buildPreview = useCallback(async () => {
+    setIsBuilding(true);
+    setBuildError(null);
+    try {
+      const result = await api.generation.createPreview(projectId);
+      console.log("result", result);
+      setPreviewUrl(`http://localhost:8000${result.preview_url}`);
+    } catch (error: any) {
+      setBuildError(error.message || 'Build failed');
+    } finally {
+      setIsBuilding(false);
+    }
+  }, [projectId]);
+
+  // Load React files when project is loaded
+  useEffect(() => {
+    if ((project as any)?.project_type === 'react') {
+      loadReactFiles();
+    }
+  }, [project, loadReactFiles]);
+
+  // Auto-build preview when switching to preview tab
+  useEffect(() => {
+    if (reactActiveTab === 'preview' && !previewUrl && !isBuilding) {
+      buildPreview();
+    }
+  }, [reactActiveTab, previewUrl, isBuilding, buildPreview]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -114,6 +168,162 @@ export default function ProjectEditorPage() {
   const { html_content, css_content, js_content, activeTab, hasUnsavedChanges } = editorState;
   const currentCode = activeTab === 'html_content' ? html_content : activeTab === 'css_content' ? css_content : js_content;
 
+  // Render React project editor
+
+  console.log('project type', (project as any)?.project_type);
+  if (project?.project_type === 'react') {
+    return (
+      <div className="h-screen flex flex-col bg-gray-900">
+        {/* Header */}
+        <header className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              title="Back to dashboard"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-lg font-semibold text-white">
+                {project?.name || 'Untitled Project'}
+              </h1>
+              <p className="text-sm text-gray-400">React Project</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/dashboard/projects/${projectId}/settings`}
+              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              title="Project settings"
+            >
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">Settings</span>
+            </Link>
+            <button
+              onClick={handleDownload}
+              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              title="Download project"
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Download</span>
+            </button>
+            <PublishButton
+              projectId={projectId}
+              projectName={project?.name || 'Untitled Project'}
+              deploymentUrl={deploymentUrl}
+              isPublished={isPublished}
+              onPublishSuccess={handlePublishSuccess}
+              onUnpublishSuccess={handleUnpublishSuccess}
+            />
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left Panel - Chat History (1/3) */}
+          <div className="w-1/3 flex flex-col bg-gray-900 border-r border-gray-700">
+            <div className="flex items-center gap-2 px-4 py-3 bg-gray-800 border-b border-gray-700">
+              <MessageSquare className="w-4 h-4 text-blue-400" />
+              <span className="text-sm font-medium text-white">Chat History</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                  U
+                </div>
+                <div className="flex-1">
+                  <div className="bg-blue-600 text-white p-3 rounded-lg">
+                    <p className="text-sm">{(project as any)?.prompt || 'Generate a React website'}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                  AI
+                </div>
+                <div className="flex-1">
+                  <div className="bg-gray-700 text-white p-3 rounded-lg">
+                    <p className="text-sm">Website generated successfully! Your React project is ready to view and edit.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Panel - Code/Preview (2/3) */}
+          <div className="w-2/3 flex flex-col bg-gray-900">
+            {/* Tabs */}
+            <div className="flex items-center bg-gray-800 border-b border-gray-700">
+              <button
+                onClick={() => setReactActiveTab('code')}
+                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                  reactActiveTab === 'code'
+                    ? 'border-blue-500 text-white bg-gray-900'
+                    : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                <Code className="w-4 h-4" />
+                <span className="font-medium">React Code</span>
+              </button>
+              <button
+                onClick={() => setReactActiveTab('preview')}
+                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                  reactActiveTab === 'preview'
+                    ? 'border-blue-500 text-white bg-gray-900'
+                    : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                <Eye className="w-4 h-4" />
+                <span className="font-medium">Preview</span>
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            <div className="flex-1 overflow-hidden">
+              {reactActiveTab === 'code' ? (
+                <div className="h-full flex">
+                  {/* File Tree (1/4) */}
+                  <div className="w-1/4">
+                    <FileTree
+                      files={reactFiles}
+                      selectedFile={selectedFile}
+                      onFileSelect={setSelectedFile}
+                    />
+                  </div>
+                  {/* Code Viewer (3/4) */}
+                  <div className="w-3/4">
+                    <CodeViewer
+                      fileName={selectedFile}
+                      content={selectedFile ? reactFiles[selectedFile] : null}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <ReactPreview
+                  previewUrl={previewUrl}
+                  isBuilding={isBuilding}
+                  error={buildError}
+                  onRebuild={buildPreview}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Publish Success Modal */}
+        <PublishModal
+          isOpen={showPublishModal}
+          onClose={() => setShowPublishModal(false)}
+          deploymentUrl={deploymentUrl || ''}
+          projectName={project?.name || 'Untitled Project'}
+        />
+      </div>
+    );
+  }
+
+  // Render HTML/CSS/JS editor (existing code)
   return (
     <div className="h-screen flex flex-col bg-gray-900">
       {/* Header */}

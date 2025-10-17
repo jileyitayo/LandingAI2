@@ -123,7 +123,8 @@ export default function DashboardPage() {
     router.push("/auth/login");
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!prompt.trim()) return;
 
     const result = await generateWebsite(
@@ -138,6 +139,19 @@ export default function DashboardPage() {
       // Website generated successfully
       console.log("Website generated:", result);
       // Could navigate to the project or show success message
+      setPrompt("");
+
+      if (result.status === 'completed') {
+        router.push(`/dashboard/projects/${result.project_id}`);
+      }
+      
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleGenerate();
     }
   };
 
@@ -344,6 +358,7 @@ export default function DashboardPage() {
                 type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={handleKeyPress}
                 placeholder="e.g., 'A modern coffee shop in downtown Seattle'"
                 className="flex-1 px-6 py-4 text-base text-gray-900 placeholder-gray-400 bg-transparent border-0 focus:outline-none focus:ring-0"
                 maxLength={500}
@@ -471,7 +486,7 @@ export default function DashboardPage() {
         )}
 
         {/* Success Display */}
-        {generatedProject && (
+        {generatedProject && generatedProject.status === 'completed' && (
           <div className="max-w-4xl mx-auto mb-8">
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <div className="flex items-start">
@@ -494,6 +509,37 @@ export default function DashboardPage() {
                   </h3>
                   <p className="mt-1 text-sm text-green-700">
                     Your website is ready to use.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Generating Display */}
+        {generatedProject && generatedProject.status === 'generating' && (
+          <div className="max-w-4xl mx-auto mb-8">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <svg
+                  className="h-5 w-5 text-yellow-400 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-yellow-800">
+                    Website is being generated...
+                  </h3>
+                  <p className="mt-1 text-sm text-yellow-700">
+                    Please wait while we generate your website. This may take a few minutes.
                   </p>
                 </div>
               </div>

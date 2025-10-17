@@ -17,6 +17,18 @@ export interface Project {
   seo_title?: string;
   seo_description?: string;
   theme_settings?: Record<string, any>;
+  // new fields
+  project_type?: 'html' | 'react';
+  prompt?: string;
+  template_id?: string;
+  generation_status?: 'idle' | 'generating' | 'completed' | 'failed';
+  generation_error?: string;
+  last_generated_at?: string;
+  files_count?: number;
+  website_structure?: Record<string, any>;
+  business_analysis?: Record<string, any>;
+  validation_result?: Record<string, any>;
+  generation_metadata?: Record<string, any>;
 }
 
 export interface ProjectCreateInput {
@@ -25,6 +37,10 @@ export interface ProjectCreateInput {
   html_content?: string;
   css_content ?: string;
   js_content?: string;
+  // new fields
+  project_type?: 'html' | 'react';
+  prompt?: string;
+  template_id?: string;
 }
 
 export interface ProjectUpdateInput {
@@ -40,6 +56,12 @@ export interface ProjectUpdateInput {
   seo_title?: string;
   seo_description?: string;
   theme_settings?: Record<string, any>;
+  // new fields
+  project_type?: 'html' | 'react';
+  prompt?: string;
+  template_id?: string;
+  generation_status?: 'idle' | 'generating' | 'completed' | 'failed';
+  generation_error?: string;
 }
 
 export type EditorTab = 'html_content' | 'css_content' | 'js_content';

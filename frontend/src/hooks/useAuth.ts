@@ -74,8 +74,13 @@ export function useAuth() {
       });
 
       // Redirect on sign in/sign up
+      // Redirect on sign in/sign up (but only if not already on a dashboard page)
       if (event === "SIGNED_IN") {
-        router.push("/dashboard");
+        const currentPath = window.location.pathname;
+        // Only redirect if coming from auth pages or root
+        if (currentPath === '/' || currentPath.startsWith('/auth/')) {
+          router.push("/dashboard");
+        }
       }
 
       // Redirect on sign out
