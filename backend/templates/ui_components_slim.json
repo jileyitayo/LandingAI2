@@ -1,0 +1,247 @@
+[
+  {
+    "component_name": "accordion",
+    "description": "A collapsible content component for organizing information into sections.",
+    "usage": "import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'; <Accordion type='single' collapsible><AccordionItem value='item1'><AccordionTrigger>Item 1</AccordionTrigger><AccordionContent>Content 1</AccordionContent></AccordionItem></Accordion>"
+  },
+  {
+    "component_name": "alert",
+    "description": "An alert component for displaying important messages with different variants.",
+    "usage": "import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; <Alert><AlertTitle>Alert Title</AlertTitle><AlertDescription>Alert description</AlertDescription></Alert>"
+  },
+  {
+    "component_name": "alertDialog",
+    "description": "A specialized dialog for critical actions and confirmations.",
+    "usage": "import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'; <AlertDialog><AlertDialogTrigger>Delete</AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction>Continue</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>"
+  },
+  {
+    "component_name": "aspectRatio",
+    "description": "A component for maintaining aspect ratios of content, useful for responsive media.",
+    "usage": "import { AspectRatio } from '@/components/ui/aspect-ratio'; <AspectRatio ratio={16/9}><img src='/image.jpg' alt='Image' /></AspectRatio>"
+  },
+  {
+    "component_name": "avatar",
+    "description": "A user avatar component with image and fallback support.",
+    "usage": "import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; <Avatar><AvatarImage src='/avatar.jpg' alt='User' /><AvatarFallback>U</AvatarFallback></Avatar>"
+  },
+  {
+    "component_name": "badge",
+    "description": "A small status indicator or label component with different variants.",
+    "usage": "import { Badge } from '@/components/ui/badge'; <Badge variant='secondary'>New</Badge>"
+  },
+  {
+    "component_name": "breadcrumb",
+    "description": "A navigation component showing the current page's location within a hierarchy.",
+    "usage": "import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'; <Breadcrumb><BreadcrumbList><BreadcrumbItem><BreadcrumbLink href='/'>Home</BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>Current</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>"
+  },
+  {
+    "component_name": "button",
+    "description": "A versatile button component with multiple variants and sizes",
+    "usage": "import { Button } from '@/components/ui/button'; <Button variant='outline' size='lg'>Click me</Button>"
+  },
+  {
+    "component_name": "calendar",
+    "description": "A calendar component for date selection with customizable styling.",
+    "usage": "import { Calendar } from '@/components/ui/calendar'; <Calendar mode='single' selected={date} onSelect={setDate} className='rounded-md border' />"
+  },
+  {
+    "component_name": "card",
+    "description": "A flexible card component with header, content, and footer sections.",
+    "usage": "import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'; <Card><CardHeader><CardTitle>Card Title</CardTitle><CardDescription>Card description</CardDescription></CardHeader><CardContent>Card content</CardContent><CardFooter>Card footer</CardFooter></Card>"
+  },
+  {
+    "component_name": "carousel",
+    "description": "A carousel component for displaying content in a scrollable container with navigation controls.",
+    "usage": "import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel'; <Carousel><CarouselContent><CarouselItem>Slide 1</CarouselItem><CarouselItem>Slide 2</CarouselItem></CarouselContent><CarouselPrevious /><CarouselNext /></Carousel>"
+  },
+  {
+    "component_name": "chart",
+    "description": "A chart component for displaying data visualizations with customizable styling and themes.",
+    "usage": "import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart'; <ChartContainer config={chartConfig}><ChartTooltip content={<ChartTooltipContent />} /></ChartContainer>"
+  },
+  {
+    "component_name": "checkbox",
+    "description": "A checkbox input component for boolean selections.",
+    "usage": "import { Checkbox } from '@/components/ui/checkbox'; <Checkbox checked={isChecked} onCheckedChange={setIsChecked} />"
+  },
+  {
+    "component_name": "collapsible",
+    "description": "A collapsible component for showing and hiding content with smooth animations.",
+    "usage": "import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'; <Collapsible><CollapsibleTrigger>Toggle</CollapsibleTrigger><CollapsibleContent>Content</CollapsibleContent></Collapsible>"
+  },
+  {
+    "component_name": "command",
+    "description": "A command palette component for search and command execution with keyboard navigation.",
+    "usage": "import { Command, CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandShortcut } from '@/components/ui/command'; <Command><CommandInput placeholder='Type a command...' /><CommandList><CommandEmpty>No results found.</CommandEmpty><CommandGroup heading='Suggestions'><CommandItem>Calendar</CommandItem></CommandGroup></CommandList></Command>"
+  },
+  {
+    "component_name": "contextMenu",
+    "description": "A context menu component that appears on right-click with customizable options.",
+    "usage": "import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'; <ContextMenu><ContextMenuTrigger>Right click me</ContextMenuTrigger><ContextMenuContent><ContextMenuItem>Cut</ContextMenuItem><ContextMenuItem>Copy</ContextMenuItem></ContextMenuContent></ContextMenu>"
+  },
+  {
+    "component_name": "dialog",
+    "description": "A modal dialog component for displaying content in an overlay.",
+    "usage": "import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'; <Dialog><DialogTrigger>Open Dialog</DialogTrigger><DialogContent><DialogHeader><DialogTitle>Dialog Title</DialogTitle><DialogDescription>Dialog description</DialogDescription></DialogHeader></DialogContent></Dialog>"
+  },
+  {
+    "component_name": "drawer",
+    "description": "A drawer component that slides up from the bottom of the screen on mobile devices.",
+    "usage": "import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer'; <Drawer><DrawerTrigger>Open Drawer</DrawerTrigger><DrawerContent><DrawerHeader><DrawerTitle>Drawer Title</DrawerTitle><DrawerDescription>Drawer description</DrawerDescription></DrawerHeader></DrawerContent></Drawer>"
+  },
+  {
+    "component_name": "dropdownMenu",
+    "description": "A dropdown menu component with trigger and content sections.",
+    "usage": "import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'; <DropdownMenu><DropdownMenuTrigger>Open</DropdownMenuTrigger><DropdownMenuContent><DropdownMenuItem>Item 1</DropdownMenuItem></DropdownMenuContent></DropdownMenu>"
+  },
+  {
+    "component_name": "form",
+    "description": "A form component with field management and validation support using react-hook-form.",
+    "usage": "import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'; <Form><FormField name='email'><FormItem><FormLabel>Email</FormLabel><FormControl><Input /></FormControl><FormDescription>Enter your email</FormDescription><FormMessage /></FormItem></FormField></Form>"
+  },
+  {
+    "component_name": "hoverCard",
+    "description": "A hover card component that displays additional content when hovering over a trigger element.",
+    "usage": "import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'; <HoverCard><HoverCardTrigger>Hover me</HoverCardTrigger><HoverCardContent>Hover card content</HoverCardContent></HoverCard>"
+  },
+  {
+    "component_name": "input",
+    "description": "A styled input component for text input with consistent styling and focus states.",
+    "usage": "import { Input } from '@/components/ui/input'; <Input placeholder='Enter your email' type='email' />"
+  },
+  {
+    "component_name": "inputOTP",
+    "description": "A one-time password input component for authentication codes with individual digit slots.",
+    "usage": "import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from '@/components/ui/input-otp'; <InputOTP maxLength={6}><InputOTPGroup><InputOTPSlot index={0} /><InputOTPSlot index={1} /><InputOTPSlot index={2} /></InputOTPGroup></InputOTP>"
+  },
+  {
+    "component_name": "label",
+    "description": "A styled label component that can be associated with form controls.",
+    "usage": "import { Label } from '@/components/ui/label'; <Label htmlFor='email'>Email Address</Label>"
+  },
+  {
+    "component_name": "menubar",
+    "description": "A menubar component for creating application-style menu bars with dropdown menus.",
+    "usage": "import { Menubar, MenubarMenu, MenubarTrigger, MenubarContent, MenubarItem } from '@/components/ui/menubar'; <Menubar><MenubarMenu><MenubarTrigger>File</MenubarTrigger><MenubarContent><MenubarItem>New</MenubarItem><MenubarItem>Open</MenubarItem></MenubarContent></MenubarMenu></Menubar>"
+  },
+  {
+    "component_name": "navigationMenu",
+    "description": "A navigation menu component with dropdown support and keyboard navigation.",
+    "usage": "import { NavigationMenu, NavigationMenuContent, NavigationMenuIndicator, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger, NavigationMenuViewport } from '@/components/ui/navigation-menu'; <NavigationMenu><NavigationMenuList><NavigationMenuItem><NavigationMenuTrigger>Item One</NavigationMenuTrigger><NavigationMenuContent>Content</NavigationMenuContent></NavigationMenuItem></NavigationMenuList><NavigationMenuViewport /></NavigationMenu>"
+  },
+  {
+    "component_name": "pagination",
+    "description": "A pagination component for navigating through multiple pages of content.",
+    "usage": "import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'; <Pagination><PaginationContent><PaginationItem><PaginationPrevious href='#' /></PaginationItem><PaginationItem><PaginationLink href='#'>1</PaginationLink></PaginationItem><PaginationItem><PaginationNext href='#' /></PaginationItem></PaginationContent></Pagination>"
+  },
+  {
+    "component_name": "popover",
+    "description": "A popover component for displaying content in a floating panel.",
+    "usage": "import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'; <Popover><PopoverTrigger>Open</PopoverTrigger><PopoverContent>Popover content</PopoverContent></Popover>"
+  },
+  {
+    "component_name": "progress",
+    "description": "A progress bar component for showing completion status.",
+    "usage": "import { Progress } from '@/components/ui/progress'; <Progress value={75} className='w-full' />"
+  },
+  {
+    "component_name": "radioGroup",
+    "description": "A group of radio buttons for single selection from multiple options.",
+    "usage": "import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'; <RadioGroup value={selected} onValueChange={setSelected}><RadioGroupItem value='option1' /><RadioGroupItem value='option2' /></RadioGroup>"
+  },
+  {
+    "component_name": "resizable",
+    "description": "A resizable panel component for creating adjustable layouts with drag handles.",
+    "usage": "import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'; <ResizablePanelGroup direction='horizontal'><ResizablePanel defaultSize={50}>Panel 1</ResizablePanel><ResizableHandle /><ResizablePanel defaultSize={50}>Panel 2</ResizablePanel></ResizablePanelGroup>"
+  },
+  {
+    "component_name": "scrollArea",
+    "description": "A scrollable area component with custom scrollbars and smooth scrolling behavior.",
+    "usage": "import { ScrollArea } from '@/components/ui/scroll-area'; <ScrollArea className='h-72 w-48 rounded-md border'><div className='p-4'>Content</div></ScrollArea>"
+  },
+  {
+    "component_name": "select",
+    "description": "A dropdown select component with customizable options and styling.",
+    "usage": "import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; <Select><SelectTrigger><SelectValue placeholder='Select option' /></SelectTrigger><SelectContent><SelectItem value='option1'>Option 1</SelectItem></SelectContent></Select>"
+  },
+  {
+    "component_name": "separator",
+    "description": "A visual separator component for dividing content sections.",
+    "usage": "import { Separator } from '@/components/ui/separator'; <Separator orientation='horizontal' />"
+  },
+  {
+    "component_name": "sheet",
+    "description": "A slide-out panel component for displaying content from the side of the screen.",
+    "usage": "import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'; <Sheet><SheetTrigger>Open Sheet</SheetTrigger><SheetContent><SheetHeader><SheetTitle>Sheet Title</SheetTitle><SheetDescription>Sheet description</SheetDescription></SheetHeader></SheetContent></Sheet>"
+  },
+  {
+    "component_name": "sidebar",
+    "description": "A sidebar component for navigation with collapsible functionality and mobile support.",
+    "usage": "import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'; <SidebarProvider><Sidebar><SidebarHeader>Header</SidebarHeader><SidebarContent><SidebarMenu><SidebarMenuItem><SidebarMenuButton>Item</SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarContent></Sidebar></SidebarProvider>"
+  },
+  {
+    "component_name": "skeleton",
+    "description": "A loading skeleton component for showing content placeholders.",
+    "usage": "import { Skeleton } from '@/components/ui/skeleton'; <Skeleton className='h-4 w-[250px]' />"
+  },
+  {
+    "component_name": "slider",
+    "description": "A range slider component for selecting numeric values.",
+    "usage": "import { Slider } from '@/components/ui/slider'; <Slider value={[50]} onValueChange={setValue} max={100} step={1} className='w-full' />"
+  },
+  {
+    "component_name": "sonner",
+    "description": "A toast notification component with theme support and customizable styling.",
+    "usage": "import { Toaster, toast } from '@/components/ui/sonner'; <Toaster />; toast('Hello world');"
+  },
+  {
+    "component_name": "switch",
+    "description": "A toggle switch component for boolean values.",
+    "usage": "import { Switch } from '@/components/ui/switch'; <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />"
+  },
+  {
+    "component_name": "table",
+    "description": "A table component with header, body, and footer sections for displaying tabular data.",
+    "usage": "import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'; <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead></TableRow></TableHeader><TableBody><TableRow><TableCell>John Doe</TableCell><TableCell>john@example.com</TableCell></TableRow></TableBody></Table>"
+  },
+  {
+    "component_name": "tabs",
+    "description": "A tabbed interface component for organizing content into sections.",
+    "usage": "import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'; <Tabs defaultValue='tab1'><TabsList><TabsTrigger value='tab1'>Tab 1</TabsTrigger><TabsTrigger value='tab2'>Tab 2</TabsTrigger></TabsList><TabsContent value='tab1'>Content 1</TabsContent><TabsContent value='tab2'>Content 2</TabsContent></Tabs>"
+  },
+  {
+    "component_name": "textarea",
+    "description": "A multi-line text input component with consistent styling.",
+    "usage": "import { Textarea } from '@/components/ui/textarea'; <Textarea placeholder='Enter your message' rows={4} />"
+  },
+  {
+    "component_name": "toast",
+    "description": "A toast notification component for displaying temporary messages with actions.",
+    "usage": "import { Toast, ToastAction, ToastClose, ToastDescription, ToastProvider, ToastTitle, ToastViewport } from '@/components/ui/toast'; <ToastProvider><Toast><ToastTitle>Title</ToastTitle><ToastDescription>Description</ToastDescription><ToastAction>Action</ToastAction><ToastClose /></Toast><ToastViewport /></ToastProvider>"
+  },
+  {
+    "component_name": "toaster",
+    "description": "A toaster component that manages and displays toast notifications.",
+    "usage": "import { Toaster } from '@/components/ui/toaster'; <Toaster />"
+  },
+  {
+    "component_name": "toggle",
+    "description": "A toggle button component that can be pressed and unpressed.",
+    "usage": "import { Toggle } from '@/components/ui/toggle'; <Toggle pressed={isPressed} onPressedChange={setIsPressed}>Toggle</Toggle>"
+  },
+  {
+    "component_name": "toggleGroup",
+    "description": "A toggle group component for selecting multiple options with toggle buttons.",
+    "usage": "import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'; <ToggleGroup type='multiple'><ToggleGroupItem value='bold'>Bold</ToggleGroupItem><ToggleGroupItem value='italic'>Italic</ToggleGroupItem></ToggleGroup>"
+  },
+  {
+    "component_name": "tooltip",
+    "description": "A tooltip component for showing additional information on hover.",
+    "usage": "import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; <TooltipProvider><Tooltip><TooltipTrigger>Hover me</TooltipTrigger><TooltipContent>Tooltip content</TooltipContent></Tooltip></TooltipProvider>"
+  },
+  {
+    "component_name": "useToast",
+    "description": "A hook for managing toast notifications with programmatic control.",
+    "usage": "import { useToast } from '@/hooks/use-toast'; const { toast } = useToast(); toast({ title: 'Success', description: 'Your changes have been saved.' });"
+  }
+]
