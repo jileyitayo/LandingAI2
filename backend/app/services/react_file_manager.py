@@ -35,7 +35,7 @@ class ReactFileManager:
             "type": "module",
             "scripts": {
                 "dev": "vite",
-                "build": "tsc -b && vite build",
+                "build": "vite build",
                 "lint": "eslint .",
                 "preview": "vite preview"
             },
@@ -89,14 +89,23 @@ class ReactFileManager:
         # vite.config.ts
         files["vite.config.ts"] = """import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': '/src',
     },
+  },
+  base: '/previews/builds/',
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    minify: 'esbuild',
+  },
+  server: {
+    port: 3000,
+    host: true,
   },
 })
 """

@@ -5,17 +5,24 @@ Generates a complete React/TypeScript website structure based on business analys
 
 import json
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from traceback import print_tb
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Optional
 
+from app.config import settings
 from app.services.business_analyzer import BusinessAnalyzer, BusinessAnalysis
 from app.services.prompt_open_ai import PromptOpenAI
-from app.services.react_models import PageComponent, PageStructure, WebsiteStructure, PageGenerationResponse
+from app.services.react_models import (
+    PageComponent, PageStructure, WebsiteStructure, PageGenerationResponse,
+    ValidationResult, ValidationError, BuildTestResult, GenerationResult
+)
 from app.services.react_file_manager import react_file_manager
 from app.services.icon_validator import format_icons_for_prompt, validate_and_fix_icon, is_valid_icon
-from app.services.code_validator import code_validator, fix_lucide_icons_in_content
+from app.services.code_validator import code_validator, fix_lucide_icons_in_content, CodeValidationError
+from app.services.error_fixer import error_fixer
+from app.services.build_tester import build_tester, BuildError
 
 logger = logging.getLogger(__name__)
 
@@ -80,27 +87,54 @@ class ReactWebsiteGenerator:
     
     def __init__(self):
         self.openai_client = PromptOpenAI()
+        self.google_client = PromptOpenAI(api_key=settings.google_api_key, url="https://generativelanguage.googleapis.com/v1beta/openai/")
         self.business_analyzer = BusinessAnalyzer()
     
-    def generate_website_structure(self, prompt: str) -> Dict[str, Any]:
+    def generate_website_structure(
+        self, 
+        prompt: str, 
+        enable_build_validation: Optional[bool] = None
+    ) -> Dict[str, Any]:
         """
-        Main entry point: Generate complete React website from prompt
+        Main entry point: Generate complete React website from prompt with validation
+        
+        Args:
+            prompt: User's website description
+            enable_build_validation: Whether to run actual build tests (None = use config default)
         
         Returns a dictionary containing:
         - website_structure: Complete website structure
         - business_analysis: Original business analysis
         - files: Dictionary of file paths to file contents
+        - validation: Validation results
+        - build_test: Build test results (if enabled)
+        - retry_count: Number of retry attempts made
+        - fixed_errors: List of errors that were auto-fixed
+        - generation_time: Total generation time
         """
-        logger.info("[REACT GEN] Starting React website generation...")
+        start_time = time.time()
+        
+        # Use config default if not specified
+        if enable_build_validation is None:
+            enable_build_validation = settings.enable_build_validation
+        
+        logger.info("[REACT GEN] Starting React website generation with validation...")
         
         # Step 1: Analyze business requirements
         logger.info("[REACT GEN] Analyzing business requirements...")
         business_analysis = self.business_analyzer.generate_business_analysis(prompt)
+        print(f"Business analysis: \n{business_analysis.model_dump_json(indent=2)}")
         
         # Step 2: Generate website structure
         logger.info("[REACT GEN] Generating website structure...")
         website_structure = self._generate_structure_from_analysis(business_analysis)
 
+        print(f"Website structure: \n{website_structure.model_dump_json(indent=2)}")
+        
+        # Validate navigation matches pages
+        logger.info("[REACT GEN] Validating structure consistency...")
+        self._validate_structure_consistency(website_structure)
+        
         # Debug: Write schema and structure to files
         with open('/tmp/website_structure_schema.json', 'w') as f:
             json.dump(website_structure.model_json_schema(), f, indent=2)
@@ -112,9 +146,22 @@ class ReactWebsiteGenerator:
         
         # Step 3: Generate file contents
         logger.info("[REACT GEN] Generating React files...")
+
+        
+
         files = self._generate_all_files(website_structure, business_analysis)
         
-        logger.info("[REACT GEN] ✓ React website generation complete")
+        # Step 4: Validation and error fixing loop
+        logger.info("[REACT GEN] Starting validation and error fixing...")
+        files, validation_result, retry_count, fixed_errors = self._validate_and_fix_files(
+            files, 
+            enable_build_validation
+        )
+        
+        generation_time = time.time() - start_time
+        
+        logger.info(f"[REACT GEN] ✓ React website generation complete in {generation_time:.2f}s")
+        logger.info(f"[REACT GEN] Retries: {retry_count}, Fixed errors: {len(fixed_errors)}")
 
         # Write files to disk with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -126,21 +173,49 @@ class ReactWebsiteGenerator:
         return {
             "website_structure": website_structure.model_dump(),
             "business_analysis": business_analysis.model_dump(),
-            "files": files
+            "files": files,
+            "validation": validation_result.model_dump(),
+            "build_test": validation_result.model_dump() if hasattr(validation_result, 'build_test') else None,
+            "retry_count": retry_count,
+            "fixed_errors": fixed_errors,
+            "generation_time": generation_time
         }
     
     def _generate_structure_from_analysis(self, analysis: BusinessAnalysis) -> WebsiteStructure:
         """Convert business analysis into website structure"""
         
-        system_prompt = """You are a website architect. Generate a complete website structure based on business analysis.
+        system_prompt = f"""You are a website architect. Generate a complete website structure based on business analysis.
         
 Your task:
-1. Create page structures for each key page
-2. Define components/sections for each page based on content_sections
+1. Create page structures for each key page - {', '.join(analysis.key_pages)}
+2. Define components/sections for each page based on content_sections - {', '.join(analysis.content_sections)}
 3. Map business requirements to appropriate React components
 4. Ensure logical flow and user experience
 5. Determing if its a single page website (ONLY 1 page) or multiple pages website (more than 1 page).
 6. If its a single page website, ensure the page is named HomePage and the path is /, with header navigation urls pointing to the sections in the page with #menu for menu for example
+
+CRITICAL: Navigation and Pages MUST Match Exactly
+7. For EVERY navigation item you create, there MUST be a corresponding page with the EXACT same path
+8. For EVERY page you create, there MUST be a corresponding navigation item (except utility pages like 404, privacy)
+9. Navigation item path MUST exactly match page path
+   Example: 
+   Navigation: {{label: "About", path: "/about"}}
+   Page: {{name: "About", path: "/about"}}
+   There must be a one to one mapping between navigation items and pages
+10. Do NOT create navigation items without creating the page
+11. Do NOT create pages without adding them to navigation (unless utility pages)
+12. ENSURE that all values in the "props" are generated with appropriate values, not just empty strings or numbers. And make use of href for links, not just url.
+sample data might look like this for example:
+{{
+    id: 'linkedin',
+    label: 'LinkedIn',
+    href: 'https://linkedin.com/in/aureliaphoto', // not "url: ''"
+    icon: <ExternalLink className="h-5 w-5" aria-hidden />
+}}
+
+CRITICAL: 
+- Home path must be /
+- Page and component names must be joined without spaces, not hyphens. Example: Home, About, ProjectDetail, etc.
 
 Component types available:
 - header: Header section with logo, navigation, and CTA
@@ -166,9 +241,9 @@ Industry: {analysis.industry}
 Site Purpose: {analysis.site_purpose}
 Target Audience: {analysis.target_audience}
 
-Pages Needed: {', '.join(analysis.key_pages)}
-Content Sections: {', '.join(analysis.content_sections)}
-Must-Have Features: {', '.join(analysis.must_have_features)}
+These pages must be created: {', '.join(analysis.key_pages)}
+These content sections must be created: {', '.join(analysis.content_sections)}
+These must-have features must be created: {', '.join(analysis.must_have_features)}
 Primary CTA: {analysis.primary_cta}
 
 Tone: {analysis.tone}
@@ -179,16 +254,61 @@ Value Propositions:
 {chr(10).join(f"- {vp}" for vp in analysis.value_propositions)}
 
 Create a website structure with appropriate pages and components for each page."""
-        self.openai_client.set_max_completion_tokens(6000)
-        response, usage = self.openai_client.call_openai_api_structured(
+        self.google_client.set_max_completion_tokens(6000)
+        response, usage = self.google_client.call_openai_api_structured(
             system_prompt,
             user_prompt,
-            WebsiteStructure
+            WebsiteStructure,
+            model="gemini-2.5-flash"
         )
 
         print(f"Usage for structure generation: {usage}")
         
         return response
+    
+    def _validate_structure_consistency(self, structure: WebsiteStructure) -> None:
+        """
+        Validate that navigation items match pages
+        Ensures no orphaned navigation items or missing navigation
+        """
+        page_paths = {page.path for page in structure.pages}
+        nav_paths = {nav.path for nav in structure.navigation}
+        
+        # Find navigation items with no corresponding page
+        missing_pages = nav_paths - page_paths
+        
+        # Find pages without navigation (excluding home and utility pages)
+        utility_paths = {'/', '/404', '/privacy', '/terms', '/sitemap'}
+        missing_nav = page_paths - nav_paths - utility_paths
+        
+        # Report errors
+        if missing_pages:
+            logger.error(f"[STRUCTURE VALIDATION] ❌ Navigation items without pages: {missing_pages}")
+            logger.error("[STRUCTURE VALIDATION] These navigation items link to pages that don't exist!")
+            for path in missing_pages:
+                nav_item = next((n for n in structure.navigation if n.path == path), None)
+                if nav_item:
+                    logger.error(f"  - '{nav_item.label}' → {path} (page not found)")
+        
+        # Report warnings for pages without navigation
+        if missing_nav:
+            logger.warning(f"[STRUCTURE VALIDATION] ⚠ Pages without navigation items: {missing_nav}")
+            logger.warning("[STRUCTURE VALIDATION] Consider adding these pages to navigation")
+            for path in missing_nav:
+                page = next((p for p in structure.pages if p.path == path), None)
+                if page:
+                    logger.warning(f"  - '{page.name}' ({path}) has no navigation item")
+        
+        # Success message
+        if not missing_pages and not missing_nav:
+            logger.info("[STRUCTURE VALIDATION] ✓ All navigation items match pages perfectly!")
+            logger.info(f"[STRUCTURE VALIDATION] {len(structure.pages)} pages, {len(structure.navigation)} nav items")
+        
+        # Summary
+        page_list = [f"{p.name} ({p.path})" for p in structure.pages]
+        nav_list = [f"{n.label} → {n.path}" for n in structure.navigation]
+        logger.info(f"[STRUCTURE VALIDATION] Pages: {', '.join(page_list)}")
+        logger.info(f"[STRUCTURE VALIDATION] Navigation: {', '.join(nav_list)}")
     
     def _generate_all_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis) -> Dict[str, str]:
         """Generate all React project files"""
@@ -234,12 +354,148 @@ Create a website structure with appropriate pages and components for each page."
         
         return files
     
+    def _validate_and_fix_files(
+        self, 
+        files: Dict[str, str], 
+        enable_build_validation: bool
+    ) -> tuple[Dict[str, str], ValidationResult, int, List[str]]:
+        """
+        Validate generated files and fix errors with retry mechanism
+        
+        Args:
+            files: Generated files dictionary
+            enable_build_validation: Whether to run build tests
+            
+        Returns:
+            Tuple of (fixed_files, validation_result, retry_count, fixed_errors_list)
+        """
+        retry_count = 0
+        fixed_errors = []
+        current_files = files.copy()
+        
+        # Phase 1: Static validation with retry
+        logger.info("[VALIDATION] Phase 1: Static validation...")
+        
+        for attempt in range(settings.max_validation_retries):
+            errors, warnings = code_validator.validate_all_files(current_files)
+            
+            if not errors:
+                logger.info(f"[VALIDATION] ✓ Static validation passed (attempt {attempt + 1})")
+                break
+            
+            logger.warning(f"[VALIDATION] Found {len(errors)} errors (attempt {attempt + 1}/{settings.max_validation_retries})")
+            
+            if attempt < settings.max_validation_retries - 1:
+                # Try to fix errors
+                logger.info("[VALIDATION] Attempting to auto-fix errors...")
+                fixed_files, all_fixed = error_fixer.fix_validation_errors(
+                    current_files, 
+                    errors, 
+                    warnings
+                )
+                
+                if all_fixed:
+                    current_files = fixed_files
+                    retry_count += 1
+                    fixed_errors.extend([f"{e.error_type}: {e.message}" for e in errors])
+                    logger.info(f"[VALIDATION] ✓ Auto-fixed all validation errors")
+                else:
+                    current_files = fixed_files
+                    retry_count += 1
+                    logger.warning(f"[VALIDATION] ⚠ Partially fixed validation errors")
+            else:
+                logger.error(f"[VALIDATION] ✗ Failed to fix all validation errors after {settings.max_validation_retries} attempts")
+        
+        # Create validation result
+        validation_errors = [
+            ValidationError(
+                file_path=e.file_path,
+                error_type=e.error_type,
+                message=e.message,
+                severity=e.severity
+            )
+            for e in errors
+        ]
+        
+        validation_warnings = [
+            ValidationError(
+                file_path=w.file_path,
+                error_type=w.error_type,
+                message=w.message,
+                severity="warning"
+            )
+            for w in warnings
+        ]
+        
+        validation_result = ValidationResult(
+            passed=len(errors) == 0,
+            errors=validation_errors,
+            warnings=validation_warnings,
+            total_files_validated=len(current_files)
+        )
+        
+        # Phase 2: Build validation (if enabled)
+        if enable_build_validation and len(errors) == 0:
+            logger.info("[VALIDATION] Phase 2: Build validation...")
+            
+            for attempt in range(settings.max_build_retries):
+                build_result = build_tester.test_build(
+                    current_files,
+                    project_name="validation-test"
+                )
+                
+                if build_result.success:
+                    logger.info(f"[VALIDATION] ✓ Build validation passed (attempt {attempt + 1})")
+                    break
+                
+                logger.warning(f"[VALIDATION] Build failed with {len(build_result.errors)} errors (attempt {attempt + 1}/{settings.max_build_retries})")
+                
+                if attempt < settings.max_build_retries - 1:
+                    # Try to fix build errors
+                    logger.info("[VALIDATION] Attempting to auto-fix build errors...")
+                    fixed_files, all_fixed = error_fixer.fix_build_errors(
+                        current_files,
+                        build_result.errors,
+                        build_result.build_output
+                    )
+                    
+                    if all_fixed:
+                        current_files = fixed_files
+                        retry_count += 1
+                        fixed_errors.extend([f"BUILD: {e.message}" for e in build_result.errors])
+                        logger.info(f"[VALIDATION] ✓ Auto-fixed all build errors")
+                    else:
+                        current_files = fixed_files
+                        retry_count += 1
+                        logger.warning(f"[VALIDATION] ⚠ Partially fixed build errors")
+                else:
+                    logger.error(f"[VALIDATION] ✗ Failed to fix all build errors after {settings.max_build_retries} attempts")
+            
+            # Update validation result with build info
+            if not build_result.success:
+                # Add build errors to validation errors
+                for build_error in build_result.errors:
+                    validation_result.errors.append(
+                        ValidationError(
+                            file_path=build_error.file_path,
+                            error_type=build_error.error_type,
+                            message=build_error.message,
+                            severity="error"
+                        )
+                    )
+                validation_result.passed = False
+        
+        logger.info(f"[VALIDATION] Final result: {len(validation_result.errors)} errors, {len(validation_result.warnings)} warnings")
+        
+        return current_files, validation_result, retry_count, fixed_errors
+    
     def _generate_page_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis) -> Dict[str, str]:
         """Generate page component files"""
         
         files = {}
         
         for page in structure.pages:
+            print(f"Generating page: {page.name}")
             page_content = self._generate_page_component(page, structure, analysis, files)
             page_filename = page.name.lower().replace(" ", "-")
             files[f"src/pages/{page_filename}.tsx"] = page_content
@@ -281,15 +537,26 @@ Create a website structure with appropriate pages and components for each page."
         
         # Call LLM to generate page and components
         logger.info(f"[PAGE GEN] Calling LLM for page generation...")
-        self.openai_client.set_max_completion_tokens(16000)
-        response, usage = self.openai_client.call_openai_api_structured(
+        # self.openai_client.set_max_completion_tokens(16000)
+        # response, usage = self.openai_client.call_openai_api_structured(
+        #     system_prompt,
+        #     user_prompt,
+        #     PageGenerationResponse,
+        #     model="o4-mini"
+        # )
+
+        self.google_client.set_max_completion_tokens(16000)
+        response, usage = self.google_client.call_openai_api_structured(
             system_prompt,
             user_prompt,
             PageGenerationResponse,
-            model="o4-mini"
+            model="gemini-2.5-flash"
         )
-        
+
+       
         print(f"Usage for page {page.name} generation: {usage}")
+        
+        
         
         # Post-validation: Fix any invalid icons in generated code
         logger.info(f"[PAGE GEN] Validating generated code...")
@@ -346,6 +613,7 @@ Create a website structure with appropriate pages and components for each page."
     def _get_available_ui_components(self, files: Dict[str, str]) -> List[str]:
         """Extract list of available UI component names from files"""
         ui_components = []
+        # ui_components_list = []
         for file_path in files.keys():
             if file_path.startswith("src/components/ui/") and file_path.endswith(".tsx"):
                 # Extract component name from path (e.g., "button" from "src/components/ui/button.tsx")
@@ -363,6 +631,52 @@ Create a website structure with appropriate pages and components for each page."
                 section_components.append(component_name)
         return sorted(section_components)
     
+
+    def _get_all_ui_components_usage_guide(self) -> str:
+        """
+        Get usage guide for all available UI components
+        
+        Returns:
+            Formatted string with all UI component usage details
+        """
+        try:
+            ui_components_path = Path("backend/app/templates/ui_components_slim.json")
+
+            if not ui_components_path.exists():
+                return "⚠️ UI components reference not available"
+
+            with open(ui_components_path, 'r', encoding='utf-8') as f:
+                ui_components_data = json.load(f)
+
+            # Expecting an array of entries with component_name, description, usage
+            if not isinstance(ui_components_data, list) or not ui_components_data:
+                return "⚠️ No UI components found in reference"
+
+            usage_guide = "AVAILABLE UI COMPONENTS REFERENCE:\n"
+            usage_guide += "=" * 50 + "\n\n"
+
+            for item in ui_components_data:
+                component_name = item.get("component_name", "")
+                description = item.get("description", "")
+                usage = item.get("usage", "")
+
+                if not component_name:
+                    continue
+
+                usage_guide += f"COMPONENT: {component_name}\n"
+                if description:
+                    usage_guide += f"Description: {description}\n\n"
+                if usage:
+                    usage_guide += f"Usage Example:\n{usage}\n"
+
+                usage_guide += "\n" + "-" * 30 + "\n\n"
+
+            return usage_guide
+            
+        except Exception as e:
+            logger.error(f"[UI COMPONENT] Error loading UI components reference: {str(e)}")
+            return "⚠️ Error loading UI components reference"
+
     def _create_page_generation_system_prompt(self) -> str:
         """Create system prompt for page generation"""
         
@@ -370,6 +684,77 @@ Create a website structure with appropriate pages and components for each page."
         safe_icons_list = format_icons_for_prompt()
         
         return f"""You are an expert React developer tasked with generating production-ready web application components. Your code must be professional, maintainable, and error-free.
+
+Make use of the following UI components reference to generate the page:
+{self._get_all_ui_components_usage_guide()}
+
+CRITICAL VALIDATION - READ THIS FIRST ⚠️⚠️⚠️
+
+Your code MUST pass TypeScript compilation with ZERO errors and ZERO warnings.
+The following errors will cause IMMEDIATE BUILD FAILURE:
+
+🚫 FORBIDDEN ERROR #1: Unused Variables/Props in Destructuring
+   ❌ ERROR: const bgClass = ...; // Declared but NEVER used in JSX
+   ❌ ERROR: experienceIcon: ExperienceIcon // Destructured prop but NEVER used
+   ❌ ERROR: {{ title, unused, data }}: Props // 'unused' is never referenced
+   ✅ FIX: Either USE the variable in your JSX OR remove it from destructuring
+   
+   Example of the error:
+   export function Biography({{ experienceIcon: ExperienceIcon }}: Props) {{
+     return <div>...</div>  // ExperienceIcon is NEVER used! ❌
+   }}
+   
+   Fixed version:
+   export function Biography({{ experienceIcon: ExperienceIcon }}: Props) {{
+     return <div><ExperienceIcon className="..." /></div>  // Now it's used ✅
+   }}
+   OR just remove it:
+   export function Biography({{ }}: Props) {{  // Don't destructure unused props ✅
+     return <div>...</div>
+   }}
+
+🚫 FORBIDDEN ERROR #2: Missing Required Props
+   ❌ ERROR: <Cta title="..." ctaLabel="..." /> // Missing required 'description' prop!
+   ✅ FIX: Check component interface and pass ALL required props
+   
+   Example of the error:
+   interface CtaProps {{
+     title: string;
+     description: string;  // REQUIRED (no ?)
+     ctaLabel?: string;    // Optional (has ?)
+   }}
+   <Cta title="Get Started" ctaLabel="Click" />  // ❌ Missing description!
+   
+   Fixed version:
+   <Cta 
+     title="Get Started" 
+     description="Join us today"  // ✅ All required props provided
+     ctaLabel="Click" 
+   />
+
+🚫 FORBIDDEN ERROR #3: Invalid Icon Names
+   ❌ ERROR: <Building className="..." />  // 'Building' doesn't exist!
+   ❌ ERROR: import {{ Building }} from 'lucide-react'  // Will fail!
+   ✅ FIX: Use Building2 from the verified icon list below
+
+🚫 FORBIDDEN ERROR #4: Unused Imports
+   ❌ ERROR: import {{ Camera, Heart, Star }} from 'lucide-react'; // Only using Heart
+   ✅ FIX: import {{ Heart }} from 'lucide-react';  // Only import what's used
+
+⚠️⚠️⚠️ EVERY SINGLE ONE of these errors will cause build failure ⚠️⚠️⚠️
+
+BEFORE generating ANY code, you MUST verify:
+✓ Every icon name exists in the verified list below (search it!)
+✓ Every variable/prop is actually USED in the return/JSX
+✓ Every import is actually USED in the component
+✓ Every component receives ALL required props (check the interface!)
+✓ Remove any unused code (props, variables, imports)
+
+MANDATORY VALIDATION STEPS:
+Step 1: When you destructure props {{ a, b, c }}, verify a, b, and c ALL appear in your JSX
+Step 2: When you write const x = ..., verify x appears in your JSX  
+Step 3: When you use <Component />, check Component's interface for required props
+Step 4: When you import an icon, verify it's in the safe icons list AND used in JSX
 
 Your task is to generate a complete page component with proper structure, imports, and styling using:
 TECHNOLOGY STACK:
@@ -385,10 +770,197 @@ TECHNOLOGY STACK:
 
 {safe_icons_list}
 
+🔴 ICON VALIDATION - ZERO TOLERANCE 🔴
+- ONLY use icon names from the list above
+- Icon names are CASE-SENSITIVE and EXACT
+- Common mistakes to AVOID:
+  ❌ Building (doesn't exist) → ✅ Building2
+  ❌ Circle (doesn't exist) → ✅ Circle or CircleDot
+  ❌ User (use cautiously) → ✅ UserCircle or UserRound
+- Before using ANY icon, CTRL+F search the list above to verify it exists
+- Using invalid icons will cause: error TS2304: Cannot find name 'IconName'
+
+TYPESCRIPT VALIDATION RULES (CRITICAL - ZERO TOLERANCE):
+
+1. **ONLY IMPORT WHAT YOU USE**
+   - WRONG: import {{ Camera, Heart, Star }} from 'lucide-react'  // Then only using Heart ❌
+   - CORRECT: import {{ Heart }} from 'lucide-react'  // Only import what's actually used ✓
+   - Every import MUST be used in the component code
+   - Remove ANY unused imports before generating
+
+2. **NO UNDEFINED TYPES**
+   - WRONG: icon: LucideIcon  // This type doesn't exist ❌
+   - CORRECT: icon: React.ReactNode  // Or string if passing icon name ✓
+   - Do NOT invent TypeScript types that don't exist
+   - Common valid types: string, number, boolean, React.ReactNode, React.FC, JSX.Element
+
+3. **NO UNUSED VARIABLES**
+   - WRONG: const testimonialsData = [...]; // Then never using it ❌
+   - CORRECT: const testimonialsData = [...]; <Testimonials testimonials={{testimonialsData}} /> ✓
+   - Every variable declared MUST be used
+   - If you declare data, pass it to the component
+
+4. **VALIDATE BEFORE GENERATING**
+   Before outputting code, check:
+   - [ ] Every import is used in the component
+   - [ ] Every variable is used in the JSX
+   - [ ] All types exist (no LucideIcon, no custom undefined types)
+   - [ ] All icon imports from lucide-react are actually rendered in JSX
+   
+5. **COMMON ERRORS TO AVOID**
+   ❌ Importing icons you don't use: import {{ X, Y, Z }} when only using Y
+   ❌ Declaring data variables you don't pass to components
+   ❌ Using undefined TypeScript types like LucideIcon
+   ❌ Importing React when not needed (React 19 auto-imports)
+
+6. **ICON USAGE PATTERN**
+   CORRECT Pattern:
+   ```tsx
+   import {{ Heart }} from 'lucide-react'  // Only import if used
+   
+   export function MyComponent() {{
+     return <Heart className="h-5 w-5" />  // Actually use it
+   }}
+   ```
+   
+   WRONG Pattern:
+   ```tsx
+   import {{ Heart, Star, Camera }} from 'lucide-react'  // Importing unused icons
+   
+   export function MyComponent() {{
+     return <Heart className="h-5 w-5" />  // Only Heart is used!
+   }}
+   ```
+
+7. **DATA VARIABLE PATTERN**
+   CORRECT Pattern:
+   ```tsx
+   const services = [/* data */]
+   return <Services items={{services}} />  // Use the variable
+   ```
+   
+   WRONG Pattern:
+   ```tsx
+   const services = [/* data */]
+   return <div>Hello</div>  // Variable never used!
+   ```
+
+8. **UNUSED VARIABLE PREVENTION**
+   This is one of the MOST COMMON errors. Follow these rules:
+   
+   ❌ WRONG - Variable declared but never used:
+   ```tsx
+   export function CallToAction({{ backgroundColor }}: Props) {{
+     const bgClass = backgroundColor === 'black' ? 'bg-black' : `bg-${{backgroundColor}}`;
+     // bgClass is NEVER used in the return!
+     return <div className="bg-blue-500">...</div>  // ERROR: bgClass unused
+   }}
+   ```
+   
+   ✅ CORRECT - Use the variable:
+   ```tsx
+   export function CallToAction({{ backgroundColor }}: Props) {{
+     const bgClass = backgroundColor === 'black' ? 'bg-black' : `bg-${{backgroundColor}}`;
+     return <div className={{bgClass}}>...</div>  // bgClass is USED ✓
+   }}
+   ```
+   
+   ✅ ALSO CORRECT - Don't declare it if you won't use it:
+   ```tsx
+   export function CallToAction({{ backgroundColor }}: Props) {{
+     // Use the prop directly instead
+     return <div className={{backgroundColor === 'black' ? 'bg-black' : `bg-${{backgroundColor}}`}}>...</div>
+   }}
+
+    Even if a prop is in your interface, don't destructure it if you won't use it.
+   
+   ❌ WRONG - Destructuring unused prop:
+   ```tsx
+   interface BiographyProps {{
+     imageUrl: string;
+     title: string;
+     experienceIcon: React.ReactNode;  // Defined in interface
+   }}
+   
+   export function Biography({{ imageUrl, title, experienceIcon: ExperienceIcon }}: BiographyProps) {{
+     // ExperienceIcon is NEVER used in the component!
+     return <div>{{title}}</div>  // ERROR: ExperienceIcon unused ❌
+   }}
+   ```
+   
+   ✅ CORRECT - Only destructure what you use:
+   ```tsx
+   export function Biography({{ imageUrl, title }}: BiographyProps) {{
+     // Only destructure props you actually use
+     return <div>{{title}}</div>  // ✓
+   }}
+   ```
+   
+   ✅ OR USE IT:
+   ```tsx
+   export function Biography({{ imageUrl, title, experienceIcon: ExperienceIcon }}: BiographyProps) {{
+     return (
+       <div>
+         {{title}}
+         {{ExperienceIcon}}  // Now it's used! ✓
+       </div>
+     )
+   }}
+   ```
+   
+   RULE: Only destructure props you will actually use in the component body.
+
+9. **REQUIRED PROPS MUST BE PROVIDED**
+   When calling a component, provide ALL required props (non-optional props).
+   
+   ❌ WRONG - Missing required prop:
+   ```tsx
+   // Cta.tsx defines:
+   interface CtaProps {{
+     title: string;
+     description: string;  // REQUIRED (no ?)
+     ctaLabel: string;
+   }}
+   
+   // Page.tsx uses:
+   <Cta 
+     title="Join Us" 
+     ctaLabel="Sign Up"
+     // Missing 'description' prop! ❌
+   />
+   ```
+   
+   ✅ CORRECT - Provide all required props:
+   ```tsx
+   <Cta 
+     title="Join Us" 
+     description="Start your journey today"  // ✓ All required props
+     ctaLabel="Sign Up"
+   />
+   ```
+   
+   ✅ OR MAKE IT OPTIONAL in the component:
+   ```tsx
+   // Cta.tsx - make optional if it should be:
+   interface CtaProps {{
+     title: string;
+     description?: string;  // Optional with ?
+     ctaLabel: string;
+   }}
+   
+   export function Cta({{ title, description = "Default description", ctaLabel }}: CtaProps) {{
+     return <div>{{description}}</div>  // Has default value
+   }}
+   ```
+   
+   RULE: Check the component interface - if a prop has no `?`, you MUST provide it.
+   ```
+   
+   RULE: If you declare a variable with const/let/var, it MUST appear in your JSX return.
 CRITICAL: You MUST ONLY use icons from the above list. Using any other icon will cause build errors.
 
 IMPORTANT RULES:
-1. **Page Component**: Generate a clean, functional React component for the requested page
+1. **Page Component**: Generate a clean, functional React component for the requested page. Ensure you build the components first before building the page. Making use of the properties in the components in the page.
 2. **Missing Components**: If any required section component (Header, Hero, Features, Team, Footer etc.) doesn't exist, create it in `new_components` array
 3. **Missing UI Components**: If you need a UI component (badge, avatar, etc.) that doesn't exist, create it following shadcn/ui patterns
 4. **Component Structure**:
@@ -399,17 +971,71 @@ IMPORTANT RULES:
    - Section components MUST use named exports: `export function ComponentName() {{}}`
    - Pages MUST use default exports: `export default function PageName() {{}}`
    - Imports MUST match the export style exactly
-6. **CRITICAL - Props Consistency**:
-   - When defining a component with props, ensure ALL pages using it pass those props
-   - If a component requires props like `navItems`, every usage MUST provide those props
-   - Define props with sensible defaults or make them required
-   - Example: `export function Header({{ navItems = [] }}: HeaderProps)` allows optional usage
+   - CRITICAL: Remove ALL unused imports. Every single import MUST be used in the code.
+   - CRITICAL: Do NOT use undefined types like 'LucideIcon'. Stick to valid TypeScript types.
+   - CRITICAL: Every variable declared MUST be used. No unused constants or data variables.
+   - ENSURE that All properties called in the code generated are defined in the section and ui components' file found in the @/components/ and @/components/ui/ directories
+   An Example:
+   If the page or section component uses the ui button defined as  "<button
+      className={{`inline-flex items-center justify-center px-4 py-2 bg-black text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500`}}
+      {{...props}}
+    >",
+    Then it must be used as "<Button className={{ valid class name values }} {{ valid props}} />" in the page or section component
+   
+6. **CRITICAL - Props Consistency and Matching**:
+   - When calling a component, prop names MUST EXACTLY MATCH the component's interface
+   - If component defines some value say `items` prop, call it with `items={{data}}`, NOT `styles={{data}}` or any other prop name not defined in the component
+   - The same rule applies for other props defined in the section components and the ui components
+   - **CRITICAL**: Check the component's interface BEFORE using it - look for props without `?` (those are REQUIRED)
+   - Define realistic test data (3-5 items) for all array/list props
+   - Pass ALL required props with correct names and values
+   - Example: Component has `items?: Item[]` → Page must pass `<Component items={{myItems}} />`
+   
+   **HOW TO CHECK IF A PROP IS REQUIRED:**
+   ```tsx
+   interface ComponentProps {{
+     title: string;        // REQUIRED - no question mark
+     description: string;  // REQUIRED - no question mark
+     ctaLabel?: string;    // OPTIONAL - has question mark
+   }}
+   ```
+   When using this component, you MUST provide title and description:
+   ```tsx
+   <Component title="Hello" description="World" />  // ✅ All required props
+   <Component title="Hello" />  // ❌ Missing required 'description'
+   ```
 7. **Style Consistency**: Use Tailwind CSS classes and follow modern UI/UX principles
 8. **TypeScript**: All components must have proper TypeScript types and interfaces
 9. **Responsive Design**: Ensure all components are mobile-first and responsive
 10. **Accessibility**: Follow ARIA standards and semantic HTML
 11. **CRITICAL - No Duplicates**: Never generate the same component twice. Check available components first.
 12. **CRITICAL - Icon Usage**: Only use icons from the verified list above. No exceptions.
+13. ENSURE TO FILL ALL VALUES IN THE "props" WITH REAL VALUES, NOT JUST EMPTY STRINGS OR NUMBERS.
+
+CRITICAL: PROP MATCHING RULES (NO ERRORS)
+RULE 1: PROP NAMES MUST MATCH COMPONENT INTERFACE
+When using a component, prop names must EXACTLY match the component's TypeScript interface.
+
+WRONG Examples (WILL CAUSE ERRORS):
+- Component has `items` → Page uses `<Features styles={{data}} />` ❌
+- Component has `testimonials` → Page uses `<Testimonials reviews={{data}} />` ❌
+- Component has `members` → Page uses `<Team people={{data}} />` ❌
+
+CORRECT Examples:
+- Component has `items` → Page uses `<Features items={{data}} />` ✓
+- Component has `testimonials` → Page uses `<Testimonials testimonials={{data}} />` ✓
+- Component has `members` → Page uses `<Team members={{data}} />` ✓
+
+RULE 2: ALWAYS DEFINE TEST DATA
+Every array/list prop must have 3-5 realistic items defined in the page:
+```tsx
+const services = [
+  {{ id: '1', title: 'Service 1', description: 'Description 1' }},
+  {{ id: '2', title: 'Service 2', description: 'Description 2' }},
+  {{ id: '3', title: 'Service 3', description: 'Description 3' }}
+]
+<Features items={{services}} />  // Pass with correct prop name
+```
 
 CRITICAL: EXPORT/IMPORT RULES (NO ERRORS)
 RULE 1: ONE EXPORT PER FILE
@@ -471,17 +1097,40 @@ UI primitives components: Named exports → import {{ Button }} from '@/componen
 Pages: Default exports → import HomePage from '@/pages/HomePage'
 
 
-PRE-GENERATION CHECKLIST
-Before generating code, verify:
-- Each component file has EXACTLY ONE export (named OR default, not both)
-- All imports match their corresponding export styles
-- Import paths are correct (@/components/, @/components/ui/)
-- No duplicate exports anywhere
-- All TypeScript types and interfaces are defined
-- Props passed to components match their type definitions
-- Components are responsive (mobile-first)
-- Accessibility standards are met
-- Code follows React best practices
+MANDATORY PRE-GENERATION CHECKLIST
+Before generating code, you MUST verify EVERY item below:
+
+ICON VALIDATION:
+□ Every icon I'm using appears in the verified icons list above
+□ Icon names are spelled EXACTLY as shown (Building2 not Building)
+□ All icons are imported from lucide-react
+□ All imported icons are actually rendered in JSX
+
+VARIABLE VALIDATION:
+□ Every const/let/var declared is used in the return statement
+□ No unused variables (check: does bgClass/userData/etc appear in JSX?)
+□ If declaring a variable, it MUST be used - otherwise remove it
+
+PROPS VALIDATION:
+□ Only destructure props that are actually used in the component
+□ If experienceIcon is destructured, it MUST be used in JSX
+□ When calling components, ALL required props are provided
+□ Check component interfaces - props without '?' are REQUIRED
+
+IMPORT VALIDATION:
+□ Every import is actually used in the component
+□ No unused icon imports (Camera imported but never rendered)
+□ Import style matches export style (named vs default)
+
+TYPESCRIPT VALIDATION:
+□ No undefined types (no LucideIcon, no invented types)
+□ All props interfaces are defined
+□ No 'any' types used
+
+EXPORT VALIDATION:
+□ Each component file has EXACTLY ONE export (named OR default, not both)
+□ Section components use named exports
+□ Pages use default exports
 
 
 QUALITY STANDARDS
@@ -495,6 +1144,10 @@ Your generated code must:
 - Follow modern React patterns
 - Be performant and optimized
 - Be maintainable and well-structured
+- Have ZERO unused imports (all imports must be used)
+- Have ZERO unused variables (all declared variables must be used)
+- Use ONLY defined TypeScript types (no LucideIcon or other undefined types)
+- All lucide-react icon imports must be rendered in JSX
 
 
 When in doubt:
@@ -516,7 +1169,86 @@ COMPONENT GUIDELINES:
 OUTPUT FORMAT:
 Return a JSON object with:
 - `page_content`: Complete page component code
-- `new_components`: Array of any new components needed (both section and UI components)"""
+- `new_components`: Array of any new components needed (both section and UI components)
+
+⚠️⚠️⚠️ FINAL WARNING BEFORE GENERATING ⚠️⚠️⚠️
+
+Before you output anything, manually verify:
+1. Every icon name is from the verified list (CTRL+F to check)
+2. Every variable (const/let) is used in the JSX return
+3. Every import is used in the code
+4. Only destructure props you actually use (no unused ExperienceIcon, etc.)
+5. When calling components, provide ALL required props (check for missing description, etc.)
+6. No undefined TypeScript types
+
+Common errors that will cause IMMEDIATE BUILD FAILURE:
+- Using "Building" instead of "Building2"
+- Declaring "const bgClass" and never using it
+- Importing "Camera, Heart, Star" but only using "Heart"
+- Using type "LucideIcon" which doesn't exist
+- Destructuring "experienceIcon: ExperienceIcon" but never using ExperienceIcon
+- Calling <Cta title="..." ctaLabel="..." /> without required 'description' prop
+
+If you generate code with these errors, the entire build will fail. Triple-check before outputting."""
+
+
+    def _create_page_generation_system_prompt1(self) -> str:
+        """Create system prompt for page generation"""
+        
+        # Get formatted list of safe icons
+        safe_icons_list = format_icons_for_prompt()
+        
+        return f"""You are an expert React + TypeScript developer. Generate a production-ready page component and any missing section/UI components.
+
+Make use of the following UI components reference to generate the page:
+{self._get_all_ui_components_usage_guide()}
+
+TECH + CONVENTIONS
+- React 19 + TypeScript (strict), Tailwind CSS, shadcn/ui (Radix), lucide-react icons, Vite.
+- Use working Unsplash image URLs (https://images.unsplash.com/...).
+- Use <a> for links (not next/link).
+
+HARD BUILD GATES (zero tolerance)
+- TypeScript compiles with 0 errors/warnings.
+- No unused variables, imports, or destructured props.
+- Provide all required props; prop names must exactly match interfaces.
+- Only import icons you actually render; icons must exist in the verified list and be case-sensitive.
+- No undefined types (e.g., no LucideIcon). Use valid types: string, number, boolean, React.ReactNode, JSX.Element.
+
+VERIFIED ICONS
+{safe_icons_list}
+
+PREFLIGHT CHECKLIST
+- Every declared variable appears in JSX.
+- Only destructure props you actually use.
+- Every import is used.
+- All required props are provided when invoking components.
+- All lucide-react icon imports are rendered in JSX and exist in the list above.
+
+COMPONENT + FILE RULES
+- Section components → src/components/<Name>.tsx; named export only: export function Name() {{}}.
+- UI components → src/components/ui/<name>.tsx; shadcn/ui pattern; named export.
+- Pages → default export only: export default function PageName() {{}}.
+- One export style per file; imports must match export style; no mixed/duplicate exports.
+- If a needed component is missing, include it in new_components; do not duplicate existing ones.
+
+PROPS + DATA
+- Prop names must match interfaces exactly; required props (no ?) must be provided.
+- For list props, define 3–5 realistic items and pass with the correct prop name (e.g., items={{{{data}}}}).
+- Fill all prop values with real values (no empty strings/placeholders).
+
+QUALITY
+- Accessible, responsive, semantic HTML, modern React patterns.
+- No any types; explicit typing only.
+- Import only what you use; render every imported icon.
+
+OUTPUT FORMAT (JSON)
+- page_content: complete page component code (default export).
+- new_components: array of any new components (path + contents) if required.
+
+Generate the code now, following the rules above.
+"""
+
     
     def _create_page_generation_user_prompt(
         self,
@@ -538,174 +1270,59 @@ Return a JSON object with:
         for nav_item in structure.navigation:
             nav_items.append(f"  - {nav_item.label}: {nav_item.path}")
         
-        prompt = f"""Generate a complete React page component with the following specifications:
+        prompt = f"""Generate a production-ready React page component.
 
-PAGE INFORMATION:
-- Page Name: {page.name}
-- Route Path: {page.path}
-- Page Title: {page.title}
+PAGE
+- Name: {page.name}
+- Route: {page.path}
+- Title: {page.title}
 - Description: {page.description}
 
-REQUIRED COMPONENTS ON THIS PAGE:
-{chr(10).join(component_details)}
-
-BUSINESS CONTEXT:
-- Business Type: {analysis.business_type}
+BUSINESS CONTEXT
+- Type: {analysis.business_type}
 - Industry: {analysis.industry}
-- Target Audience: {analysis.target_audience}
+- Audience: {analysis.target_audience}
 - Tone: {analysis.tone}
 - Primary CTA: {analysis.primary_cta}
 - Color Scheme: {structure.color_scheme}
 
-AVAILABLE UI COMPONENTS (can be imported from @/components/ui/<name>):
+REQUIRED SECTIONS
+{chr(10).join(component_details)}
+
+AVAILABLE UI COMPONENTS (@/components/ui/<name>)
 {', '.join(available_ui_components) if available_ui_components else 'None yet - generate as needed'}
 
-AVAILABLE SECTION COMPONENTS (can be imported from @/components/<Name>):
+AVAILABLE SECTION COMPONENTS (@/components/<Name>)
 {', '.join(available_section_components) if available_section_components else 'None yet - generate as needed'}
 
-WEBSITE NAVIGATION STRUCTURE:
+WEBSITE NAV
 {chr(10).join(nav_items) if nav_items else 'None - Single page website'}
 
-TASK:
-1. **Header Component Requirements**:
-   - If Header doesn't exist in available components, create it with these exact navigation items
-   - Header MUST accept optional props OR use the navigation structure above as default
-   - Example: `export function Header({{ logo = "{structure.name}" }}: HeaderProps)`
-   - Include proper navigation links matching the website structure above
-   
-2. **Footer Component Requirements**:
-   - If Footer doesn't exist, create a simple footer with copyright and basic links
-   - Footer can be static or accept minimal props
-   
-3. Create a complete page component for "{page.name}" by importing and using the section components
+TASK
+- Build a complete page for "{page.name}" by importing and using section components.
+- If a needed section/UI component is missing, create it and include in new_components (no duplicates).
+- Do not modify existing UI components; reuse them as-is.
 
-4. **Component Reuse**:
-   - DO NOT modify existing UI components - reuse them as-is
-   - Only create NEW components that don't exist yet
-   - Check available components list carefully before creating new ones
-   
-5. For any section component (Header, Hero, Features, Team, Footer etc.) that doesn't exist in available section components, create it and add to `new_components`
+HEADER/FOOTER
+- Implement <Header /> and <Footer />; usage is without props.
+- Define their values (brand, nav, cta, etc.) internally, using the website navigation above.
 
-6. For any UI component (badge, avatar, etc.) that doesn't exist in available UI components, create it following shadcn/ui patterns and add to `new_components`
+STRICT RULES
+- Prop names must exactly match component interfaces; provide all required props (no '?').
+- Only destructure props you actually use.
+- Define realistic data (3–5 items) for list props and pass with the correct name (e.g., items={{{{data}}}}).
+- Only use verified safe lucide icons (provided in system prompt); import only icons you render.
+- No unused variables or imports.
+- Section components: named export; UI components: named export; pages: default export.
+- One export style per file; imports must match export style.
+- TypeScript strict; no 'any'. Accessible, responsive, semantic HTML.
+- Use Tailwind; use <a> for links.
 
-7. **Props Consistency**:
-   - Ensure component prop definitions match their usage across all pages
-   - Use sensible defaults for props to allow flexible usage
-   - Example: If Header needs navItems, define it as `navItems = [default array]`
-   
-8. Ensure the page is visually appealing, responsive, and matches the business context
+OUTPUT (JSON)
+- page_content: complete page component (default export).
+- new_components: any created components (path + contents).
 
-9. Use proper TypeScript types and modern React patterns
-
-10. **CRITICAL**: Only use icons from the verified safe icons list provided above
-
-EXAMPLE COMPONENT STRUCTURE:
-
-Header Component with Navigation (src/components/Header.tsx):
-```tsx
-import React from 'react'
-import {{ Button }} from '@/components/ui/button'
-
-interface NavItem {{
-  label: string
-  path: string
-}}
-
-interface HeaderProps {{
-  brandName?: string
-  navItems?: NavItem[]
-  ctaText?: string
-}}
-
-export function Header({{
-  brandName = "My Business",
-  navItems = [],
-  ctaText = "Get Started"
-}}: HeaderProps) {{
-  return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
-      <div className="container flex h-16 items-center justify-between">
-        <a href="/" className="text-xl font-bold">{{brandName}}</a>
-        <nav className="hidden md:flex items-center gap-6">
-          {{navItems.map((item) => (
-            <a key={{item.path}} href={{item.path}} className="text-sm font-medium hover:underline">
-              {{item.label}}
-            </a>
-          ))}}
-        </nav>
-        <Button size="sm">{{ctaText}}</Button>
-      </div>
-    </header>
-  )
-}}
-```
-
-Hero Section Component (src/components/Hero.tsx):
-```tsx
-import React from 'react'
-import {{ Button }} from '@/components/ui/button'
-import {{ ArrowRight }} from 'lucide-react'
-
-interface HeroProps {{
-  title?: string
-  subtitle?: string
-  ctaText?: string
-}}
-
-export function Hero({{
-  title = "Default Title",
-  subtitle = "Default Subtitle",
-  ctaText = "Get Started"
-}}: HeroProps) {{
-  return (
-    <section className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h1 className="text-4xl sm:text-6xl font-bold mb-6">{{title}}</h1>
-        <p className="text-xl mb-8">{{subtitle}}</p>
-        <Button size="lg">
-          {{ctaText}}
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
-      </div>
-    </section>
-  )
-}}
-```
-
-UI Component (src/components/ui/badge.tsx) - Follow shadcn/ui pattern:
-```tsx
-import * as React from "react"
-import {{ cva, type VariantProps }} from "class-variance-authority"
-import {{ cn }} from "@/lib/utils"
-
-const badgeVariants = cva(
-  "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors",
-  {{
-    variants: {{
-      variant: {{
-        default: "bg-primary text-primary-foreground",
-        secondary: "bg-secondary text-secondary-foreground",
-      }}
-    }},
-    defaultVariants: {{ variant: "default" }}
-  }}
-)
-
-export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof badgeVariants> {{}}
-
-function Badge({{ className, variant, ...props }}: BadgeProps) {{
-  return (
-    <div className={{cn(badgeVariants({{ variant }}), className)}} {{...props}} />
-  )
-}}
-
-export {{ Badge, badgeVariants }}
-```
-
-Generate the page and all necessary components now."""
-        
+Generate now."""
         return prompt
 
 

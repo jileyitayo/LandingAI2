@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List
 
 from app.services.prompt_open_ai import PromptOpenAI
+from app.config import settings
 
 class BusinessAnalysis(BaseModel):
     """Minimal business analysis for accurate website template and content generation"""
@@ -56,6 +57,8 @@ Modern glassmorphism effects
 class BusinessAnalyzer():
     def __init__(self):
         self.client = PromptOpenAI()
+        self.google_client = PromptOpenAI(api_key=settings.google_api_key, url="https://generativelanguage.googleapis.com/v1beta/openai/")
+
 
     def generate_business_analysis(self, user_prompt: str) -> BusinessAnalysis:
         """
@@ -84,8 +87,11 @@ class BusinessAnalyzer():
     - content_sections: Logical flow of homepage sections
 
     Infer intelligently from minimal prompts based on industry standards."""
-        self.client.set_max_completion_tokens(6000)
-        self.business_analysis, usage = self.client.call_openai_api_structured(system_prompt, user_prompt, BusinessAnalysis)
+        # self.client.set_max_completion_tokens(6000)
+        # self.business_analysis, usage = self.client.call_openai_api_structured(system_prompt, user_prompt, BusinessAnalysis)
+
+        self.google_client.set_max_completion_tokens(6000)
+        self.business_analysis, usage = self.google_client.call_openai_api_structured(system_prompt, user_prompt, BusinessAnalysis, model="gemini-2.5-flash")
         print(f"Usage for business analysis: {usage}")
         return self.business_analysis
 

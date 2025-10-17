@@ -5,10 +5,16 @@ Validates generated React/TypeScript code for common errors.
 
 import re
 import logging
-from typing import Dict, List, Tuple, Set
+from typing import Dict, List, Tuple, Set, Any
 from app.services.icon_validator import is_valid_icon, validate_and_fix_icon
 
 logger = logging.getLogger(__name__)
+
+# Import for type hints
+try:
+    from app.services.react_models import WebsiteStructure
+except ImportError:
+    WebsiteStructure = Any  # Fallback if import fails
 
 
 class CodeValidationError:
@@ -53,6 +59,9 @@ class CodeValidator:
         # Cross-file validation
         self._validate_imports_exports(files)
         self._validate_no_duplicates(files)
+        self._validate_component_props(files)
+        self._validate_unused_imports(files)
+        self._validate_undefined_variables(files)
         
         logger.info(f"[CODE VALIDATOR] Found {len(self.errors)} errors and {len(self.warnings)} warnings")
         
@@ -174,7 +183,7 @@ class CodeValidator:
         """Validate that imports match exports across files"""
         
         # Build export map
-        export_map: Dict[str, Dict[str, str]] = {}  # file_path -> {export_name: export_type}
+        export_map: Dict[str, Dict[str, str]] = {}  # file_path -> {export_name: export_kind('default'|'named'|'type')}
         
         for file_path, content in files.items():
             if not (file_path.endswith('.tsx') or file_path.endswith('.ts')):
@@ -190,6 +199,15 @@ class CodeValidator:
             named_exports = re.findall(r"export\s+(?:function|const)\s+(\w+)", content)
             for export_name in named_exports:
                 export_map[file_path][export_name] = 'named'
+
+            # Find type/interface exports
+            type_exports = re.findall(r"export\s+type\s+(\w+)", content)
+            for export_name in type_exports:
+                export_map[file_path][export_name] = 'type'
+
+            interface_exports = re.findall(r"export\s+interface\s+(\w+)", content)
+            for export_name in interface_exports:
+                export_map[file_path][export_name] = 'type'
             
             # Find re-exports
             reexport_pattern = r"export\s+\{([^}]+)\}"
@@ -224,19 +242,39 @@ class CodeValidator:
                     # Check named imports
                     if named_imports:
                         import_names = [n.strip() for n in named_imports.split(',')]
-                        for name in import_names:
-                            if name not in exports:
+                        for raw_name in import_names:
+                            # Normalize 'type' imports and aliases: e.g., "type Project as ProjectType"
+                            # Capture optional 'type' prefix, base name, and optional alias
+                            m = re.match(r"^(?:type\s+)?(\w+)(?:\s+as\s+\w+)?$", raw_name.strip())
+                            if m:
+                                base_name = m.group(1)
+                                is_type_import = raw_name.strip().startswith('type ')
+                            else:
+                                base_name = raw_name.strip()
+                                is_type_import = False
+
+                            if base_name not in exports:
                                 self.errors.append(CodeValidationError(
                                     file_path,
                                     "import_export_mismatch",
-                                    f"Named import '{name}' from '{import_path}' not found. Available exports: {list(exports.keys())}"
+                                    f"Named import '{raw_name}' from '{import_path}' not found. Available exports: {list(exports.keys())}"
                                 ))
-                            elif exports[name] != 'named':
-                                self.errors.append(CodeValidationError(
-                                    file_path,
-                                    "import_export_mismatch",
-                                    f"'{name}' is exported as default but imported as named"
-                                ))
+                            else:
+                                export_kind = exports[base_name]
+                                # If importing as value but export is type-only
+                                if not is_type_import and export_kind == 'type':
+                                    self.errors.append(CodeValidationError(
+                                        file_path,
+                                        "import_export_mismatch",
+                                        f"'{base_name}' is exported as a type but imported as a value"
+                                    ))
+                                # If importing as type but export is value-only
+                                if is_type_import and export_kind != 'type':
+                                    self.errors.append(CodeValidationError(
+                                        file_path,
+                                        "import_export_mismatch",
+                                        f"'{base_name}' is not a type export in '{import_path}'"
+                                    ))
                     
                     # Check default import
                     if default_import:
@@ -288,6 +326,213 @@ class CodeValidator:
             return False
         
         return True
+    
+    def _validate_component_props(self, files: Dict[str, str]):
+        """Validate that component props are used correctly in pages"""
+        
+        # Build a map of component prop interfaces
+        component_props: Dict[str, Dict[str, bool]] = {}  # component_name -> {prop_name: is_optional}
+        
+        for file_path, content in files.items():
+            if not file_path.startswith('src/components/') or file_path.startswith('src/components/ui/'):
+                continue
+            if not file_path.endswith('.tsx'):
+                continue
+            
+            # Extract component name
+            component_name = file_path.split('/')[-1].replace('.tsx', '')
+            
+            # Extract props from interface (e.g., FeaturesProps, TestimonialsProps)
+            # Look for interface ComponentNameProps { prop1: type; prop2: type; }
+            interface_pattern = rf"interface\s+{component_name}Props\s*{{\s*([^}}]+)}}"
+            interface_match = re.search(interface_pattern, content, re.DOTALL)
+            
+            if interface_match:
+                interface_body = interface_match.group(1)
+                # Extract prop names with optional flag (handles optional props with ?)
+                prop_pattern = r"(\w+)(\??):"
+                props = {}
+                for match in re.finditer(prop_pattern, interface_body):
+                    prop_name = match.group(1)
+                    is_optional = match.group(2) == '?'
+                    props[prop_name] = is_optional
+                component_props[component_name] = props
+        
+        # Now check pages to see if they use correct prop names
+        for file_path, content in files.items():
+            if not file_path.startswith('src/pages/'):
+                continue
+            if not file_path.endswith('.tsx'):
+                continue
+            
+            # Find component usages: <ComponentName prop={value} /> or multi-line
+            for component_name, expected_props in component_props.items():
+                # Match both single-line and multi-line component usage
+                # Pattern handles: <Component prop="value" /> and <Component\n  prop="value"\n/>
+                component_usage_pattern = rf"<{component_name}[\s\n]+([^/>]*?)(?:/>|>)"
+                matches = re.finditer(component_usage_pattern, content, re.DOTALL)
+                
+                for match in matches:
+                    props_string = match.group(1)
+                    # Extract prop names used
+                    used_prop_pattern = r"(\w+)="
+                    used_props = set(re.findall(used_prop_pattern, props_string))
+                    
+                    # Check if used props are valid
+                    for used_prop in used_props:
+                        if used_prop not in expected_props:
+                            # Create a helpful error message
+                            valid_props_str = ', '.join(sorted(expected_props.keys()))
+                            self.errors.append(CodeValidationError(
+                                file_path,
+                                "prop_name_mismatch",
+                                f"Component '{component_name}' called with invalid prop '{used_prop}'. "
+                                f"Valid props: {valid_props_str}"
+                            ))
+                    
+                    # Check for missing required props
+                    required_props = {k for k, v in expected_props.items() if not v}
+                    missing_required = required_props - used_props
+                    
+                    if missing_required:
+                        self.warnings.append(CodeValidationError(
+                            file_path,
+                            "missing_required_prop",
+                            f"Component '{component_name}' missing required props: {', '.join(missing_required)}",
+                            "warning"
+                        ))
+    
+    def _validate_unused_imports(self, files: Dict[str, str]):
+        """Validate that all imports are actually used"""
+        
+        for file_path, content in files.items():
+            if not (file_path.endswith('.tsx') or file_path.endswith('.ts')):
+                continue
+            
+            # Extract all imports
+            import_pattern = r"import\s+(?:\{([^}]+)\}|(\w+))\s+from"
+            imports = re.finditer(import_pattern, content)
+            
+            for match in imports:
+                named_imports = match.group(1)
+                default_import = match.group(2)
+                
+                if named_imports:
+                    # Check each named import
+                    import_names = [n.strip() for n in named_imports.split(',')]
+                    for import_name in import_names:
+                        # Remove any alias (e.g., "Button as Btn" -> "Btn")
+                        actual_name = import_name.split(' as ')[-1].strip()
+                        
+                        # Check if used in the file (exclude the import line itself)
+                        usage_pattern = rf"\b{re.escape(actual_name)}\b"
+                        # Count occurrences (should be > 1 because import line counts as 1)
+                        occurrences = len(re.findall(usage_pattern, content))
+                        
+                        if occurrences <= 1:
+                            self.warnings.append(CodeValidationError(
+                                file_path,
+                                "unused_import",
+                                f"Import '{actual_name}' is not used",
+                                "warning"
+                            ))
+                
+                elif default_import:
+                    # Check default import
+                    usage_pattern = rf"\b{re.escape(default_import)}\b"
+                    occurrences = len(re.findall(usage_pattern, content))
+                    
+                    if occurrences <= 1:
+                        self.warnings.append(CodeValidationError(
+                            file_path,
+                            "unused_import",
+                            f"Import '{default_import}' is not used",
+                            "warning"
+                        ))
+    
+    def _validate_undefined_variables(self, files: Dict[str, str]):
+        """Basic check for potentially undefined variables"""
+        
+        for file_path, content in files.items():
+            if not file_path.endswith('.tsx'):
+                continue
+            
+            # Look for common undefined variable patterns
+            # This is a simplified check - full static analysis would require AST parsing
+            
+            # Check for variables used in JSX that might not be defined
+            jsx_variable_pattern = r"\{(\w+)\}"
+            jsx_variables = set(re.findall(jsx_variable_pattern, content))
+            
+            # Extract defined variables (const, let, var, function, parameters)
+            defined_pattern = r"(?:const|let|var|function)\s+(\w+)"
+            defined_vars = set(re.findall(defined_pattern, content))
+            
+            # Extract function parameters
+            param_pattern = r"function\s+\w+\s*\(([^)]*)\)"
+            params = re.findall(param_pattern, content)
+            for param_list in params:
+                if param_list.strip():
+                    # Extract parameter names (handle destructuring and types)
+                    param_names = re.findall(r"(\w+)(?:\??\s*:|,|\))", param_list)
+                    defined_vars.update(param_names)
+            
+            # Common built-in/library values to ignore
+            builtins = {'props', 'children', 'className', 'style', 'key', 'ref', 
+                       'onClick', 'onChange', 'onSubmit', 'value', 'id', 'name',
+                       'true', 'false', 'null', 'undefined', 'console', 'window',
+                       'document', 'Array', 'Object', 'String', 'Number', 'Boolean'}
+            
+            # Check for potentially undefined variables
+            for var in jsx_variables:
+                if var not in defined_vars and var not in builtins and var[0].islower():
+                    self.warnings.append(CodeValidationError(
+                        file_path,
+                        "potentially_undefined",
+                        f"Variable '{var}' used in JSX but may not be defined",
+                        "warning"
+                    ))
+    
+    def validate_navigation_pages_sync(self, structure: 'WebsiteStructure') -> Tuple[List[str], List[str]]:
+        """
+        Validate that navigation items match pages in the structure
+        
+        Args:
+            structure: WebsiteStructure with pages and navigation
+            
+        Returns:
+            Tuple of (errors, warnings) as string lists
+        """
+        errors = []
+        warnings = []
+        
+        page_paths = {page.path for page in structure.pages}
+        nav_paths = {nav.path for nav in structure.navigation}
+        
+        # Find navigation items with no corresponding page
+        missing_pages = nav_paths - page_paths
+        
+        # Find pages without navigation (excluding utility pages)
+        utility_paths = {'/', '/404', '/privacy', '/terms', '/sitemap'}
+        missing_nav = page_paths - nav_paths - utility_paths
+        
+        # Report errors for orphaned navigation
+        for path in missing_pages:
+            nav_item = next((n for n in structure.navigation if n.path == path), None)
+            if nav_item:
+                errors.append(
+                    f"Navigation item '{nav_item.label}' links to {path} but page doesn't exist"
+                )
+        
+        # Report warnings for pages without navigation
+        for path in missing_nav:
+            page = next((p for p in structure.pages if p.path == path), None)
+            if page:
+                warnings.append(
+                    f"Page '{page.name}' ({path}) exists but has no navigation item"
+                )
+        
+        return errors, warnings
 
 
 def fix_lucide_icons_in_content(content: str) -> Tuple[str, List[str]]:
@@ -333,7 +578,6 @@ if __name__ == "__main__":
     print("=== Code Validator Test ===\n")
     
     test_content = """
-import React from 'react'
 import { Button } from '@/components/ui/button'
 import { Handshake, Heart } from 'lucide-react'
 

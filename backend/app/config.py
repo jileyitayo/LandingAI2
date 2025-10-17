@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     # OpenAI (optional for initial setup)
     openai_api_key: str = ""
+    google_api_key: str = ""
 
     # Stripe (optional for initial setup)
     stripe_secret_key: str = ""
@@ -32,7 +33,13 @@ class Settings(BaseSettings):
     cors_origins: Union[list[str], str] = ["http://localhost:3000"]
 
     # Set's open ai calls to use already existing data instead of generating new data
-    training_wheels: bool = False 
+    training_wheels: bool = False
+    
+    # React Website Generation Validation
+    enable_build_validation: bool = True  # Enable actual npm build testing
+    max_validation_retries: int = 3  # Maximum retry attempts for fixing validation errors
+    max_build_retries: int = 2  # Maximum retry attempts for fixing build errors
+    build_timeout: int = 120  # Build timeout in seconds 
 
     @field_validator("cors_origins", mode="before")
     @classmethod
