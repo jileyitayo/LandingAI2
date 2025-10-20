@@ -23,14 +23,14 @@ class PromptOpenAI:
     def set_url(self, url: str):
         self.url = url
 
-    def call_openai_api(self, system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
+    def call_openai_api(self, system_prompt: str, user_prompt: str, temperature: float = 0.7, model: str = "gpt-4o-mini") -> str:
         """Call OpenAI API with retry logic and return raw string content."""
         for attempt in range(self.max_retries):
             try:
                 logger.info(f"Sending request to OpenAI (attempt {attempt + 1}/{self.max_retries})")
                 if self.model == "gpt-5-mini" or self.model == "gpt-5":
                     response = self.client.chat.completions.create(
-                        model=self.model,
+                        model=model,
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
@@ -40,7 +40,7 @@ class PromptOpenAI:
                     )
                 else:
                     response = self.client.chat.completions.create(
-                        model=self.model,
+                        model=model,
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
@@ -50,7 +50,13 @@ class PromptOpenAI:
                     )
                 logger.info("OpenAI API call successful")
                 # Return raw assistant content for downstream code extraction
-                return response.choices[0].message.content
+                # Get actual token usage
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+                return response.choices[0].message.content, usage
             
             except OpenAIError as e:
                 if attempt < self.max_retries - 1:

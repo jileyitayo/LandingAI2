@@ -323,15 +323,15 @@ RELEVANT BUILD OUTPUT:
 Return the complete fixed file content. Make sure to fix ALL the build errors listed above."""
 
         try:
-            self.openai_client.set_max_completion_tokens(4000)
-            
+            self.openai_client.set_max_completion_tokens(6000)
+            logger.info(f"Fixing build errors in {file_path}")
             # Call LLM to fix the code
-            response = self.openai_client.call_openai_api(
+            response, usage = self.openai_client.call_openai_api(
                 system_prompt,
                 user_prompt,
-                model="gpt-5-mini"
+                model="gemini-2.5-flash"
             )
-            
+            logger.info(f"Usage for build error fixing: {usage}")
             # Extract code from response
             fixed_content = self._extract_code_from_response(response)
             

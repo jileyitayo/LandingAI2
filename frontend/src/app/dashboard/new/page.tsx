@@ -141,9 +141,9 @@ export default function DashboardPage() {
       // Could navigate to the project or show success message
       setPrompt("");
 
-      if (result.status === 'completed') {
-        router.push(`/dashboard/projects/${result.project_id}`);
-      }
+      // if (result.status === 'completed') {
+      //   router.push(`/dashboard/projects/${result.project_id}`);
+      // }
       
     }
   };
@@ -503,13 +503,32 @@ export default function DashboardPage() {
                     d="M5 13l4 4L19 7"
                   />
                 </svg>
-                <div className="ml-3">
+                <div className="ml-3 flex-1">
                   <h3 className="text-sm font-medium text-green-800">
                     Website Generated Successfully!
                   </h3>
                   <p className="mt-1 text-sm text-green-700">
                     Your website is ready to use.
                   </p>
+                  <button
+                    onClick={() => router.push(`/dashboard/projects/${generatedProject.project_id}`)}
+                    className="mt-3 inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200"
+                  >
+                    View Project
+                    <svg
+                      className="ml-2 w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 7l5 5m0 0l-5 5m5-5H6"
+                      />
+                    </svg>
+                  </button>
                 </div>
               </div>
             </div>

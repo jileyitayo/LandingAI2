@@ -52,7 +52,7 @@ def write_files_to_disk(files: Dict[str, str], base_path: str) -> Dict[str, str]
     written_files = {}
     
     logger.info(f"[FILE WRITER] Writing {len(files)} files to {base_dir.absolute()}")
-    print(f"[FILE WRITER] Writing {len(files)} files to {base_dir.absolute()}")
+    # print(f"[FILE WRITER] Writing {len(files)} files to {base_dir.absolute()}")
     
     for relative_path, content in files.items():
         # Create full path
@@ -68,15 +68,15 @@ def write_files_to_disk(files: Dict[str, str], base_path: str) -> Dict[str, str]
             
             written_files[relative_path] = str(full_path.absolute())
             logger.debug(f"[FILE WRITER] ✓ Written: {relative_path}")
-            print(f"[FILE WRITER] ✓ Written: {relative_path}")
+            # print(f"[FILE WRITER] ✓ Written: {relative_path}")
             
         except Exception as e:
             logger.error(f"[FILE WRITER] ✗ Failed to write {relative_path}: {str(e)}")
-            print(f"[FILE WRITER] ✗ Failed to write {relative_path}: {str(e)}")
+            # print(f"[FILE WRITER] ✗ Failed to write {relative_path}: {str(e)}")
             raise
     
     logger.info(f"[FILE WRITER] ✓ Successfully written all {len(written_files)} files to disk")
-    print(f"[FILE WRITER] ✓ Successfully written all {len(written_files)} files to disk")
+    # print(f"[FILE WRITER] ✓ Successfully written all {len(written_files)} files to disk")
     logger.info(f"[FILE WRITER] Location: {base_dir.absolute()}")
     
     return written_files
@@ -123,26 +123,26 @@ class ReactWebsiteGenerator:
         # Step 1: Analyze business requirements
         logger.info("[REACT GEN] Analyzing business requirements...")
         business_analysis = self.business_analyzer.generate_business_analysis(prompt)
-        print(f"Business analysis: \n{business_analysis.model_dump_json(indent=2)}")
+        # print(f"Business analysis: \n{business_analysis.model_dump_json(indent=2)}")
         
         # Step 2: Generate website structure
         logger.info("[REACT GEN] Generating website structure...")
         website_structure = self._generate_structure_from_analysis(business_analysis)
 
-        print(f"Website structure: \n{website_structure.model_dump_json(indent=2)}")
+        # print(f"Website structure: \n{website_structure.model_dump_json(indent=2)}")
         
         # Validate navigation matches pages
         logger.info("[REACT GEN] Validating structure consistency...")
         self._validate_structure_consistency(website_structure)
         
         # Debug: Write schema and structure to files
-        with open('/tmp/website_structure_schema.json', 'w') as f:
-            json.dump(website_structure.model_json_schema(), f, indent=2)
+        # with open('/tmp/website_structure_schema.json', 'w') as f:
+        #     json.dump(website_structure.model_json_schema(), f, indent=2)
         
-        with open('/tmp/website_structure_data.json', 'w') as f:
-            json.dump(website_structure.model_dump(), f, indent=2)
+        # with open('/tmp/website_structure_data.json', 'w') as f:
+        #     json.dump(website_structure.model_dump(), f, indent=2)
         
-        logger.info("[REACT GEN] ✓ Debug files written to /tmp/website_structure_*.json")
+        # logger.info("[REACT GEN] ✓ Debug files written to /tmp/website_structure_*.json")
         
         # Step 3: Generate file contents
         logger.info("[REACT GEN] Generating React files...")
@@ -254,7 +254,7 @@ Value Propositions:
 {chr(10).join(f"- {vp}" for vp in analysis.value_propositions)}
 
 Create a website structure with appropriate pages and components for each page."""
-        self.google_client.set_max_completion_tokens(6000)
+        self.google_client.set_max_completion_tokens(7000)
         response, usage = self.google_client.call_openai_api_structured(
             system_prompt,
             user_prompt,
