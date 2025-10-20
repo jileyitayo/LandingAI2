@@ -352,7 +352,7 @@ Required Backend Files (should exist):
 
 ```
 ✅ backend/app/routers/deployment.py
-✅ backend/app/services/deployment.py
+✅ backend/app/services/vercel_deployer.py
 ✅ frontend/src/lib/api.ts (deployment methods)
 ```
 

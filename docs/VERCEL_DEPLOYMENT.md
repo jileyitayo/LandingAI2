@@ -8,10 +8,11 @@ This document describes the Vercel deployment integration for deploying projects
 
 ### Backend Components
 
-1. **Deployment Service** (`app/services/deployment.py`)
-   - `VercelDeploymentService`: Main service class for Vercel API integration
+1. **Deployment Service** (`app/services/vercel_deployer.py`)
+   - `VercelDeployer`: Main service class for Vercel API integration
    - Handles authentication with Vercel API token
-   - Generates static files from project content
+   - Generates static files from project content (HTML/CSS/JS)
+   - Deploys React projects from database files
    - Manages deployment lifecycle
 
 2. **Deployment Router** (`app/routers/deployment.py`)

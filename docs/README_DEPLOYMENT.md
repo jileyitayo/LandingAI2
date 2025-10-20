@@ -20,10 +20,10 @@ The Deployment Service handles deploying projects to Vercel using the Vercel API
 ### Basic Deployment
 
 ```python
-from app.services.deployment import VercelDeploymentService
+from app.services.vercel_deployer import VercelDeployer
 
 # Initialize service
-service = VercelDeploymentService()
+service = VercelDeployer()
 
 # Deploy a project
 result = await service.deploy_website(project_id="proj_123")
@@ -93,7 +93,7 @@ The service handles various error scenarios:
 ```python
 # Missing API token
 try:
-    service = VercelDeploymentService()
+    service = VercelDeployer()
 except VercelDeploymentError as e:
     print(f"Configuration error: {e}")
 ```
@@ -171,11 +171,11 @@ logger.error(f"Vercel deployment failed: {error_message}")
 
 ```python
 import pytest
-from app.services.deployment import VercelDeploymentService
+from app.services.vercel_deployer import VercelDeployer
 
 @pytest.mark.asyncio
 async def test_deploy_website():
-    service = VercelDeploymentService()
+    service = VercelDeployer()
     result = await service.deploy_website(project_id="test_proj")
     
     assert result["deployment_id"]
@@ -188,7 +188,7 @@ async def test_deploy_website():
 ```python
 @pytest.mark.asyncio
 async def test_full_deployment_lifecycle():
-    service = VercelDeploymentService()
+    service = VercelDeployer()
     
     # Deploy
     deploy_result = await service.deploy_website(project_id)

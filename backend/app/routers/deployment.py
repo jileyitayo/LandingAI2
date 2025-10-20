@@ -11,7 +11,7 @@ import logging
 from app.utils.auth import get_current_user
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import log_action
-from app.services.deployment import VercelDeploymentService, VercelDeploymentError
+from app.services.vercel_deployer import VercelDeployer, VercelDeploymentError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["deployment"])
@@ -63,7 +63,7 @@ async def perform_deployment(project_id: str, user_id: str):
     This runs asynchronously to avoid blocking the request.
     """
     try:
-        deployment_service = VercelDeploymentService()
+        deployment_service = VercelDeployer()
         await deployment_service.deploy_website(project_id)
     except Exception as e:
         logger.error(f"Background deployment failed for project {project_id}: {str(e)}")
@@ -109,21 +109,21 @@ async def deploy_project(
         verify_project_ownership(project, user_id)
         
         # Check if project has content to deploy
-        if not project.get("html_content"):
+        if not project.get("project_type") == "react":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Project must have HTML content to deploy. Please generate or add content first."
+                detail="Project must be a React project to deploy. Please generate or add content first."
             )
         
         # Check if project generation is still in progress
-        if project.get("generation_status") == "generating":
+        if project.get("generation_status") != "completed":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Project generation is still in progress. Please wait until it completes."
             )
         
         # Initialize deployment service
-        deployment_service = VercelDeploymentService()
+        deployment_service = VercelDeployer()
         
         # Deploy the project
         logger.info(f"Starting deployment for project {project_id}")
@@ -187,7 +187,7 @@ async def delete_project_deployment(
             }
             
         # Initialize deployment service
-        deployment_service = VercelDeploymentService()
+        deployment_service = VercelDeployer()
         
         # Delete deployment from Vercel
         logger.info(f"Deleting deployment {deployment_id} for project {project_id}")
@@ -271,7 +271,7 @@ async def get_project_deployment_status(
             )
         
         # Initialize deployment service
-        deployment_service = VercelDeploymentService()
+        deployment_service = VercelDeployer()
         
         # Get deployment status from Vercel
         try:
