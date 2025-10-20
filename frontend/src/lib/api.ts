@@ -468,6 +468,33 @@ export const api = {
       }),
 
     /**
+     * Download React project as ZIP file
+     * Requires: Authorization header with valid access token
+     * @param id - Project ID
+     * @returns Promise that resolves with the download response
+     */
+    download: async (id: string): Promise<Response> => {
+      const token = await getAccessToken();
+      
+      const response = await fetch(`${API_BASE_URL}/api/v1/projects/${id}/download`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new ApiError(
+          response.status,
+          errorData.detail || response.statusText,
+          errorData
+        );
+      }
+      return response;
+    },
+
+    /**
      * Publish/Deploy project
      * Requires: Authorization header with valid access token
      */

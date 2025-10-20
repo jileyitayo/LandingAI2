@@ -4,14 +4,18 @@ API endpoints for project CRUD operations.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 import uuid
 import logging
+import zipfile
+import io
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import log_action
 from app.utils.auth import get_current_user
+from app.services.project_file_manager import project_file_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -481,5 +485,87 @@ async def duplicate_project(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to duplicate project"
+        )
+
+
+@router.get("/{project_id}/download")
+@log_action(action_type='READ', target_resource_type='project_download')
+async def download_project(
+    project_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Download a React project as a ZIP file.
+    
+    Only the project owner can download the project.
+    Returns a ZIP file containing all project files.
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    
+    try:
+        # Fetch project details
+        response = supabase.table("projects").select("*").eq("id", project_id).execute()
+        
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        project = response.data[0]
+        verify_project_ownership(project, user_id)
+        
+        # Check if it's a React project
+        if project.get("project_type") != "react":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Download is only available for React projects"
+            )
+        
+        # Get all project files
+        files = await project_file_manager.get_project_files(project_id)
+        
+        if not files:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No files found for this project"
+            )
+        
+        # Create ZIP file in memory
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for file_path, file_content in files.items():
+                # Add file to ZIP
+                zip_file.writestr(file_path, file_content)
+        
+        # Reset buffer position
+        zip_buffer.seek(0)
+        
+        # Create filename
+        project_name = project.get("name", "react-project")
+        # Sanitize filename
+        safe_name = "".join(c for c in project_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        safe_name = safe_name.replace(' ', '-')
+        filename = f"{safe_name}.zip"
+        
+        # Return ZIP file as streaming response
+        return StreamingResponse(
+            io.BytesIO(zip_buffer.getvalue()),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Type": "application/zip"
+            }
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading project: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to download project"
         )
 

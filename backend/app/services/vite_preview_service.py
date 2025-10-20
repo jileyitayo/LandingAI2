@@ -90,6 +90,7 @@ class VitePreviewService:
             },
             "devDependencies": {
                 "@eslint/js": "^9.36.0",
+                "@types/node": "^20.0.0",
                 "@types/react": "^19.1.13",
                 "@types/react-dom": "^19.1.9",
                 "@vitejs/plugin-react": "^5.0.3",
@@ -345,27 +346,31 @@ export default {
 
             # Write vite.config.ts with correct base path for this specific preview
             vite_config_content = f'''import {{ defineConfig }} from 'vite'
-                import react from '@vitejs/plugin-react'
-                import path from 'path'
+import react from '@vitejs/plugin-react'
+import path from 'path'
+import {{ fileURLToPath }} from 'url'
 
-                export default defineConfig({{
-                plugins: [react()],
-                resolve: {{
-                    alias: {{
-                    '@': path.resolve(__dirname, './src'),
-                    }},
-                }},
-                base: '/previews/builds/{preview_id}/dist/',
-                build: {{
-                    outDir: 'dist',
-                    sourcemap: false,
-                    minify: 'esbuild',
-                }},
-                server: {{
-                    port: 3000,
-                    host: true,
-                }},
-            }})'''
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+export default defineConfig({{
+  plugins: [react()],
+  resolve: {{
+    alias: {{
+      '@': path.resolve(__dirname, './src'),
+    }},
+  }},
+  base: '/previews/builds/{preview_id}/dist/',
+  build: {{
+    outDir: 'dist',
+    sourcemap: false,
+    minify: 'esbuild',
+  }},
+  server: {{
+    port: 3000,
+    host: true,
+  }},
+}})'''
         
             (preview_dir / "vite.config.ts").write_text(vite_config_content)
             # Run npm run build
@@ -427,6 +432,9 @@ export default {
             # Skip config files that will be symlinked
             if file_path in ["package.json", "vite.config.ts"]: #, "tsconfig.json", "tsconfig.node.json", "tsconfig.app.json", "tailwind.config.js", "postcss.config.js"]:
                 continue
+
+            if file_path == "src/App.tsx":
+                content = content.replace("BrowserRouter", "HashRouter")
                 
             full_path = preview_dir / file_path
             full_path.parent.mkdir(parents=True, exist_ok=True)

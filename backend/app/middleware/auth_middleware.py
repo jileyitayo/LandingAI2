@@ -36,6 +36,15 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/refresh",
             "/previews/builds",
             "/assets",
+            "/vite.svg",
+            "/favicon.ico",  # Common favicon path
+            "/*.svg",       # All SVG files
+            "/*.ico",       # All ICO files
+            "/*.png",       # All PNG files
+            "/*.jpg",       # All JPG files
+            "/*.jpeg",      # All JPEG files
+            "/*.gif",       # All GIF files
+            "/*.webp",      # All WebP files
         ]
     
     async def dispatch(self, request: Request, call_next: Callable):

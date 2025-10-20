@@ -12,7 +12,7 @@ import CodeViewer from '@/components/CodeViewer';
 import ReactPreview from '@/components/ReactPreview';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { Project } from '@/types/project.types';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import Link from 'next/link';
 
 export default function ProjectEditorPage() {
@@ -96,6 +96,33 @@ export default function ProjectEditorPage() {
     setIsPublished(false);
   };
 
+  // Custom download handler for React projects
+  const handleReactDownload = async () => {
+    try {
+      const response = await api.projects.download(projectId);
+      
+      // Get filename from Content-Disposition header
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
+        : `project-${projectId}.zip`;
+
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download React project:', error);
+      // You could add a toast notification here
+    }
+  };
+
   // Load React project files
   const loadReactFiles = useCallback(async () => {
     try {
@@ -169,8 +196,6 @@ export default function ProjectEditorPage() {
   const currentCode = activeTab === 'html_content' ? html_content : activeTab === 'css_content' ? css_content : js_content;
 
   // Render React project editor
-
-  console.log('project type', (project as any)?.project_type);
   if (project?.project_type === 'react') {
     return (
       <div className="h-screen flex flex-col bg-gray-900">
@@ -202,7 +227,7 @@ export default function ProjectEditorPage() {
               <span className="hidden sm:inline">Settings</span>
             </Link>
             <button
-              onClick={handleDownload}
+              onClick={project?.project_type === 'react' ? handleReactDownload : handleDownload}
               className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
               title="Download project"
             >

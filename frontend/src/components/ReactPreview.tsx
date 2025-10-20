@@ -107,7 +107,7 @@ export default function ReactPreview({ previewUrl, isBuilding, error, onRebuild 
           src={previewUrl}
           className="w-full h-full border-0"
           title="React Preview"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
         />
       </div>
 

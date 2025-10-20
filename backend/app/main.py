@@ -88,7 +88,7 @@ app.add_middleware(AuthenticationMiddleware)
 # Mount static files for previews
 previews_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "previews")
 if os.path.exists(previews_path):
-    app.mount("/previews", StaticFiles(directory=previews_path), name="previews")
+    app.mount("/previews", StaticFiles(directory=previews_path, html=True, check_dir=True), name="previews")
     # app.mount("/previews/builds", StaticFiles(directory=previews_path + "/builds"), name="previews")
 else:
     print(f"Warning: Previews directory not found at {previews_path}")

@@ -41,6 +41,7 @@ class ReactFileManager:
             },
             "dependencies": {
                 "react": "^19.1.1",
+                "@types/node": "^20.0.0",
                 "react-dom": "^19.1.1",
                 "react-router-dom": "^6.8.0",
                 "@tanstack/react-query": "^5.0.0",
@@ -87,27 +88,32 @@ class ReactFileManager:
         }, indent=2)
         
         # vite.config.ts
-        files["vite.config.ts"] = """import { defineConfig } from 'vite'
+        files["vite.config.ts"] = """import {{ defineConfig }} from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
+import {{ fileURLToPath }} from 'url'
 
-export default defineConfig({
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+export default defineConfig({{
   plugins: [react()],
-  resolve: {
-    alias: {
-      '@': '/src',
-    },
-  },
-  base: '/previews/builds/',
-  build: {
+  resolve: {{
+    alias: {{
+      '@': path.resolve(__dirname, './src'),
+    }},
+  }},
+  base: './',
+  build: {{
     outDir: 'dist',
     sourcemap: false,
     minify: 'esbuild',
-  },
-  server: {
+  }},
+  server: {{
     port: 3000,
     host: true,
-  },
-})
+  }},
+}})
 """
         
         # tsconfig.json
@@ -155,7 +161,8 @@ export default defineConfig({
                 "moduleResolution": "bundler",
                 "allowSyntheticDefaultImports": True,
                 "strict": True,
-                "noEmit": True
+                "noEmit": True,
+                "types": ["node"]
             },
             "include": ["vite.config.ts"]
         }, indent=2)

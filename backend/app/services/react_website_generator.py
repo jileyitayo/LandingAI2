@@ -524,10 +524,10 @@ Create a website structure with appropriate pages and components for each page."
         logger.info(f"[PAGE GEN] Available section components: {available_section_components}")
         
         # Create system prompt
-        system_prompt = self._create_page_generation_system_prompt()
+        system_prompt = self._create_page_generation_system_prompt1()
         
         # Create user prompt with context
-        user_prompt = self._create_page_generation_user_prompt(
+        user_prompt = self._create_page_generation_user_prompt1(
             page=page,
             structure=structure,
             analysis=analysis,
@@ -550,7 +550,7 @@ Create a website structure with appropriate pages and components for each page."
             system_prompt,
             user_prompt,
             PageGenerationResponse,
-            model="gemini-2.5-flash"
+            model="gemini-2.5-pro"
         )
 
        
@@ -765,7 +765,11 @@ TECHNOLOGY STACK:
 - Modern React patterns and hooks
 - Proper TypeScript types and interfaces
 - Use working and functioning unsplash for images, for example: https://images.unsplash.com/photo-...
-- Use <a></a> for links instead of <Link></Link> (next/link)
+- CRITICAL: Use React Router's Link component for internal navigation
+  * Import: import {{ Link }} from 'react-router-dom'
+  * Internal routes: <Link to="/services">Services</Link>
+  * External links: <a href="https://..." target="_blank">External</a>
+  * DO NOT use <a href="/path"> for internal navigation
 - Vite for building the website
 
 {safe_icons_list}
@@ -1193,61 +1197,139 @@ If you generate code with these errors, the entire build will fail. Triple-check
 
 
     def _create_page_generation_system_prompt1(self) -> str:
-        """Create system prompt for page generation"""
+        """Create concise system prompt for page generation - captures all critical validation rules"""
         
         # Get formatted list of safe icons
         safe_icons_list = format_icons_for_prompt()
         
-        return f"""You are an expert React + TypeScript developer. Generate a production-ready page component and any missing section/UI components.
+        return f"""Expert React 19 + TypeScript developer. Generate production-ready page + missing components.
 
-Make use of the following UI components reference to generate the page:
+UI COMPONENTS REFERENCE:
 {self._get_all_ui_components_usage_guide()}
 
-TECH + CONVENTIONS
-- React 19 + TypeScript (strict), Tailwind CSS, shadcn/ui (Radix), lucide-react icons, Vite.
-- Use working Unsplash image URLs (https://images.unsplash.com/...).
-- Use <a> for links (not next/link).
+TECH STACK: React 19, TypeScript (strict), Tailwind, shadcn/ui, lucide-react, Vite, React Router (Link for internal nav)
+IMAGES: Use Unsplash URLs (https://images.unsplash.com/...)
 
-HARD BUILD GATES (zero tolerance)
-- TypeScript compiles with 0 errors/warnings.
-- No unused variables, imports, or destructured props.
-- Provide all required props; prop names must exactly match interfaces.
-- Only import icons you actually render; icons must exist in the verified list and be case-sensitive.
-- No undefined types (e.g., no LucideIcon). Use valid types: string, number, boolean, React.ReactNode, JSX.Element.
+🚫 ZERO-TOLERANCE BUILD FAILURES (any violation = build fails):
 
-VERIFIED ICONS
+1. UNUSED CODE
+   ❌ const x = ...; return <div/> // x never used
+   ❌ import {{ A, B }} from '...'; return <A/> // B unused
+   ❌ ({{ prop }}: Props) => <div/> // prop never used
+   ✅ Only declare/import/destructure what you USE in JSX
+
+2. REQUIRED PROPS
+   ❌ <Cta title="x" /> // Missing required 'description'
+   ✅ Check interface - props without ? are REQUIRED
+   ✅ Prop names must EXACTLY match interface
+
+3. ICONS
+   ❌ Building, Circle, User (don't exist)
+   ✅ Only use icons from list below (Building2, CircleDot, UserCircle)
+   ✅ Icons are CASE-SENSITIVE
+   
 {safe_icons_list}
 
-PREFLIGHT CHECKLIST
-- Every declared variable appears in JSX.
-- Only destructure props you actually use.
-- Every import is used.
-- All required props are provided when invoking components.
-- All lucide-react icon imports are rendered in JSX and exist in the list above.
+4. TYPES
+   ❌ icon: LucideIcon (undefined type)
+   ✅ Use: string, number, boolean, React.ReactNode, JSX.Element
 
-COMPONENT + FILE RULES
-- Section components → src/components/<Name>.tsx; named export only: export function Name() {{}}.
-- UI components → src/components/ui/<name>.tsx; shadcn/ui pattern; named export.
-- Pages → default export only: export default function PageName() {{}}.
-- One export style per file; imports must match export style; no mixed/duplicate exports.
-- If a needed component is missing, include it in new_components; do not duplicate existing ones.
+5. EXPORTS/IMPORTS
+   ❌ export function X(); export default X; (duplicate)
+   ✅ Section components: export function Name() {{}} → import {{ Name }}
+   ✅ UI components: export const name → import {{ name }}
+   ✅ Pages: export default function Page() {{}} → import Page
 
-PROPS + DATA
-- Prop names must match interfaces exactly; required props (no ?) must be provided.
-- For list props, define 3–5 realistic items and pass with the correct prop name (e.g., items={{{{data}}}}).
-- Fill all prop values with real values (no empty strings/placeholders).
+PRE-GENERATION CHECKLIST:
+□ Every variable/import/prop is used in JSX
+□ All required props provided with correct names
+□ All icons exist in verified list and are rendered
+□ No undefined types (no LucideIcon)
+□ One export per file, imports match export style
 
-QUALITY
-- Accessible, responsive, semantic HTML, modern React patterns.
-- No any types; explicit typing only.
-- Import only what you use; render every imported icon.
+STRUCTURE:
+- Sections: src/components/<Name>.tsx (named export)
+- UI: src/components/ui/<name>.tsx (named export)
+- Pages: default export
+- Define 3-5 realistic test data items for array props
+- Fill all prop values (no empty strings)
 
-OUTPUT FORMAT (JSON)
-- page_content: complete page component code (default export).
-- new_components: array of any new components (path + contents) if required.
+QUALITY: Responsive, accessible, semantic HTML, no 'any' types, modern patterns
 
-Generate the code now, following the rules above.
+OUTPUT JSON:
+{{
+  "page_content": "complete page (default export)",
+  "new_components": [{{ "path": "...", "content": "..." }}]
+}}
+
+Common errors causing build failure:
+• Using "Building" instead of "Building2"
+• Declaring const bgClass but never using it in className
+• Importing Camera, Heart, Star but only rendering Heart
+• Using type LucideIcon (doesn't exist)
+• Destructuring experienceIcon but never using it
+• Missing required description prop on Cta component
+
+Verify EVERY item in checklist before generating."""
+
+    def _create_page_generation_system_prompt2(self) -> str:
+        """Create concise system prompt for page generation - captures all critical validation rules"""
+        
+        # Get formatted list of safe icons
+        safe_icons_list = format_icons_for_prompt()
+        
+        return f"""Developer: You are an expert React + TypeScript developer. Your task is to generate a production-ready page component for a website and any needed missing section or UI components.
+
+
+Component & Tech Stack:
+- React 19 (TypeScript, strict mode), Tailwind CSS, shadcn/ui (Radix), lucide-react icons (use only the verified CASE-SENSITIVE icons), Vite.
+- Use Unsplash image URLs (https://images.unsplash.com/...) and <a href="https://..."> for external links.
+- Use React Router's <Link to="/route"> for internal navigation (import {{ Link }} from 'react-router-dom').
+
+Hard Build Gates (Zero Tolerance):
+- Code must compile with zero TypeScript errors or warnings.
+- No unused variables, imports, or destructured props.
+- All required props (non-optional in interface) must be provided and prop names must match interfaces exactly.
+- Only import and use icons from the verified list ({safe_icons_list}). Every icon import must be rendered in JSX.
+- No undefined/invalid types (e.g. no 'LucideIcon'), and no 'any' usage. Use standard types: string, number, boolean, React.ReactNode, JSX.Element.
+- Each variable/constant must appear in JSX (no unused data).
+
+Component Conventions:
+- Section components in src/components/<Name>.tsx, use named exports.
+- UI components in src/components/ui/<name>.tsx, follow shadcn/ui pattern, use named exports.
+- Pages use default exports only.
+- One export style per file; import style must match export style; no mixed or duplicate exports.
+
+Props & Data:
+- Prop names must match the interface exactly.
+- For list/array props, create realistic test data (3-5 items) and provide via the correct prop name.
+- All prop values must be real (not empty/defaults).
+- Only destructure/use what you actually render or use in JSX.
+
+UI COMPONENTS REFERENCE:
+{self._get_all_ui_components_usage_guide()}
+
+Checklist Before Output:
+- Every variable appears in JSX and is used.
+- No unused props, variables, or imports.
+- All imported icons are rendered in JSX and exist in the verified list.
+- All required props are provided.
+
+Quality:
+- Code is accessible, responsive, and semantic.
+- Follows modern React and TypeScript patterns.
+- Maintainable and well-typed code.
+
+If any required section or UI component does not exist, define it in "new_components" (with path and code). Do not duplicate components that already exist.
+
+OUTPUT JSON FORMAT:
+- page_content: Complete, default-exported page component code
+- new_components: Array of new section/UI components, each with path and contents
+
+Generate the required code now according to these rules.
 """
+
+
 
     
     def _create_page_generation_user_prompt(
@@ -1324,6 +1406,61 @@ OUTPUT (JSON)
 
 Generate now."""
         return prompt
+
+    def _create_page_generation_user_prompt1(
+        self,
+        page: PageStructure,
+        structure: WebsiteStructure,
+        analysis: BusinessAnalysis,
+        available_ui_components: List[str],
+        available_section_components: List[str]
+    ) -> str:
+        """Concise user prompt for page generation"""
+        
+        # Format component requirements
+        components_list = [
+            f"  • {comp.name} ({comp.type}): {json.dumps({item.key: item.value for item in comp.props})}"
+            for comp in page.components
+        ]
+        
+        # Format navigation
+        nav_list = [f"  • {nav.label} → {nav.path}" for nav in structure.navigation]
+        
+        return f"""PAGE: {page.name} ({page.path})
+
+{page.description}
+
+CONTEXT
+Business: {analysis.business_type} | Industry: {analysis.industry}
+Audience: {analysis.target_audience} | Tone: {analysis.tone}
+CTA: {analysis.primary_cta} | Colors: {structure.color_scheme}
+
+SECTIONS NEEDED
+{chr(10).join(components_list)}
+
+AVAILABLE COMPONENTS
+UI (@/components/ui/): {', '.join(available_ui_components) or 'None - create as needed'}
+Sections (@/components/): {', '.join(available_section_components) or 'None - create as needed'}
+
+NAVIGATION
+{chr(10).join(nav_list) if nav_list else '  • Single page (no nav)'}
+
+TASK
+1. Build page using/creating section components
+2. Add missing components to new_components (no duplicates)
+3. <Header /> and <Footer /> usage: no props; define values internally using nav above
+4. Reuse existing UI components as-is
+
+CRITICAL
+✓ Prop names match interfaces exactly; provide ALL required props
+✓ Only destructure props you use
+✓ 3-5 realistic test items for arrays; pass with correct name (items={{{{data}}}})
+✓ Use verified icons only; import only what you render
+✓ No unused variables/imports
+✓ Sections & UI: named export | Pages: default export
+✓ TypeScript strict, no 'any', responsive, accessible
+
+OUTPUT JSON: {{"page_content": "...", "new_components": [...]}}"""
 
 
 # Create singleton instance
