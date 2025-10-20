@@ -409,6 +409,22 @@ export default defineConfig({{
                 "expires_at": expires_at.isoformat()
             }
             
+            # preview_path = Path(str(dist_dir) + "/index.html")
+
+            # # Read the built HTML
+            # html_content = preview_path.read_text()
+            
+            # # Inject the selector script before </body>
+            # selector_injection_path = self.shared_template_dir / "selector-injection.js"
+            # selector_script = ""
+            # if selector_injection_path.exists():
+            #     selector_script = "<script>\n" + selector_injection_path.read_text(encoding="utf-8") + "\n</script>"
+            # else:
+            #     logger.warning("[VITE PREVIEW] selector-injection.js not found in shared_template. Injection skipped.")
+            # html_content = html_content.replace('</body>', f'{selector_script}</body>')
+            # preview_path.write_text(html_content)
+
+            # Get project name
             logger.info("[VITE PREVIEW] Preview " + str(preview_id) + " built successfully in " + str(round(build_time, 1)) + "s")
             
             return {
