@@ -658,6 +658,7 @@ async def process_react_generation( project_id: str,prompt: str, user_id: str):
         # Step 3: Update project with metadata
         logger.info(f"[BG] Updating project metadata...")
         update_data = {
+            "name": result.get("name", "My Generated Website - " + datetime.utcnow().strftime("%Y-%m-%d %H:%M")),
             "website_structure": website_structure,
             "business_analysis": business_analysis,
             "validation_result": validation_result,

@@ -147,8 +147,6 @@ class ReactWebsiteGenerator:
         # Step 3: Generate file contents
         logger.info("[REACT GEN] Generating React files...")
 
-        
-
         files = self._generate_all_files(website_structure, business_analysis)
         
         # Step 4: Validation and error fixing loop
@@ -171,6 +169,7 @@ class ReactWebsiteGenerator:
         written_files = write_files_to_disk(files, output_path)
         
         return {
+            "name": website_name,
             "website_structure": website_structure.model_dump(),
             "business_analysis": business_analysis.model_dump(),
             "files": files,
@@ -184,7 +183,8 @@ class ReactWebsiteGenerator:
     def _generate_structure_from_analysis(self, analysis: BusinessAnalysis) -> WebsiteStructure:
         """Convert business analysis into website structure"""
         
-        system_prompt = f"""You are a website architect. Generate a complete website structure based on business analysis.
+        system_prompt = f"""You are a website architect. Based on a business analysis, generate a comprehensive website structure.
+Begin with a concise checklist (3-7 bullets) of what steps you will perform to generate the site structure; keep items high-level and conceptual.
         
 Your task:
 1. Create page structures for each key page - {', '.join(analysis.key_pages)}
@@ -217,8 +217,8 @@ CRITICAL:
 - Home path must be /
 - Page and component names must be joined without spaces, not hyphens. Example: Home, About, ProjectDetail, etc.
 
-Component types available:
-- header: Header section with logo, navigation, and CTA
+Available Component Types:
+- header: Header section with logo, navigation, and call-to-action
 - hero: Main hero section with CTA
 - features: Grid of features/services
 - about: About section with story/mission
@@ -553,10 +553,7 @@ Create a website structure with appropriate pages and components for each page."
             model="gemini-2.5-pro"
         )
 
-       
         print(f"Usage for page {page.name} generation: {usage}")
-        
-        
         
         # Post-validation: Fix any invalid icons in generated code
         logger.info(f"[PAGE GEN] Validating generated code...")
@@ -580,8 +577,10 @@ Create a website structure with appropriate pages and components for each page."
             if component_file.path in files:
                 logger.warning(f"[PAGE GEN] ⚠ Component {component_file.path} already exists, skipping...")
                 continue
-            
-            if component_file.path.lower() not in set_available_ui_components:
+                
+            # Check if the component is a duplicate
+            component_name = component_file.path.split("/")[-1].replace(".tsx", "").lower()
+            if component_name not in set_available_ui_components:
                 files[component_file.path] = component_file.content
                 logger.info(f"[PAGE GEN] ✓ Generated new {component_file.component_type} component: {component_file.path}")
             
@@ -1204,7 +1203,7 @@ If you generate code with these errors, the entire build will fail. Triple-check
         
         return f"""Expert React 19 + TypeScript developer. Generate production-ready page + missing components.
 
-UI COMPONENTS REFERENCE:
+UI COMPONENTS REFERENCE (Do not recreate existing ui components in the in the @/components/ui/ path or the ones below):
 {self._get_all_ui_components_usage_guide()}
 
 TECH STACK: React 19, TypeScript (strict), Tailwind, shadcn/ui, lucide-react, Vite, React Router (Link for internal nav)
@@ -1426,14 +1425,17 @@ Generate now."""
         # Format navigation
         nav_list = [f"  • {nav.label} → {nav.path}" for nav in structure.navigation]
         
-        return f"""PAGE: {page.name} ({page.path})
+        return f"""BUILD THIS PAGE BASED ON THE FOLLOWING CONTEXT:
 
+PAGE: {page.name} ({page.path})
 {page.description}
 
 CONTEXT
+Original prompt: {analysis.prompt}
 Business: {analysis.business_type} | Industry: {analysis.industry}
 Audience: {analysis.target_audience} | Tone: {analysis.tone}
 CTA: {analysis.primary_cta} | Colors: {structure.color_scheme}
+
 
 SECTIONS NEEDED
 {chr(10).join(components_list)}

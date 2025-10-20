@@ -88,32 +88,32 @@ class ReactFileManager:
         }, indent=2)
         
         # vite.config.ts
-        files["vite.config.ts"] = """import {{ defineConfig }} from 'vite'
+        files["vite.config.ts"] = """import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
-import {{ fileURLToPath }} from 'url'
+import { fileURLToPath } from 'url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-export default defineConfig({{
+export default defineConfig({
   plugins: [react()],
-  resolve: {{
-    alias: {{
+  resolve: {
+    alias: {
       '@': path.resolve(__dirname, './src'),
-    }},
-  }},
+    },
+  },
   base: './',
-  build: {{
+  build: {
     outDir: 'dist',
     sourcemap: false,
     minify: 'esbuild',
-  }},
-  server: {{
+  },
+  server: {
     port: 3000,
     host: true,
-  }},
-}})
+  },
+})
 """
         
         # tsconfig.json

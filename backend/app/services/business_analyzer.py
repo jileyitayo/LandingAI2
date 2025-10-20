@@ -8,6 +8,7 @@ class BusinessAnalysis(BaseModel):
     """Minimal business analysis for accurate website template and content generation"""
     
     # Intent & Context
+    prompt: str = Field(..., description="The comprehensive summary of the original user prompt used to generate the business analysis")
     user_intent: str = Field(..., description="What user wants: build_new_website, redesign_existing, add_features, get_ideas")
     business_type: str = Field(..., description="What the business does (e.g., Coffee Shop, Law Firm, Photography Studio)")
     industry: str = Field(..., description="Industry category (e.g., Food & Beverage, Legal Services, Creative Services)")
@@ -64,7 +65,7 @@ class BusinessAnalyzer():
         """
         Generate extensive and complete business analysis for website template generation.
         """
-        system_prompt = """You are a website strategy expert. Analyze user requests and extract ONLY the essential information needed for an LLM to generate accurate website templates and content.
+        system_prompt_old = """You are a website strategy expert. Analyze user requests and extract ONLY the essential information needed for an LLM to generate accurate website templates and content.
 
     Focus on:
     1. INTENT: What does the user want to accomplish?
@@ -75,6 +76,7 @@ class BusinessAnalyzer():
     6. DESIGN DIRECTION: What aesthetic fits this business?
     7. FEATURES: What functionality is critical?, max 3 features
     8. CONTENT STRATEGY: What messages matter most?
+    9. ORIGINAL PROMPT: Comprehensive summary of the original user prompt. Do not include any other information in this field.
 
     Be specific and actionable. Think: "What does an LLM need to know to build this site accurately?"
 
@@ -85,10 +87,30 @@ class BusinessAnalyzer():
     - must_have_features: Critical functionality, not nice-to-haves
     - value_propositions: Actual benefits to communicate, not generic
     - content_sections: Logical flow of homepage sections
-
+    - original_prompt: Comprehensive summary of the original user prompt.
     Infer intelligently from minimal prompts based on industry standards."""
         # self.client.set_max_completion_tokens(6000)
         # self.business_analysis, usage = self.client.call_openai_api_structured(system_prompt, user_prompt, BusinessAnalysis)
+
+        # Optimized system prompt
+        system_prompt = """
+        You are a website strategy expert. Your task is to analyze user requests and extract only the essential information required for a language model to generate accurate website templates and content. Focus on providing specific, actionable details to inform site creation. Always consider: "What must an LLM know to build this site correctly?"
+        Begin with a concise checklist (3-7 bullets) of what you will do; keep items conceptual, not implementation-level.
+        Extract and return the following fields:
+        1. **intent**: What is the user's primary goal for the website? (string)
+        2. **business_context**: What is the specific business type and industry? (string)
+        3. **site_purpose**: What should the website accomplish? (string)
+        4. **audience**: Who is the main audience? (string)
+        5. **key_pages**: List 3-5 essential pages. (array of strings)
+        6. **style_keywords**: Up to 5 descriptive terms for the site's desired look/feel. (array of strings)
+        7. **must_have_features**: Up to 3 crucial features (array of up to 3 strings). If more are listed, select only the most essential; if fewer or none, infer from industry standards or leave as null if insufficient information.
+        8. **value_propositions**: Core benefits or messaging to communicate (avoid generalities). (array of strings)
+        9. **content_sections**: Ordered list of homepage section names to define homepage flow. (array of strings)
+        10. **original_prompt**: Direct summary of the user's original prompt. Do not add or embellish; retain ambiguity if information is missing or unclear.
+        If a field cannot be confidently determined or inferred from the user input, return null for that field.
+        Infer intelligently from minimal prompts using industry common practices when possible.
+        After extracting each field, briefly validate that your extraction matches the user's intent and correct if necessary before finalizing your output.
+        """
 
         self.google_client.set_max_completion_tokens(6000)
         self.business_analysis, usage = self.google_client.call_openai_api_structured(system_prompt, user_prompt, BusinessAnalysis, model="gemini-2.5-flash")
