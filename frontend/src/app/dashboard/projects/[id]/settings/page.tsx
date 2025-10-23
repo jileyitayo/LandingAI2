@@ -4,9 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 import SettingsPageClient from './SettingsPageClient';
 
 interface PageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 async function getProject(projectId: string, token: string) {
@@ -38,6 +38,15 @@ async function getProject(projectId: string, token: string) {
 export default async function ProjectSettingsPage({ params }: PageProps) {
   const supabase = await createClient();
   const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/auth/login');
+  }
+
+  // Get session for access token
+  const {
     data: { session },
   } = await supabase.auth.getSession();
 
@@ -45,7 +54,8 @@ export default async function ProjectSettingsPage({ params }: PageProps) {
     redirect('/auth/login');
   }
 
-  const project = await getProject(params.id, session.access_token);
+  const { id } = await params;
+  const project = await getProject(id, session.access_token);
 
   if (!project) {
     notFound();
@@ -63,7 +73,7 @@ export default async function ProjectSettingsPage({ params }: PageProps) {
       }
     >
       <SettingsPageClient
-        projectId={params.id}
+        projectId={id}
         initialProject={{
           name: project.name,
           description: project.description,
@@ -74,7 +84,7 @@ export default async function ProjectSettingsPage({ params }: PageProps) {
           published: project.published,
         }}
         user={{
-          email: session.user.email!,
+          email: user.email!,
         }}
       />
     </Suspense>
