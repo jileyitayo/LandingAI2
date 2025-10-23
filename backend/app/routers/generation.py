@@ -1402,8 +1402,7 @@ async def edit_project_component(
         # Option 1: Fetch all files
         files = await project_file_manager.get_project_files(project_id)
         component_file = await component_editor_service.identify_component(request.selected_element, files)
-        logger.info(f"[COMPONENT EDIT] Identified component file: {component_file}")
-        return component_file
+
         if not component_file:
             logger.error(f"[COMPONENT EDIT] Could not identify component file for element: {request.selected_element.get('tagName', 'unknown')}")
             raise HTTPException(

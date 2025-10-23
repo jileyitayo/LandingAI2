@@ -23,6 +23,7 @@ from app.services.icon_validator import format_icons_for_prompt, validate_and_fi
 from app.services.code_validator import code_validator, fix_lucide_icons_in_content, CodeValidationError
 from app.services.error_fixer import error_fixer
 from app.services.build_tester import build_tester, BuildError
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -84,11 +85,76 @@ def write_files_to_disk(files: Dict[str, str], base_path: str) -> Dict[str, str]
 
 class ReactWebsiteGenerator:
     """Generates complete React website structure from user prompt"""
-    
+
     def __init__(self):
         self.openai_client = PromptOpenAI()
         self.google_client = PromptOpenAI(api_key=settings.google_api_key, url="https://generativelanguage.googleapis.com/v1beta/openai/")
         self.business_analyzer = BusinessAnalyzer()
+
+    def _validate_and_inject_data_attributes(self, file_path: str, content: str) -> tuple[str, bool]:
+        """
+        Validate that component has data-component and data-file attributes on root element.
+        If missing, attempt to inject them.
+
+        Args:
+            file_path: Path to the component file (e.g., "src/components/Hero.tsx")
+            content: Component file content
+
+        Returns:
+            Tuple of (modified_content, was_modified)
+        """
+        # Only process component files, not pages
+        if not file_path.startswith("src/components/") or "/ui/" in file_path:
+            return content, False
+
+        # Extract component name from file path
+        component_name = file_path.split("/")[-1].replace(".tsx", "").replace(".jsx", "")
+
+        # Check if data attributes already exist
+        has_data_component = 'data-component=' in content
+        has_data_file = 'data-file=' in content
+
+        if has_data_component and has_data_file:
+            logger.info(f"[VALIDATION] ✓ {file_path} already has data attributes")
+            return content, False
+
+        logger.warning(f"[VALIDATION] ⚠ {file_path} missing data attributes - attempting injection")
+
+        # Find the root element (first JSX element in return statement)
+        # Pattern: return ( ... <tagName ...> or return <tagName ...>
+        # We want to inject into the first opening tag after 'return'
+
+        # Pattern to find first JSX element after return
+        # Matches: <section, <div, <header, etc. but not self-closing or closing tags
+        pattern = r'(return\s*\(?[\s\n]*<)([a-zA-Z][a-zA-Z0-9]*)([\s\n]+|>)'
+
+        def inject_attributes(match):
+            before_tag = match.group(1)  # "return (<" or "return <"
+            tag_name = match.group(2)     # "section", "div", etc.
+            after_tag = match.group(3)    # space or ">"
+
+            # Build the data attributes
+            data_attrs = []
+            if not has_data_component:
+                data_attrs.append(f'data-component="{component_name}"')
+            if not has_data_file:
+                data_attrs.append(f'data-file="{file_path}"')
+
+            # If after_tag is just ">", we need to insert a space
+            if after_tag == ">":
+                return f'{before_tag}{tag_name} {" ".join(data_attrs)}>'
+            else:
+                # There's already whitespace
+                return f'{before_tag}{tag_name} {" ".join(data_attrs)}{after_tag}'
+
+        modified_content = re.sub(pattern, inject_attributes, content, count=1)
+
+        if modified_content != content:
+            logger.info(f"[VALIDATION] ✓ Injected data attributes into {file_path}")
+            return modified_content, True
+        else:
+            logger.warning(f"[VALIDATION] ⚠ Could not inject data attributes into {file_path} - pattern not found")
+            return content, False
     
     def generate_website_structure(
         self, 
@@ -572,20 +638,29 @@ Create a website structure with appropriate pages and components for each page."
             if comp_changes:
                 logger.warning(f"[PAGE GEN] Fixed icons in {component_file.path}: {', '.join(comp_changes)}")
             component_file.content = fixed_content
-            
+
+            # Validate and inject data attributes
+            validated_content, was_modified = self._validate_and_inject_data_attributes(
+                component_file.path,
+                component_file.content
+            )
+            if was_modified:
+                logger.info(f"[PAGE GEN] ✓ Added data attributes to {component_file.path}")
+                component_file.content = validated_content
+
             # Check for duplicates
             if component_file.path in files:
                 logger.warning(f"[PAGE GEN] ⚠ Component {component_file.path} already exists, skipping...")
                 continue
-                
+
             # Check if the component is a duplicate
             component_name = component_file.path.split("/")[-1].replace(".tsx", "").lower()
             if component_name not in set_available_ui_components:
                 files[component_file.path] = component_file.content
                 logger.info(f"[PAGE GEN] ✓ Generated new {component_file.component_type} component: {component_file.path}")
-            
+
         logger.info(f"[PAGE GEN] ✓ Page '{page.name}' generated successfully")
-        
+
         return response.page_content
     
     def _format_component_props(self, props: List) -> str:
@@ -1246,6 +1321,8 @@ PRE-GENERATION CHECKLIST:
 □ No undefined types (no LucideIcon)
 □ One export per file, imports match export style
 □ Ensure the year is the current year at the footer
+□ 🚨 CRITICAL: ALL section components have data-component and data-file on root element
+□ 🚨 CRITICAL: Major interactive elements have data-element attributes
 
 STRUCTURE:
 - Sections: src/components/<Name>.tsx (named export)
@@ -1455,12 +1532,32 @@ TASK
 2. Add missing components to new_components (no duplicates)
 3. <Header /> and <Footer /> usage: no props; define values internally using nav above
 4. Reuse existing UI components as-is
-5. Add data-component="ComponentName" and data-file="src/components/ComponentName.tsx" to ALL section components' root elements.
-MOST CRITICAL: VISUAL EDITING TRACKING
-6. Add data-component="ComponentName" and data-file="src/components/ComponentName.tsx" to ALL section components' root elements.
-7. Add data-element="element-name" to major interactive elements (buttons, headings, inputs, etc.).
-8. Example: <section data-component="Hero" data-file="src/components/Hero.tsx"><h1 data-element="hero-title">Title</h1><button data-element="hero-cta">CTA</button></section>
-9. This is very important for the visual editing functionality to work correctly.
+
+🚨 CRITICAL: VISUAL EDITING TRACKING - MANDATORY 🚨
+5. EVERY section component's ROOT element MUST have these exact attributes:
+   - data-component="ComponentName" (exact component name, e.g., "Hero", "Features", "Footer")
+   - data-file="src/components/ComponentName.tsx" (exact file path)
+6. EXAMPLE - Hero.tsx component:
+   ✅ CORRECT:
+   export function Hero() {{
+     return (
+       <section data-component="Hero" data-file="src/components/Hero.tsx" className="...">
+         <h1 data-element="hero-title">Title</h1>
+         <button data-element="hero-cta">Get Started</button>
+       </section>
+     )
+   }}
+   ❌ WRONG (missing data attributes):
+   export function Hero() {{
+     return (
+       <section className="...">
+         <h1>Title</h1>
+       </section>
+     )
+   }}
+7. These attributes MUST be on the FIRST/ROOT element in the return statement
+8. Without these attributes, visual editing will NOT work
+9. This is absolutely required for ALL section components (Header, Hero, Footer, etc.)
 
 
 

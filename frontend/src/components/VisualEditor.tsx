@@ -23,6 +23,23 @@ interface SelectedElement {
     hasChildren: boolean;
     childCount: number;
     outerHTML: string;
+    // Component hierarchy (from enhanced selector)
+    component?: {
+        tagName: string;
+        selector: string;
+        path: string[];
+        position: {
+            top: number;
+            left: number;
+            width: number;
+            height: number;
+        };
+        attributes: Record<string, string>;
+        isRoot: boolean;
+        componentName: string | null;
+        componentFile: string | null;
+        elementName: string | null;
+    };
 }
 
 interface VisualEditorProps {
@@ -238,33 +255,55 @@ export default function VisualEditor({ projectId, previewUrl, onRebuild }: Visua
 
                     {selectedElement ? (
                         <div className="space-y-4">
-                            {/* Element Info */}
-                            <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-                                <div className="flex items-start justify-between mb-2">
-                                    <div>
-                                        <div className="font-mono text-sm font-bold text-blue-900">
-                                            {selectedElement.tagName}
-                                        </div>
-                                        {selectedElement.classList.length > 0 && (
-                                            <div className="text-xs text-blue-700 mt-1">
-                                                .{selectedElement.classList.join(' .')}
+                            {/* Component Info - Prominently displayed */}
+                            <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border-2 border-blue-300 shadow-sm">
+                                <div className="flex items-start justify-between mb-3">
+                                    <div className="flex-1">
+                                        {/* Component Name */}
+                                        {selectedElement.component?.componentName ? (
+                                            <div>
+                                                <div className="text-xs text-blue-600 font-medium mb-1">COMPONENT</div>
+                                                <div className="font-bold text-lg text-blue-900 mb-1">
+                                                    {selectedElement.component.componentName}
+                                                </div>
+                                                {selectedElement.component.componentFile && (
+                                                    <div className="text-xs text-blue-700 font-mono bg-blue-50 px-2 py-1 rounded inline-block">
+                                                        {selectedElement.component.componentFile}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <div className="text-xs text-amber-600 font-medium mb-1">WARNING</div>
+                                                <div className="text-sm text-amber-800">
+                                                    No component data found
+                                                </div>
+                                                <div className="text-xs text-amber-700 mt-1">
+                                                    Element: {selectedElement.tagName}
+                                                </div>
                                             </div>
                                         )}
-                                        {selectedElement.attributes['data-component'] && (
-                                            <div className="text-xs text-blue-600 mt-1">
-                                                Component: {selectedElement.attributes['data-component']}
+
+                                        {/* Element within component */}
+                                        {selectedElement.component?.elementName && (
+                                            <div className="mt-2 text-xs text-blue-600">
+                                                <span className="font-medium">Element:</span>{' '}
+                                                {selectedElement.component.elementName}
+                                            </div>
+                                        )}
+
+                                        {!selectedElement.component?.isRoot && selectedElement.component?.componentName && (
+                                            <div className="mt-2 text-xs text-blue-500">
+                                                Selected {selectedElement.tagName} inside {selectedElement.component.componentName}
                                             </div>
                                         )}
                                     </div>
                                     <button
                                         onClick={clearSelection}
-                                        className="text-blue-400 hover:text-blue-600 text-xl"
+                                        className="text-blue-400 hover:text-blue-600 text-xl ml-2"
                                     >
                                         ×
                                     </button>
-                                </div>
-                                <div className="text-xs text-blue-600 font-mono mt-2 overflow-x-auto">
-                                    {selectedElement.selector}
                                 </div>
                             </div>
 
