@@ -598,6 +598,23 @@ export const api = {
         files: Record<string, string>;
         files_count: number;
       }>(`/api/v1/react_website/${projectId}`),
+
+    /**
+     * Edit React component using visual selection
+     */
+    editComponent: (projectId: string, data: {
+      selected_element: Record<string, any>;
+      instruction: string;
+    }) =>
+      apiRequest<{
+        success: boolean;
+        message: string;
+        updated_file?: string;
+        preview_url?: string;
+      }>(`/api/v1/edit/project/${projectId}`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
 
   /**

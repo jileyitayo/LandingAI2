@@ -147,6 +147,114 @@ class ProjectFileManager:
         
         return stats
     
+    async def save_project_file(
+        self, 
+        project_id: str, 
+        file_path: str,
+        file_content: str,
+        overwrite: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Save a single project file to database
+        
+        Args:
+            project_id: The project UUID
+            file_path: Path of the file to save
+            file_content: Content of the file
+            overwrite: If True, replace existing file. If False, keep existing.
+        
+        Returns:
+            Dictionary with stats: {inserted: bool, updated: bool, skipped: bool, file_size: int}
+        """
+        logger.info(f"[FILE MANAGER] Saving single file {file_path} for project {project_id}")
+        
+        file_size = len(file_content.encode('utf-8'))
+        file_type = self._get_file_type(file_path)
+        content_hash = self._calculate_hash(file_content)
+        
+        file_record = {
+            "project_id": project_id,
+            "file_path": file_path,
+            "file_content": file_content,
+            "file_type": file_type,
+            "file_size": file_size,
+            "content_hash": content_hash,
+            "is_generated": True,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        stats = {
+            "inserted": False,
+            "updated": False,
+            "skipped": False,
+            "file_size": file_size
+        }
+        
+        try:
+            if overwrite:
+                # Delete existing file if it exists
+                logger.info(f"[FILE MANAGER] Deleting existing file {file_path} for project {project_id}")
+                self.supabase.table("project_files")\
+                    .delete()\
+                    .eq("project_id", project_id)\
+                    .eq("file_path", file_path)\
+                    .execute()
+                
+                # Insert new file
+                logger.info(f"[FILE MANAGER] Inserting file {file_path}...")
+                response = self.supabase.table("project_files")\
+                    .insert(file_record)\
+                    .execute()
+                
+                if response.data:
+                    stats["inserted"] = True
+                    logger.info(f"[FILE MANAGER] ✓ Inserted file {file_path} ({file_size} bytes)")
+                else:
+                    logger.error(f"[FILE MANAGER] Failed to insert file {file_path}")
+                    
+            else:
+                # Check if file exists
+                existing = self.supabase.table("project_files")\
+                    .select("id, content_hash")\
+                    .eq("project_id", project_id)\
+                    .eq("file_path", file_path)\
+                    .execute()
+                
+                if existing.data:
+                    # File exists - check if content changed
+                    if existing.data[0]["content_hash"] != content_hash:
+                        # Update file
+                        logger.info(f"[FILE MANAGER] Updating existing file {file_path}")
+                        self.supabase.table("project_files")\
+                            .update({
+                                "file_content": file_content,
+                                "file_size": file_size,
+                                "content_hash": content_hash,
+                                "updated_at": file_record["updated_at"]
+                            })\
+                            .eq("id", existing.data[0]["id"])\
+                            .execute()
+                        stats["updated"] = True
+                        logger.info(f"[FILE MANAGER] ✓ Updated file {file_path} ({file_size} bytes)")
+                    else:
+                        stats["skipped"] = True
+                        logger.info(f"[FILE MANAGER] ✓ Skipped file {file_path} (no changes)")
+                else:
+                    # Insert new file
+                    logger.info(f"[FILE MANAGER] Inserting new file {file_path}")
+                    self.supabase.table("project_files")\
+                        .insert(file_record)\
+                        .execute()
+                    stats["inserted"] = True
+                    logger.info(f"[FILE MANAGER] ✓ Inserted new file {file_path} ({file_size} bytes)")
+                    
+        except Exception as e:
+            logger.error(f"[FILE MANAGER] Error saving file {file_path}: {str(e)}")
+            raise
+        
+        return stats
+    
     async def get_project_files(
         self, 
         project_id: str,

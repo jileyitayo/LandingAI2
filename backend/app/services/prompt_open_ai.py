@@ -28,23 +28,26 @@ class PromptOpenAI:
         for attempt in range(self.max_retries):
             try:
                 logger.info(f"Sending request to OpenAI (attempt {attempt + 1}/{self.max_retries})")
-                if self.model == "gpt-5-mini" or self.model == "gpt-5":
+                if system_prompt is None or system_prompt == "":
+                    message = [
+                        {"role": "user", "content": user_prompt}
+                    ]
+                else:
+                    message = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ]
+                if model == "gpt-5-mini" or model == "gpt-5":
                     response = self.client.chat.completions.create(
                         model=model,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
+                        messages=message,
                         max_completion_tokens=self.max_completion_tokens,
                         reasoning_effort="medium"
                     )
                 else:
                     response = self.client.chat.completions.create(
                         model=model,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
+                        messages=message,
                         temperature=temperature,
                         max_tokens=self.max_completion_tokens
                     )

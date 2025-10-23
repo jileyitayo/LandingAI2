@@ -20,6 +20,7 @@ from app.routers.templates import save_template_to_db
 from app.services.react_website_generator import react_website_generator
 from app.services.project_file_manager import project_file_manager
 from app.services.vite_preview_service import vite_preview_service
+from app.services.component_editor_service import component_editor_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["generation"])
@@ -117,6 +118,27 @@ class GenerateReactWebsiteResponse(BaseModel):
     website_structure: Optional[Dict[str, Any]] = None
     business_analysis: Optional[Dict[str, Any]] = None
     files_count: Optional[int] = None
+
+
+class ComponentEditRequest(BaseModel):
+    """Request model for component editing"""
+    selected_element: Dict[str, Any] = Field(..., description="Element data from selector")
+    instruction: str = Field(..., min_length=5, max_length=500, description="Natural language edit instruction")
+    
+    @validator('instruction')
+    def validate_instruction(cls, v):
+        """Validate instruction is meaningful"""
+        if not v.strip():
+            raise ValueError("Instruction cannot be empty")
+        return v.strip()
+
+
+class ComponentEditResponse(BaseModel):
+    """Response model for component editing"""
+    success: bool
+    message: str
+    updated_file: Optional[str] = None
+    preview_url: Optional[str] = None
 
 
 # ============================================================================
@@ -1304,5 +1326,159 @@ async def delete_preview(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete preview"
+        )
+
+
+@router.post("/edit/project/{project_id}", response_model=ComponentEditResponse)
+async def edit_project_component(
+    project_id: str,
+    request: ComponentEditRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Edit a React component using visual selection and natural language instructions.
+    
+    This endpoint:
+    1. Identifies the component file from the selected element
+    2. Uses AI to modify the component based on the instruction
+    3. Saves the updated component to the project
+    4. Returns success status and preview URL for refresh
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    
+    logger.info(f"[COMPONENT EDIT] Starting edit request for project {project_id} by user {user_id}")
+    logger.info(f"[COMPONENT EDIT] Instruction: '{request.instruction}' (length: {len(request.instruction)})")
+    logger.info(f"[COMPONENT EDIT] Selected element tag: {request.selected_element.get('tagName', 'unknown')}")
+    logger.info(f"[COMPONENT EDIT] Selected element attributes: {request.selected_element.get('attributes', {})}")
+    logger.info(f"[COMPONENT EDIT] Full selected element keys: {list(request.selected_element.keys())}")
+    logger.info(f"[COMPONENT EDIT] Selected element text content: '{request.selected_element.get('textContent', '')[:50]}...'")
+    
+    try:
+        # Verify project ownership
+        logger.info(f"[COMPONENT EDIT] Fetching project {project_id} from database")
+        response = supabase.table("projects")\
+            .select("id, user_id, project_type, generation_status")\
+            .eq("id", project_id)\
+            .execute()
+        
+        if not response.data:
+            logger.error(f"[COMPONENT EDIT] Project {project_id} not found in database")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        project = response.data[0]
+        logger.info(f"[COMPONENT EDIT] Found project: type={project.get('project_type')}, status={project.get('generation_status')}, owner={project.get('user_id')}")
+        
+        # Check ownership
+        if project["user_id"] != user_id:
+            logger.error(f"[COMPONENT EDIT] Access denied: user {user_id} does not own project {project_id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Check if it's a React project
+        if project.get("project_type") != "react":
+            logger.error(f"[COMPONENT EDIT] Project {project_id} is not a React project (type: {project.get('project_type')})")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This is not a React project"
+            )
+        
+        # Check if project is completed
+        if project.get("generation_status") != "completed":
+            logger.error(f"[COMPONENT EDIT] Project {project_id} is not completed (status: {project.get('generation_status')})")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Project generation is not completed yet"
+            )
+        
+        # Identify component file
+        logger.info(f"[COMPONENT EDIT] Identifying component file for selected element")
+
+        # Option 1: Fetch all files
+        files = await project_file_manager.get_project_files(project_id)
+        component_file = await component_editor_service.identify_component(request.selected_element, files)
+        logger.info(f"[COMPONENT EDIT] Identified component file: {component_file}")
+        return component_file
+        if not component_file:
+            logger.error(f"[COMPONENT EDIT] Could not identify component file for element: {request.selected_element.get('tagName', 'unknown')}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not identify component file for the selected element"
+            )
+        
+        logger.info(f"[COMPONENT EDIT] Identified component file: {component_file}")
+        
+        # Modify component code using AI
+        logger.info(f"[COMPONENT EDIT] Calling AI to modify component {component_file}")
+        success, modified_code, error = await component_editor_service.modify_component_code(
+            file_path=component_file,
+            instruction=request.instruction,
+            element_context=request.selected_element,
+            project_id=project_id
+        )
+        
+        if not success:
+            logger.error(f"[COMPONENT EDIT] AI modification failed: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to modify component: {error}"
+            )
+        
+        logger.info(f"[COMPONENT EDIT] AI modification successful, code length: {len(modified_code)} characters")
+        
+        # Save the updated component
+        logger.info(f"[COMPONENT EDIT] Saving updated component to database")
+        save_success, save_message = await component_editor_service.apply_component_edit(
+            project_id=project_id,
+            file_path=component_file,
+            new_code=modified_code
+        )
+        
+        if not save_success:
+            logger.error(f"[COMPONENT EDIT] Failed to save component: {save_message}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save component: {save_message}"
+            )
+        
+        logger.info(f"[COMPONENT EDIT] Component saved successfully: {save_message}")
+        
+        # Log the action
+        logger.info(f"[COMPONENT EDIT] Logging action to database")
+        action_logger = ActionLogger(supabase)
+        await action_logger.log_action(
+            user_id=user_id,
+            action="component_edited",
+            details={
+                "project_id": project_id,
+                "component_file": component_file,
+                "instruction": request.instruction,
+                "element_tag": request.selected_element.get('tagName', ''),
+                "element_text": request.selected_element.get('textContent', '')[:100]
+            }
+        )
+        
+        logger.info(f"[COMPONENT EDIT] ✓ Component {component_file} edited successfully for project {project_id}")
+        
+        return ComponentEditResponse(
+            success=True,
+            message=f"Component {component_file} updated successfully",
+            updated_file=component_file,
+            preview_url=None  # Frontend will handle preview refresh
+        )
+        
+    except HTTPException as e:
+        logger.error(f"[COMPONENT EDIT] HTTPException: {e.status_code} - {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"[COMPONENT EDIT] Unexpected error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to edit component"
         )
 

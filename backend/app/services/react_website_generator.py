@@ -328,7 +328,7 @@ Create a website structure with appropriate pages and components for each page."
         files.update(react_file_manager.generate_style_files(structure))
         
         # Page components (will auto-generate any missing section/UI components)
-        files.update(self._generate_page_files(structure, analysis))
+        files.update(self._generate_page_files(structure, analysis, files))
         
         # Post-generation validation
         logger.info("[REACT GEN] Running post-generation validation...")
@@ -489,10 +489,10 @@ Create a website structure with appropriate pages and components for each page."
         
         return current_files, validation_result, retry_count, fixed_errors
     
-    def _generate_page_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis) -> Dict[str, str]:
+    def _generate_page_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str]) -> Dict[str, str]:
         """Generate page component files"""
         
-        files = {}
+        # files = {}
         
         for page in structure.pages:
             print(f"Generating page: {page.name}")
@@ -536,7 +536,7 @@ Create a website structure with appropriate pages and components for each page."
         )
         
         # Call LLM to generate page and components
-        logger.info(f"[PAGE GEN] Calling LLM for page generation...")
+        logger.info(f"[PAGE GEN] Calling LLM for page {page.name} generation...")
         # self.openai_client.set_max_completion_tokens(16000)
         # response, usage = self.openai_client.call_openai_api_structured(
         #     system_prompt,
@@ -1245,6 +1245,7 @@ PRE-GENERATION CHECKLIST:
 □ All icons exist in verified list and are rendered
 □ No undefined types (no LucideIcon)
 □ One export per file, imports match export style
+□ Ensure the year is the current year at the footer
 
 STRUCTURE:
 - Sections: src/components/<Name>.tsx (named export)
@@ -1292,6 +1293,7 @@ Hard Build Gates (Zero Tolerance):
 - Only import and use icons from the verified list ({safe_icons_list}). Every icon import must be rendered in JSX.
 - No undefined/invalid types (e.g. no 'LucideIcon'), and no 'any' usage. Use standard types: string, number, boolean, React.ReactNode, JSX.Element.
 - Each variable/constant must appear in JSX (no unused data).
+- Ensure the year is the current year at the footer.
 
 Component Conventions:
 - Section components in src/components/<Name>.tsx, use named exports.
@@ -1444,6 +1446,7 @@ AVAILABLE COMPONENTS
 UI (@/components/ui/): {', '.join(available_ui_components) or 'None - create as needed'}
 Sections (@/components/): {', '.join(available_section_components) or 'None - create as needed'}
 
+
 NAVIGATION
 {chr(10).join(nav_list) if nav_list else '  • Single page (no nav)'}
 
@@ -1452,6 +1455,14 @@ TASK
 2. Add missing components to new_components (no duplicates)
 3. <Header /> and <Footer /> usage: no props; define values internally using nav above
 4. Reuse existing UI components as-is
+5. Add data-component="ComponentName" and data-file="src/components/ComponentName.tsx" to ALL section components' root elements.
+MOST CRITICAL: VISUAL EDITING TRACKING
+6. Add data-component="ComponentName" and data-file="src/components/ComponentName.tsx" to ALL section components' root elements.
+7. Add data-element="element-name" to major interactive elements (buttons, headings, inputs, etc.).
+8. Example: <section data-component="Hero" data-file="src/components/Hero.tsx"><h1 data-element="hero-title">Title</h1><button data-element="hero-cta">CTA</button></section>
+9. This is very important for the visual editing functionality to work correctly.
+
+
 
 CRITICAL
 ✓ Prop names match interfaces exactly; provide ALL required props
