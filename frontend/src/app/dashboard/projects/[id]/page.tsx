@@ -11,9 +11,11 @@ import FileTree from '@/components/FileTree';
 import CodeViewer from '@/components/CodeViewer';
 import ReactPreview from '@/components/ReactPreview';
 import VisualEditor from '@/components/VisualEditor';
+import ChatWindow from '@/components/ChatWindow';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { Project } from '@/types/project.types';
 import { api, ApiError } from '@/lib/api';
+import { SelectedElement } from '@/types/chat.types';
 import Link from 'next/link';
 
 export default function ProjectEditorPage() {
@@ -31,6 +33,11 @@ export default function ProjectEditorPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
+
+  // Chat and selector state
+  const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
+  const [selectorEnabled, setSelectorEnabled] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Load project from API
   const loadProject = useCallback(async (id: string): Promise<Project> => {
@@ -166,6 +173,37 @@ export default function ProjectEditorPage() {
     }
   }, [reactActiveTab, previewUrl, isBuilding, buildPreview]);
 
+  // Handle edit submission from chat window
+  const handleEditSubmit = async (prompt: string) => {
+    if (!selectedElement) {
+      throw new Error('No element selected');
+    }
+
+    setIsProcessing(true);
+    try {
+      const result = await api.generation.editComponent(projectId, {
+        selected_element: selectedElement,
+        instruction: prompt,
+      });
+
+      if (result.success) {
+        // Rebuild preview to show changes
+        await buildPreview();
+
+        // Clear selection after successful edit
+        setSelectedElement(null);
+        setSelectorEnabled(false);
+      } else {
+        throw new Error(result.message || 'Failed to apply changes');
+      }
+    } catch (error: any) {
+      console.error('Edit failed:', error);
+      throw error;
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -248,38 +286,21 @@ export default function ProjectEditorPage() {
 
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left Panel - Chat History (1/3) */}
-          <div className="w-1/3 flex flex-col bg-gray-900 border-r border-gray-700">
-            <div className="flex items-center gap-2 px-4 py-3 bg-gray-800 border-b border-gray-700">
-              <MessageSquare className="w-4 h-4 text-blue-400" />
-              <span className="text-sm font-medium text-white">Chat History</span>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                  U
-                </div>
-                <div className="flex-1">
-                  <div className="bg-blue-600 text-white p-3 rounded-lg">
-                    <p className="text-sm">{(project as any)?.prompt || 'Generate a React website'}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                  AI
-                </div>
-                <div className="flex-1">
-                  <div className="bg-gray-700 text-white p-3 rounded-lg">
-                    <p className="text-sm">Website generated successfully! Your React project is ready to view and edit.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* Left Panel - Chat Window (1/4) */}
+          <div className="w-1/4 flex flex-col bg-gray-900 border-r border-gray-700">
+            <ChatWindow
+              projectId={projectId}
+              selectedElement={selectedElement}
+              onSelectedElementChange={setSelectedElement}
+              onSelectorModeChange={setSelectorEnabled}
+              selectorEnabled={selectorEnabled}
+              onEditSubmit={handleEditSubmit}
+              isProcessing={isProcessing}
+            />
           </div>
 
-          {/* Right Panel - Code/Preview (2/3) */}
-          <div className="w-2/3 flex flex-col bg-gray-900">
+          {/* Right Panel - Code/Preview/Edit (3/4) */}
+          <div className="w-3/4 flex flex-col bg-gray-900">
             {/* Tabs */}
             <div className="flex items-center bg-gray-800 border-b border-gray-700">
               <button
@@ -346,9 +367,11 @@ export default function ProjectEditorPage() {
                 />
               ) : (
                 <VisualEditor
-                  projectId={projectId}
                   previewUrl={previewUrl}
-                  onRebuild={buildPreview}
+                  selectedElement={selectedElement}
+                  onElementSelect={setSelectedElement}
+                  selectorEnabled={selectorEnabled}
+                  onSelectorEnabledChange={setSelectorEnabled}
                 />
               )}
             </div>

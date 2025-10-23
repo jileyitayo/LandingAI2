@@ -76,11 +76,11 @@ export default function ProjectSettingsForm({
       await api.projects.update(projectId, {
         name: formData.name,
         description: formData.description || undefined,
-        subdomain: formData.subdomain || undefined,
-        seo_title: formData.seo_title || undefined,
-        seo_description: formData.seo_description || undefined,
-        whatsapp_number: formData.whatsapp_number || undefined,
-        published: formData.published,
+        // subdomain: formData.subdomain || undefined,
+        // seo_title: formData.seo_title || undefined,
+        // seo_description: formData.seo_description || undefined,
+        // whatsapp_number: formData.whatsapp_number || undefined,
+        // published: formData.published,
       });
 
       setSaved(true);

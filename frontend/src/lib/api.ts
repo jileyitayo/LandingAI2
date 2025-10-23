@@ -611,7 +611,54 @@ export const api = {
         message: string;
         updated_file?: string;
         preview_url?: string;
+        old_code?: string;
+        new_code?: string;
+        edit_description?: string;
+        chat_message_id?: string;
       }>(`/api/v1/edit/project/${projectId}`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    /**
+     * Get chat history for a project
+     */
+    getChatHistory: (projectId: string) =>
+      apiRequest<{
+        messages: Array<{
+          id: string;
+          project_id: string;
+          user_id: string;
+          message_type: 'generation' | 'edit' | 'question';
+          user_prompt: string;
+          ai_response: string;
+          metadata: Record<string, any>;
+          created_at: string;
+          updated_at: string;
+        }>;
+        total_count: number;
+      }>(`/api/v1/projects/${projectId}/chat-history`),
+
+    /**
+     * Save a chat message
+     */
+    saveChatMessage: (projectId: string, data: {
+      message_type: 'generation' | 'edit' | 'question';
+      user_prompt: string;
+      ai_response: string;
+      metadata?: Record<string, any>;
+    }) =>
+      apiRequest<{
+        id: string;
+        project_id: string;
+        user_id: string;
+        message_type: string;
+        user_prompt: string;
+        ai_response: string;
+        metadata: Record<string, any>;
+        created_at: string;
+        updated_at: string;
+      }>(`/api/v1/projects/${projectId}/chat-messages`, {
         method: "POST",
         body: JSON.stringify(data),
       }),

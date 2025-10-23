@@ -139,6 +139,37 @@ class ComponentEditResponse(BaseModel):
     message: str
     updated_file: Optional[str] = None
     preview_url: Optional[str] = None
+    old_code: Optional[str] = None
+    new_code: Optional[str] = None
+    edit_description: Optional[str] = None
+    chat_message_id: Optional[str] = None
+
+
+class ChatMessageRequest(BaseModel):
+    """Request model for saving chat messages"""
+    message_type: str = Field(..., description="Type: generation, edit, or question")
+    user_prompt: str = Field(..., min_length=1, description="User's message")
+    ai_response: str = Field(..., min_length=1, description="AI's response")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
+
+
+class ChatMessageResponse(BaseModel):
+    """Response model for chat message"""
+    id: str
+    project_id: str
+    user_id: str
+    message_type: str
+    user_prompt: str
+    ai_response: str
+    metadata: Dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
+class ChatHistoryResponse(BaseModel):
+    """Response model for chat history"""
+    messages: list[ChatMessageResponse]
+    total_count: int
 
 
 # ============================================================================
@@ -699,8 +730,49 @@ async def process_react_generation( project_id: str,prompt: str, user_id: str):
         supabase.table("projects").update(update_data).eq("id", project_id).execute()
 
         await increment_generation_count(user_id, supabase)
-        
+
         logger.info(f"[BG] ✓ React generation completed for project {project_id}")
+
+        # Step 4: Save initial generation to chat history
+        logger.info(f"[BG] Saving initial generation to chat history...")
+        try:
+            # Create initial chat message
+            chat_message_id = str(uuid.uuid4())
+            business_type = business_analysis.get("business_type", "website")
+            pages_count = len(website_structure.get("pages", []))
+
+            ai_response = (
+                f"Website generated successfully! I've created a complete React website for your {business_type}. "
+                f"The project includes {pages_count} pages with responsive design and modern styling. "
+                f"Your React project is ready to view and edit."
+            )
+
+            chat_insert = supabase.table("project_chat_messages").insert({
+                "id": chat_message_id,
+                "project_id": project_id,
+                "user_id": user_id,
+                "message_type": "generation",
+                "user_prompt": prompt,
+                "ai_response": ai_response,
+                "metadata": {
+                    "business_analysis": {
+                        "business_type": business_analysis.get("business_type"),
+                        "target_audience": business_analysis.get("target_audience"),
+                        "key_features": business_analysis.get("key_features", [])[:3]  # First 3 features
+                    },
+                    "website_structure": {
+                        "pages_count": pages_count,
+                        "pages": [page.get("name") for page in website_structure.get("pages", [])]
+                    },
+                    "files_count": len(files)
+                }
+            }).execute()
+
+            logger.info(f"[BG] ✓ Saved initial chat message with ID: {chat_message_id}")
+
+        except Exception as e:
+            logger.error(f"[BG] Failed to save chat message: {str(e)}")
+            # Don't fail the generation if chat save fails
 
         return GenerateReactWebsiteResponse(
             project_id=project_id,
@@ -1414,39 +1486,89 @@ async def edit_project_component(
         
         # Modify component code using AI
         logger.info(f"[COMPONENT EDIT] Calling AI to modify component {component_file}")
-        success, modified_code, error = await component_editor_service.modify_component_code(
+        success, old_code, new_code, error = await component_editor_service.modify_component_code(
             file_path=component_file,
             instruction=request.instruction,
             element_context=request.selected_element,
             project_id=project_id
         )
-        
+
         if not success:
             logger.error(f"[COMPONENT EDIT] AI modification failed: {error}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to modify component: {error}"
             )
-        
-        logger.info(f"[COMPONENT EDIT] AI modification successful, code length: {len(modified_code)} characters")
-        
+
+        logger.info(f"[COMPONENT EDIT] AI modification successful, code length: {len(new_code)} characters")
+
+        # Generate edit description
+        edit_description = await component_editor_service.generate_edit_description(
+            instruction=request.instruction,
+            element_context=request.selected_element,
+            file_path=component_file
+        )
+        logger.info(f"[COMPONENT EDIT] Generated description: {edit_description}")
+
         # Save the updated component
         logger.info(f"[COMPONENT EDIT] Saving updated component to database")
         save_success, save_message = await component_editor_service.apply_component_edit(
             project_id=project_id,
             file_path=component_file,
-            new_code=modified_code
+            new_code=new_code
         )
-        
+
         if not save_success:
             logger.error(f"[COMPONENT EDIT] Failed to save component: {save_message}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to save component: {save_message}"
             )
-        
+
         logger.info(f"[COMPONENT EDIT] Component saved successfully: {save_message}")
-        
+
+        # Save to chat history
+        logger.info(f"[COMPONENT EDIT] Saving to chat history")
+        chat_message_id = str(uuid.uuid4())
+
+        try:
+            # Insert chat message
+            chat_insert = supabase.table("project_chat_messages").insert({
+                "id": chat_message_id,
+                "project_id": project_id,
+                "user_id": user_id,
+                "message_type": "edit",
+                "user_prompt": request.instruction,
+                "ai_response": edit_description,
+                "metadata": {
+                    "file_path": component_file,
+                    "selected_element": {
+                        "tagName": request.selected_element.get('tagName', ''),
+                        "textContent": request.selected_element.get('textContent', '')[:100],
+                        "component": request.selected_element.get('component', {})
+                    }
+                }
+            }).execute()
+
+            # Insert edit history
+            edit_history_insert = supabase.table("project_edit_history").insert({
+                "project_id": project_id,
+                "chat_message_id": chat_message_id,
+                "file_path": component_file,
+                "old_code": old_code,
+                "new_code": new_code,
+                "diff_summary": edit_description,
+                "selected_element": request.selected_element,
+                "edit_description": edit_description,
+                "ai_instruction": request.instruction
+            }).execute()
+
+            logger.info(f"[COMPONENT EDIT] Chat and edit history saved successfully")
+
+        except Exception as e:
+            logger.error(f"[COMPONENT EDIT] Failed to save chat/edit history: {str(e)}")
+            # Don't fail the request if history saving fails
+
         # Log the action
         logger.info(f"[COMPONENT EDIT] Logging action to database")
         action_logger = ActionLogger(supabase)
@@ -1461,14 +1583,18 @@ async def edit_project_component(
                 "element_text": request.selected_element.get('textContent', '')[:100]
             }
         )
-        
+
         logger.info(f"[COMPONENT EDIT] ✓ Component {component_file} edited successfully for project {project_id}")
-        
+
         return ComponentEditResponse(
             success=True,
             message=f"Component {component_file} updated successfully",
             updated_file=component_file,
-            preview_url=None  # Frontend will handle preview refresh
+            preview_url=None,  # Frontend will handle preview refresh
+            old_code=old_code,
+            new_code=new_code,
+            edit_description=edit_description,
+            chat_message_id=chat_message_id
         )
         
     except HTTPException as e:
@@ -1479,5 +1605,157 @@ async def edit_project_component(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to edit component"
+        )
+
+
+@router.get("/projects/{project_id}/chat-history", response_model=ChatHistoryResponse)
+async def get_chat_history(
+    project_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get chat history for a project.
+
+    Returns all chat messages (generation, edits, questions) for the project.
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+
+    logger.info(f"[CHAT HISTORY] Fetching chat history for project {project_id}")
+
+    try:
+        # Verify project ownership
+        project_response = supabase.table("projects")\
+            .select("id, user_id")\
+            .eq("id", project_id)\
+            .execute()
+
+        if not project_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+
+        project = project_response.data[0]
+        if project["user_id"] != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+
+        # Fetch chat messages
+        chat_response = supabase.table("project_chat_messages")\
+            .select("*")\
+            .eq("project_id", project_id)\
+            .order("created_at", desc=False)\
+            .execute()
+
+        messages = []
+        for msg in chat_response.data:
+            messages.append(ChatMessageResponse(
+                id=msg["id"],
+                project_id=msg["project_id"],
+                user_id=msg["user_id"],
+                message_type=msg["message_type"],
+                user_prompt=msg["user_prompt"],
+                ai_response=msg["ai_response"],
+                metadata=msg.get("metadata", {}),
+                created_at=msg["created_at"],
+                updated_at=msg["updated_at"]
+            ))
+
+        logger.info(f"[CHAT HISTORY] Retrieved {len(messages)} messages for project {project_id}")
+
+        return ChatHistoryResponse(
+            messages=messages,
+            total_count=len(messages)
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[CHAT HISTORY] Error fetching chat history: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch chat history"
+        )
+
+
+@router.post("/projects/{project_id}/chat-messages", response_model=ChatMessageResponse)
+async def save_chat_message(
+    project_id: str,
+    request: ChatMessageRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Save a chat message to the project history.
+
+    Used for saving general questions/answers that don't involve edits.
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+
+    logger.info(f"[SAVE CHAT] Saving chat message for project {project_id}, type: {request.message_type}")
+
+    try:
+        # Verify project ownership
+        project_response = supabase.table("projects")\
+            .select("id, user_id")\
+            .eq("id", project_id)\
+            .execute()
+
+        if not project_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+
+        project = project_response.data[0]
+        if project["user_id"] != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+
+        # Insert chat message
+        message_id = str(uuid.uuid4())
+        insert_response = supabase.table("project_chat_messages").insert({
+            "id": message_id,
+            "project_id": project_id,
+            "user_id": user_id,
+            "message_type": request.message_type,
+            "user_prompt": request.user_prompt,
+            "ai_response": request.ai_response,
+            "metadata": request.metadata
+        }).execute()
+
+        if not insert_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save chat message"
+            )
+
+        saved_message = insert_response.data[0]
+        logger.info(f"[SAVE CHAT] Chat message saved with ID: {message_id}")
+
+        return ChatMessageResponse(
+            id=saved_message["id"],
+            project_id=saved_message["project_id"],
+            user_id=saved_message["user_id"],
+            message_type=saved_message["message_type"],
+            user_prompt=saved_message["user_prompt"],
+            ai_response=saved_message["ai_response"],
+            metadata=saved_message.get("metadata", {}),
+            created_at=saved_message["created_at"],
+            updated_at=saved_message["updated_at"]
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[SAVE CHAT] Error saving chat message: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save chat message"
         )
 
