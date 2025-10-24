@@ -291,35 +291,35 @@ async def template_creation_analyzer(prompt: str, business_analysis: Dict[str, A
         "resets_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
     }
 
-@log_action(action_type='UPDATE', target_resource_type='generation_count')
-async def increment_generation_count(user_id: str, supabase_client) -> None:
-    """Increment user's generation count"""
-    try:
-        # Increment both counters
-        supabase_client.rpc(
-            "increment_generation_count",
-            {"user_id_param": user_id}
-        ).execute()
-    except Exception as e:
-        # If RPC doesn't exist, use direct update
-        logger.warning(f"RPC increment failed, using direct update: {str(e)}")
-        try:
-            response = supabase_client.table("users")\
-                .select("current_period_generations, generation_count")\
-                .eq("id", user_id)\
-                .execute()
+# @log_action(action_type='UPDATE', target_resource_type='generation_count')
+# async def increment_generation_count(user_id: str, supabase_client) -> None:
+#     """Increment user's generation count"""
+#     try:
+#         # Increment both counters
+#         supabase_client.rpc(
+#             "increment_generation_count",
+#             {"user_id_param": user_id}
+#         ).execute()
+#     except Exception as e:
+#         # If RPC doesn't exist, use direct update
+#         logger.warning(f"RPC increment failed, using direct update: {str(e)}")
+#         try:
+#             response = supabase_client.table("users")\
+#                 .select("current_period_generations, generation_count")\
+#                 .eq("id", user_id)\
+#                 .execute()
             
-            if response.data:
-                data = response.data[0]
-                supabase_client.table("users")\
-                    .update({
-                        "current_period_generations": data["current_period_generations"] + 1,
-                        "generation_count": data["generation_count"] + 1
-                    })\
-                    .eq("id", user_id)\
-                    .execute()
-        except Exception as inner_e:
-            logger.error(f"Failed to increment generation count: {str(inner_e)}")
+#             if response.data:
+#                 data = response.data[0]
+#                 supabase_client.table("users")\
+#                     .update({
+#                         "current_period_generations": data["current_period_generations"] + 1,
+#                         "generation_count": data["generation_count"] + 1
+#                     })\
+#                     .eq("id", user_id)\
+#                     .execute()
+#         except Exception as inner_e:
+#             logger.error(f"Failed to increment generation count: {str(inner_e)}")
 
 
 # ============================================================================
@@ -729,7 +729,6 @@ async def process_react_generation( project_id: str,prompt: str, user_id: str):
 
         supabase.table("projects").update(update_data).eq("id", project_id).execute()
 
-        await increment_generation_count(user_id, supabase)
 
         logger.info(f"[BG] ✓ React generation completed for project {project_id}")
 
@@ -872,8 +871,6 @@ async def generate_website(
             supabase_client=supabase
         )
         
-        # Step 4: Increment generation count
-        await increment_generation_count(user_id, supabase)
         
         # Step 5: Log action
         action_logger = ActionLogger(supabase)
@@ -1111,8 +1108,6 @@ async def generate_react_website(
         if not response.data:
             raise Exception("Failed to create project")
         
-        # Step 3: Increment generation count
-        await increment_generation_count(user_id, supabase)
         
         # Step 4: Log action
         action_logger = ActionLogger(supabase)

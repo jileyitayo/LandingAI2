@@ -67,6 +67,17 @@ async def get_current_user_profile(request: Request):
                 detail="User profile not found",
             )
         user_data = response.data[0]
+
+        # Count actual projects for this user (excluding soft-deleted)
+        project_count_response = supabase.table("projects")\
+            .select("id", count="exact")\
+            .eq("user_id", user_id)\
+            .is_("deleted_at", "null")\
+            .execute()
+
+        # Get the actual project count
+        actual_project_count = project_count_response.count if project_count_response.count is not None else 0
+
             
         # Return profile response
         return ProfileResponse(
@@ -76,7 +87,7 @@ async def get_current_user_profile(request: Request):
             last_name=user_data.get("last_name"),
             avatar_url=user_data.get("avatar_url"),
             subscription_tier=user_data["subscription_tier"],
-            generation_count=user_data["generation_count"],
+            generation_count=actual_project_count,
             current_period_generations=user_data["current_period_generations"],
             email_verified=user_data["email_verified"],
             created_at=user_data["created_at"],
