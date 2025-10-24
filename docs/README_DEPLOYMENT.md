@@ -20,7 +20,7 @@ The Deployment Service handles deploying projects to Vercel using the Vercel API
 ### Basic Deployment
 
 ```python
-from app.services.vercel_deployer import VercelDeployer
+from app.services.deployments.vercel_deployer import VercelDeployer
 
 # Initialize service
 service = VercelDeployer()
@@ -171,7 +171,7 @@ logger.error(f"Vercel deployment failed: {error_message}")
 
 ```python
 import pytest
-from app.services.vercel_deployer import VercelDeployer
+from app.services.deployments.vercel_deployer import VercelDeployer
 
 @pytest.mark.asyncio
 async def test_deploy_website():

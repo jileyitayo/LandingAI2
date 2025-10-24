@@ -308,7 +308,7 @@ result = react_website_generator.generate_website_structure(
 
 ### Validation Only (No Generation)
 ```python
-from app.services.code_validator import code_validator
+from app.services.validators.code_validator import code_validator
 
 # Validate existing files
 errors, warnings = code_validator.validate_all_files(files_dict)

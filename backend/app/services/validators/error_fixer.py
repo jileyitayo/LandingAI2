@@ -8,8 +8,8 @@ from typing import Dict, List, Tuple, Optional
 from pydantic import BaseModel
 
 from app.services.prompt_open_ai import PromptOpenAI
-from app.services.code_validator import CodeValidationError
-from app.services.build_tester import BuildError
+from app.services.validators.code_validator import CodeValidationError
+from app.services.validators.build_tester import BuildError
 
 logger = logging.getLogger(__name__)
 

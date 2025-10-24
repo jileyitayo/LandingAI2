@@ -230,6 +230,7 @@ export default function ProjectEditorPage() {
     );
   }
 
+  // Might delete this later
   const { html_content, css_content, js_content, activeTab, hasUnsavedChanges } = editorState;
   const currentCode = activeTab === 'html_content' ? html_content : activeTab === 'css_content' ? css_content : js_content;
 
@@ -298,7 +299,7 @@ export default function ProjectEditorPage() {
             />
           </div>
 
-          {/* Right Panel - Code/Preview/Edit (3/4) */}
+          {/* Right Panel - Code/Preview (3/4) */}
           <div className="w-3/4 flex flex-col bg-gray-900">
             {/* Tabs */}
             <div className="flex items-center bg-gray-800 border-b border-gray-700">
@@ -373,7 +374,7 @@ export default function ProjectEditorPage() {
     );
   }
 
-  // Render HTML/CSS/JS editor (existing code)
+  // Render HTML/CSS/JS editor (existing code) - might delete this later
   return (
     <div className="h-screen flex flex-col bg-gray-900">
       {/* Header */}

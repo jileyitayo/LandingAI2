@@ -11,7 +11,7 @@ from openai import OpenAI, OpenAIError
 from app.services.prompt_open_ai import PromptOpenAI
 from app.config import settings
 from app.services.components_library import component_library, ComponentType
-from app.services.template_validator import validate_template_structure
+from app.services.validators.template_validator import validate_template_structure
 from app.services.business_analyzer import BusinessAnalysis
 import logging
 import sys

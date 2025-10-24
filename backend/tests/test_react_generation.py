@@ -4,10 +4,10 @@ Test React Website Generation with Validation
 
 import pytest
 from app.services.react_website_generator import react_website_generator
-from app.services.vercel_deployer import VercelDeployer
-from app.services.code_validator import code_validator
-from app.services.build_tester import build_tester
-from app.services.error_fixer import error_fixer
+from app.services.deployments.vercel_deployer import VercelDeployer
+from app.services.validators.code_validator import code_validator
+from app.services.validators.build_tester import build_tester
+from app.services.validators.error_fixer import error_fixer
 
 
 def test_generate_react_website_with_validation():

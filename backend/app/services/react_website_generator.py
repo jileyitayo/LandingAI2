@@ -19,10 +19,10 @@ from app.services.react_models import (
     ValidationResult, ValidationError, BuildTestResult, GenerationResult
 )
 from app.services.react_file_manager import react_file_manager
-from app.services.icon_validator import format_icons_for_prompt, validate_and_fix_icon, is_valid_icon
-from app.services.code_validator import code_validator, fix_lucide_icons_in_content, CodeValidationError
-from app.services.error_fixer import error_fixer
-from app.services.build_tester import build_tester, BuildError
+from app.services.validators.icon_validator import format_icons_for_prompt, validate_and_fix_icon, is_valid_icon
+from app.services.validators.code_validator import code_validator, fix_lucide_icons_in_content, CodeValidationError
+from app.services.validators.error_fixer import error_fixer
+from app.services.validators.build_tester import build_tester, BuildError
 import re
 
 logger = logging.getLogger(__name__)

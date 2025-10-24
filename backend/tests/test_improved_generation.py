@@ -12,8 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.services.react_website_generator import react_website_generator
-from app.services.icon_validator import is_valid_icon, get_safe_icons
-from app.services.code_validator import code_validator
+from app.services.validators.icon_validator import is_valid_icon, get_safe_icons
+from app.services.validators.code_validator import code_validator
 
 # Setup logging
 logging.basicConfig(

@@ -507,7 +507,7 @@ async def test_content_generation():
 ### Test Template Rendering
 
 ```python
-from app.services.template_renderer import template_renderer
+from app.services.templates.template_renderer import template_renderer
 
 def test_template_rendering():
     template = {

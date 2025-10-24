@@ -1643,8 +1643,8 @@ content_generator_response_sample = """
 """
 
 # TEMPLATE GENERATION
-from app.services.template_generator import TemplateGenerator
-from app.services.template_validator import validate_template_structure
+from app.services.templates.template_generator import TemplateGenerator
+from app.services.validators.template_validator import validate_template_structure
 from app.services.content_generator import ContentGenerator
 
 template_generator = TemplateGenerator()

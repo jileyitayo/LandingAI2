@@ -14,8 +14,8 @@ from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import ActionLogger, log_action
 from app.utils.auth import get_current_user
 from app.services.content_generator import content_generator, ContentGenerationError
-from app.services.template_renderer import template_renderer, TemplateRenderError
-from app.services.template_generator import template_generator
+from app.services.templates.template_renderer import template_renderer, TemplateRenderError
+from app.services.templates.template_generator import template_generator
 from app.routers.templates import save_template_to_db
 from app.services.react_website_generator import react_website_generator
 from app.services.project_file_manager import project_file_manager

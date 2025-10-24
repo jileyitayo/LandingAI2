@@ -11,7 +11,7 @@ import uuid
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import ActionLogger, log_action
 from app.utils.auth import get_current_user
-from app.services.template_generator import template_generator, TemplateGenerationError
+from app.services.templates.template_generator import template_generator, TemplateGenerationError
 import logging
 
 logger = logging.getLogger(__name__)

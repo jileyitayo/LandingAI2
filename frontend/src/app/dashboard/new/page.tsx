@@ -12,7 +12,6 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";  
 import { TemplateCard } from "@/components/TemplateCard";
-import { PromptInput } from "@/components/PromptInput";
 import { useUnifiedGeneration } from "@/hooks/useUnifiedGeneration";
 
 interface Template {

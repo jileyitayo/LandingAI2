@@ -55,7 +55,7 @@ print(result["metadata"])  # Business type, tone, etc.
 Renders complete websites by merging templates with content.
 
 ```python
-from app.services.template_renderer import template_renderer
+from app.services.templates.template_renderer import template_renderer
 
 # Render template with content
 result = template_renderer.render_template(
@@ -96,7 +96,7 @@ result = await ai_generator.generate_website(
 Generates complete template structures using OpenAI (legacy).
 
 ```python
-from app.services.template_generator import template_generator
+from app.services.templates.template_generator import template_generator
 
 # Generate new template from scratch
 template = template_generator.generate_template(
@@ -115,7 +115,7 @@ print(template["content_schema"])   # Required content fields
 Validates template structures and configurations.
 
 ```python
-from app.services.template_validator import validate_template_structure
+from app.services.validators.template_validator import validate_template_structure
 
 # Validate template
 is_valid, error = validate_template_structure(template_data)
@@ -175,7 +175,7 @@ result = await ai_generator.generate_website(
 Use the **legacy flow**:
 
 ```python
-from app.services.template_generator import template_generator
+from app.services.templates.template_generator import template_generator
 
 template = template_generator.generate_template(
     prompt="Template description",
@@ -200,7 +200,7 @@ content = await content_generator.generate_content(
 ### For Manual Rendering
 
 ```python
-from app.services.template_renderer import template_renderer
+from app.services.templates.template_renderer import template_renderer
 
 website = template_renderer.render_template(
     template=template_data,

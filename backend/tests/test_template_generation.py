@@ -2,8 +2,8 @@
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from app.services.template_generator import TemplateGenerator, TemplateGenerationError
-from app.services.template_validator import (
+from app.services.templates.template_generator import TemplateGenerator, TemplateGenerationError
+from app.services.validators.template_validator import (
     validate_template_structure,
     validate_sections_config,
     validate_style_config,
@@ -328,7 +328,7 @@ class TestTemplateGenerator:
             }
         }
     
-    @patch('app.services.template_generator.OpenAI')
+    @patch('app.services.templates.template_generator.OpenAI')
     def test_generate_template_success(self, mock_openai_class, mock_openai_response):
         """Test successful template generation"""
         # Setup mock
@@ -342,7 +342,7 @@ class TestTemplateGenerator:
         mock_client.chat.completions.create.return_value = mock_response
         
         # Create generator with mock
-        with patch('app.services.template_generator.settings') as mock_settings:
+        with patch('app.services.templates.template_generator.settings') as mock_settings:
             mock_settings.openai_api_key = "test-key"
             generator = TemplateGenerator()
         
@@ -362,13 +362,13 @@ class TestTemplateGenerator:
     
     def test_generate_template_no_api_key(self):
         """Test generator initialization fails without API key"""
-        with patch('app.services.template_generator.settings') as mock_settings:
+        with patch('app.services.templates.template_generator.settings') as mock_settings:
             mock_settings.openai_api_key = ""
             
             with pytest.raises(TemplateGenerationError):
                 TemplateGenerator()
     
-    @patch('app.services.template_generator.OpenAI')
+    @patch('app.services.templates.template_generator.OpenAI')
     def test_generate_template_invalid_json(self, mock_openai_class):
         """Test template generation handles invalid JSON response"""
         # Setup mock with invalid JSON
@@ -382,7 +382,7 @@ class TestTemplateGenerator:
         mock_client.chat.completions.create.return_value = mock_response
         
         # Create generator
-        with patch('app.services.template_generator.settings') as mock_settings:
+        with patch('app.services.templates.template_generator.settings') as mock_settings:
             mock_settings.openai_api_key = "test-key"
             generator = TemplateGenerator()
         
@@ -392,7 +392,7 @@ class TestTemplateGenerator:
     
     def test_prepare_component_samples(self):
         """Test preparation of component samples"""
-        with patch('app.services.template_generator.settings') as mock_settings:
+        with patch('app.services.templates.template_generator.settings') as mock_settings:
             mock_settings.openai_api_key = "test-key"
             generator = TemplateGenerator()
         
@@ -410,7 +410,7 @@ class TestTemplateGenerator:
     
     def test_build_css_variables(self):
         """Test CSS variables generation"""
-        with patch('app.services.template_generator.settings') as mock_settings:
+        with patch('app.services.templates.template_generator.settings') as mock_settings:
             mock_settings.openai_api_key = "test-key"
             generator = TemplateGenerator()
         
@@ -439,7 +439,7 @@ class TestTemplateGenerationIntegration:
     """Integration tests for template generation flow"""
     
     @pytest.mark.asyncio
-    @patch('app.services.template_generator.OpenAI')
+    @patch('app.services.templates.template_generator.OpenAI')
     async def test_full_generation_flow(self, mock_openai_class):
         """Test complete template generation flow"""
         # This would test the full flow including API endpoint
@@ -474,7 +474,7 @@ class TestTemplateGenerationIntegration:
         mock_response.choices[0].message.content = str(mock_response_data).replace("'", '"')
         mock_client.chat.completions.create.return_value = mock_response
         
-        with patch('app.services.template_generator.settings') as mock_settings:
+        with patch('app.services.templates.template_generator.settings') as mock_settings:
             mock_settings.openai_api_key = "test-key"
             generator = TemplateGenerator()
         

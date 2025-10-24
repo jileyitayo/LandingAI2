@@ -11,7 +11,7 @@ import logging
 from app.utils.auth import get_current_user
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import log_action
-from app.services.vercel_deployer import VercelDeployer, VercelDeploymentError
+from app.services.deployments.vercel_deployer import VercelDeployer, VercelDeploymentError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["deployment"])

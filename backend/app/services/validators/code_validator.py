@@ -6,7 +6,7 @@ Validates generated React/TypeScript code for common errors.
 import re
 import logging
 from typing import Dict, List, Tuple, Set, Any
-from app.services.icon_validator import is_valid_icon, validate_and_fix_icon
+from app.services.validators.icon_validator import is_valid_icon, validate_and_fix_icon
 
 logger = logging.getLogger(__name__)
 
