@@ -1427,10 +1427,10 @@ async def edit_project_component(
     logger.info(f"[COMPONENT EDIT] Selected element text content: '{request.selected_element.get('textContent', '')[:50]}...'")
     
     try:
-        # Verify project ownership
+        # Verify project ownership and fetch business context
         logger.info(f"[COMPONENT EDIT] Fetching project {project_id} from database")
         response = supabase.table("projects")\
-            .select("id, user_id, project_type, generation_status")\
+            .select("id, user_id, project_type, generation_status, business_analysis")\
             .eq("id", project_id)\
             .execute()
         
@@ -1483,15 +1483,20 @@ async def edit_project_component(
             )
         
         logger.info(f"[COMPONENT EDIT] Identified component file: {component_file}")
-        
+
+        # Extract business context for better AI editing
+        business_analysis = project.get("business_analysis", {})
+        logger.info(f"[COMPONENT EDIT] Business analysis available: {bool(business_analysis)}")
+
         # Modify component code using AI
         logger.info(f"[COMPONENT EDIT] Calling AI to modify component {component_file}")
         success, old_code, new_code, error = await component_editor_service.modify_component_code(
             file_path=component_file,
             instruction=request.instruction,
             element_context=request.selected_element,
-            project_id=project_id, 
-            files=files
+            project_id=project_id,
+            files=files,
+            business_context=business_analysis
         )
         logger.info(f"[COMPONENT EDIT] AI modification successful: {success}")
         logger.info(f"[COMPONENT EDIT] Old code length: {len(old_code)} characters")

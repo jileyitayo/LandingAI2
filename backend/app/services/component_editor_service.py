@@ -19,6 +19,76 @@ class ComponentEditorService:
     def __init__(self):
         self.prompt_service = PromptOpenAI(api_key=settings.google_api_key, url="https://generativelanguage.googleapis.com/v1beta/openai/")
 
+    def _is_multi_element_selection(self, text_content: str) -> bool:
+        """
+        Detect if the selected text spans multiple elements.
+
+        Multi-element selections typically:
+        - Contain multiple newlines (indicating different elements)
+        - Are very long (>200 chars, suggesting multiple text nodes)
+        - Contain patterns suggesting multiple distinct pieces (e.g., title + description + list)
+
+        Args:
+            text_content: The selected text content
+
+        Returns:
+            True if this appears to be a multi-element selection
+        """
+        if not text_content:
+            return False
+
+        # Clean up the text
+        cleaned = text_content.strip()
+
+        # Check for multiple newlines (strong indicator)
+        newline_count = cleaned.count('\n')
+        if newline_count >= 2:
+            logger.info(f"[MULTI-ELEMENT] Detected {newline_count} newlines - multi-element selection")
+            return True
+
+        # Check for very long selections (likely multiple elements)
+        if len(cleaned) > 200:
+            logger.info(f"[MULTI-ELEMENT] Text length {len(cleaned)} > 200 - likely multi-element")
+            return True
+
+        # Check for patterns suggesting multiple distinct sections
+        # (e.g., sentence ending followed by new sentence, suggesting separate elements)
+        sentences = [s.strip() for s in cleaned.split('.') if s.strip()]
+        if len(sentences) >= 3:
+            logger.info(f"[MULTI-ELEMENT] Found {len(sentences)} sentences - likely multi-element")
+            return True
+
+        return False
+
+    def _split_selection_into_parts(self, text_content: str) -> list:
+        """
+        Split a multi-element selection into individual text parts.
+
+        This helps identify which parts are props vs hardcoded.
+
+        Args:
+            text_content: The full selected text
+
+        Returns:
+            List of text parts (individual strings that might be separate elements)
+        """
+        if not text_content:
+            return []
+
+        # Split by newlines and filter out empty strings
+        parts = [part.strip() for part in text_content.split('\n') if part.strip()]
+
+        # If no newlines, try splitting by sentence boundaries for long text
+        if len(parts) <= 1 and len(text_content) > 100:
+            # Split by periods followed by space and capital letter (sentence boundaries)
+            parts = [s.strip() + '.' for s in text_content.split('.') if s.strip()]
+            # Remove trailing period from last item if it didn't have one
+            if parts and not text_content.endswith('.'):
+                parts[-1] = parts[-1].rstrip('.')
+
+        logger.info(f"[MULTI-ELEMENT] Split selection into {len(parts)} parts")
+        return parts
+
 
     def _search_text_in_jsx_props(self, component_name: str, text_content: str, file_content: str) -> bool:
         """
@@ -71,30 +141,48 @@ class ComponentEditorService:
         This is the core of prop tracing - it identifies when selected text is passed
         as a prop to a component, rather than being hardcoded in the component itself.
 
+        Enhanced to handle multi-element selections - if ANY part of the selection is
+        found as a prop, it returns the parent component.
+
         Args:
             component_file: Path to the component file (e.g., "src/components/HeroSection.tsx")
             component_name: Name of the component (e.g., "HeroSection")
-            text_content: The text content selected by user
+            text_content: The text content selected by user (may span multiple elements)
             all_files: Dictionary of all project files
 
         Returns:
             File path of parent component/page that passes the prop, or None
         """
         try:
-            # First, check if text is hardcoded in the component itself
+            # Check if this is a multi-element selection
+            is_multi_element = self._is_multi_element_selection(text_content)
+
+            if is_multi_element:
+                logger.info(f"[PROP TRACE] Multi-element selection detected, will check individual parts")
+                text_parts = self._split_selection_into_parts(text_content)
+            else:
+                text_parts = [text_content]
+
+            # First, check if ALL text parts are hardcoded in the component itself
             component_code = all_files.get(component_file, '')
-            if text_content in component_code:
-                # Text is hardcoded in component, not a prop - edit the component
-                logger.info(f"[PROP TRACE] Text is hardcoded in {component_file}, not a prop")
+            hardcoded_parts = [part for part in text_parts if part in component_code]
+            prop_parts = [part for part in text_parts if part not in component_code]
+
+            logger.info(f"[PROP TRACE] Found {len(hardcoded_parts)} hardcoded parts and {len(prop_parts)} potential prop parts")
+
+            # If ALL parts are hardcoded, edit the component itself
+            if len(prop_parts) == 0:
+                logger.info(f"[PROP TRACE] All text is hardcoded in {component_file}, not props")
                 return None
 
-            logger.info(f"[PROP TRACE] Text not found in component, searching for parent that passes it as prop...")
+            # If ANY part is a prop, find the parent component
+            logger.info(f"[PROP TRACE] Some text not found in component, searching for parent that passes it as prop...")
 
             if not component_name:
                 # Extract component name from file path
                 component_name = component_file.split('/')[-1].replace('.tsx', '').replace('.jsx', '')
 
-            # Search through all files for usage of this component with the text
+            # Search through all files for usage of this component with ANY of the text parts
             parent_candidates = []
 
             for file_path, file_content in all_files.items():
@@ -108,13 +196,20 @@ class ComponentEditorService:
 
                 # Check if this file imports and uses the component
                 if component_name in file_content:
-                    # Check if the text appears in props when using the component
-                    if self._search_text_in_jsx_props(component_name, text_content, file_content):
-                        logger.info(f"[PROP TRACE] Found text in {file_path} props for {component_name}")
+                    # Check if ANY of the text parts appears in props when using the component
+                    found_in_props = False
+                    for part in prop_parts:
+                        if self._search_text_in_jsx_props(component_name, part, file_content):
+                            logger.info(f"[PROP TRACE] Found text part '{part[:50]}...' in {file_path} props for {component_name}")
+                            found_in_props = True
+                            break
+
+                    if found_in_props:
                         parent_candidates.append(file_path)
 
             if not parent_candidates:
                 logger.info(f"[PROP TRACE] No parent components found using {component_name} with this text")
+                # If we have both hardcoded and prop parts, but no parent found, edit the component itself
                 return None
 
             # Prioritize pages over components
@@ -275,6 +370,8 @@ class ComponentEditorService:
         Provides accurate detection of edit types (structure, content, style) with support for
         multi-category edits and confidence scoring.
 
+        Enhanced to detect multi-element selections and adjust scope accordingly.
+
         Args:
             instruction: User's natural language instruction
             element_info: Selected element information (with component hierarchy)
@@ -288,6 +385,8 @@ class ComponentEditorService:
             - component_name: Component containing the element
             - specific_changes: Detailed breakdown of requested changes
             - element_context: Full context about the element
+            - is_multi_element: Whether this is a multi-element selection
+            - text_parts: List of text parts if multi-element
         """
         instruction_lower = instruction.lower()
 
@@ -298,6 +397,13 @@ class ComponentEditorService:
         element_tag = element_info.get('tagName', '')
         element_text = element_info.get('textContent', '').strip()
         element_classes = element_info.get('classList', [])
+
+        # Detect multi-element selection
+        is_multi_element = self._is_multi_element_selection(element_text)
+        text_parts = []
+        if is_multi_element:
+            text_parts = self._split_selection_into_parts(element_text)
+            logger.info(f"[ANALYSIS] Multi-element selection detected with {len(text_parts)} parts")
 
         logger.info(f"[COMPONENT EDITOR] Analyzing instruction: {instruction}")
         logger.info(f"[COMPONENT EDITOR] Target element: {target_element}, Component: {component_name}")
@@ -315,7 +421,7 @@ class ComponentEditorService:
             logger.info(f"[COMPONENT EDITOR] Cost savings mode enabled, using fallback analysis")
             return self._fallback_analysis(instruction, instruction_lower,
                                        target_element, component_name, element_tag,
-                                       element_text, element_classes)
+                                       element_text, element_classes, is_multi_element, text_parts)
         
         # Call AI for advanced analysis
         analysis_prompt = self._build_analysis_prompt(instruction, element_context)
@@ -335,6 +441,11 @@ class ComponentEditorService:
             if ai_analysis:
                 logger.info(f"[COMPONENT EDITOR] AI analysis result: {ai_analysis}")
 
+                # Adjust scope if multi-element
+                scope = ai_analysis.get("scope", "element")
+                if is_multi_element and scope == "element":
+                    scope = "multiple"
+
                 return {
                     "edit_categories": ai_analysis.get("categories", ["content"]),
                     "primary_edit_type": ai_analysis.get("primary_type", "content"),
@@ -348,9 +459,11 @@ class ComponentEditorService:
                         "text": element_text,
                         "classes": element_classes
                     },
-                    "change_scope": ai_analysis.get("scope", "element"),
+                    "change_scope": scope,
                     "requires_new_elements": ai_analysis.get("requires_new_elements", False),
-                    "affects_layout": ai_analysis.get("affects_layout", False)
+                    "affects_layout": ai_analysis.get("affects_layout", False),
+                    "is_multi_element": is_multi_element,
+                    "text_parts": text_parts
                 }
 
         except Exception as e:
@@ -359,7 +472,7 @@ class ComponentEditorService:
         # Fallback to enhanced heuristic analysis if AI fails
         return self._fallback_analysis(instruction, instruction_lower,
                                        target_element, component_name, element_tag,
-                                       element_text, element_classes)
+                                       element_text, element_classes, is_multi_element, text_parts)
 
     def _build_analysis_prompt(self, instruction: str, element_context: Dict[str, Any]) -> str:
         """Build prompt for AI-powered edit analysis"""
@@ -476,9 +589,13 @@ Respond with ONLY the JSON object for the given instruction:"""
         component_name: str,
         element_tag: str,
         element_text: str,
-        element_classes: list
+        element_classes: list,
+        is_multi_element: bool = False,
+        text_parts: list = None
     ) -> Dict[str, Any]:
         """Enhanced fallback heuristic analysis when AI is unavailable"""
+        if text_parts is None:
+            text_parts = []
 
         # Enhanced keyword detection with context
         style_keywords = {
@@ -604,7 +721,10 @@ Respond with ONLY the JSON object for the given instruction:"""
 
         # Determine scope and impact
         scope = 'element'
-        if any(word in instruction_lower for word in ['all', 'every', 'multiple', 'section']):
+        if is_multi_element:
+            # Multi-element selection automatically means multiple scope
+            scope = 'multiple'
+        elif any(word in instruction_lower for word in ['all', 'every', 'multiple', 'section']):
             scope = 'multiple'
         elif any(word in instruction_lower for word in ['component', 'entire', 'whole']):
             scope = 'component'
@@ -622,7 +742,7 @@ Respond with ONLY the JSON object for the given instruction:"""
         # Calculate confidence based on keyword matches
         confidence = min(0.9, 0.5 + (max_score * 0.1))
 
-        logger.info(f"[COMPONENT EDITOR] Fallback analysis - Categories: {categories}, Primary: {primary_type}, Confidence: {confidence}")
+        logger.info(f"[COMPONENT EDITOR] Fallback analysis - Categories: {categories}, Primary: {primary_type}, Confidence: {confidence}, Multi-element: {is_multi_element}")
 
         return {
             "edit_categories": categories,
@@ -639,7 +759,9 @@ Respond with ONLY the JSON object for the given instruction:"""
             },
             "change_scope": scope,
             "requires_new_elements": requires_new_elements,
-            "affects_layout": affects_layout
+            "affects_layout": affects_layout,
+            "is_multi_element": is_multi_element,
+            "text_parts": text_parts
         }
     
     async def modify_component_code(
@@ -648,7 +770,8 @@ Respond with ONLY the JSON object for the given instruction:"""
         instruction: str,
         element_context: Dict[str, Any],
         project_id: str,
-        files: Dict[str, str]
+        files: Dict[str, str],
+        business_context: Optional[Dict[str, Any]] = None
     ) -> Tuple[bool, str, str, Optional[str]]:
         """
         Use AI to modify component code based on user instruction.
@@ -658,6 +781,8 @@ Respond with ONLY the JSON object for the given instruction:"""
             instruction: User's natural language instruction
             element_context: Context about the selected element
             project_id: Project ID for loading current code
+            files: Dictionary of all project files
+            business_context: Business analysis data for context (optional)
 
         Returns:
             Tuple of (success, old_code, modified_code, error_message)
@@ -672,9 +797,9 @@ Respond with ONLY the JSON object for the given instruction:"""
             # Analyze the edit request (now async)
             analysis = await self.analyze_edit_request(instruction, element_context)
 
-            # Build AI prompt
-            prompt = self._build_edit_prompt(current_code, instruction, element_context, analysis)
-            logger.info(f"[COMPONENT EDITOR] Enhanced prompt built with analysis")
+            # Build AI prompt with business context
+            prompt = self._build_edit_prompt(current_code, instruction, element_context, analysis, business_context)
+            logger.info(f"[COMPONENT EDITOR] Enhanced prompt built with analysis and business context")
 
             # Call AI service
             logger.info(f"[COMPONENT EDITOR] Calling AI to modify {file_path}")
@@ -807,9 +932,10 @@ Respond with ONLY the JSON object for the given instruction:"""
         current_code: str,
         instruction: str,
         element_context: Dict[str, Any],
-        analysis: Dict[str, Any]
+        analysis: Dict[str, Any],
+        business_context: Optional[Dict[str, Any]] = None
     ) -> str:
-        """Build the AI prompt for component editing using enhanced analysis"""
+        """Build the AI prompt for component editing using enhanced analysis and business context"""
 
         target_element = analysis.get('target_element', 'unknown')
         component_name = analysis.get('component_name', 'Unknown')
@@ -822,6 +948,13 @@ Respond with ONLY the JSON object for the given instruction:"""
         affects_layout = analysis.get('affects_layout', False)
 
         selected_text = element_context.get('textContent', '').strip()
+
+        # Detect multi-element selection
+        is_multi_element = self._is_multi_element_selection(selected_text)
+        text_parts = []
+        if is_multi_element:
+            text_parts = self._split_selection_into_parts(selected_text)
+            logger.info(f"[EDIT PROMPT] Multi-element selection with {len(text_parts)} parts")
 
         # Determine if we're editing a prop value or component internals
         is_prop_edit = False
@@ -837,7 +970,31 @@ Respond with ONLY the JSON object for the given instruction:"""
 
         # Build context-aware prompt
         if is_prop_edit:
-            context_note = f"""
+            if is_multi_element:
+                # Multi-element prop edit
+                text_parts_preview = '\n'.join([f'  - "{part[:60]}..."' if len(part) > 60 else f'  - "{part}"' for part in text_parts[:5]])
+                context_note = f"""
+CONTEXT: This is a PAGE/PARENT COMPONENT that uses the <{actual_component_name}> component.
+You are editing the PROP VALUES passed to {actual_component_name}, not the component itself.
+
+⚠️ MULTI-ELEMENT SELECTION DETECTED ⚠️
+The user selected text that spans MULTIPLE elements/props. This means you need to modify
+MULTIPLE prop values in the <{actual_component_name}> usage, not just one.
+
+SELECTED TEXT PARTS ({len(text_parts)} parts):
+{text_parts_preview}
+
+SPECIFIC GUIDANCE:
+- Find where <{actual_component_name}> is used in this code
+- Identify which props contain any of the text parts above
+- Modify ALL relevant prop values according to the instruction
+- The instruction applies to ALL selected text, not just one prop
+- Do NOT modify the component definition or import
+- Make sure all changes are consistent with the user's instruction
+"""
+            else:
+                # Single element prop edit
+                context_note = f"""
 CONTEXT: This is a PAGE/PARENT COMPONENT that uses the <{actual_component_name}> component.
 You are editing the PROP VALUES passed to {actual_component_name}, not the component itself.
 
@@ -848,7 +1005,30 @@ SPECIFIC GUIDANCE:
 - Only change the specific prop value as instructed
 """
         else:
-            context_note = f"""
+            if is_multi_element:
+                # Multi-element component edit
+                text_parts_preview = '\n'.join([f'  - "{part[:60]}..."' if len(part) > 60 else f'  - "{part}"' for part in text_parts[:5]])
+                context_note = f"""
+CONTEXT: This is the component definition itself.
+You are editing the component's internal structure and content.
+
+⚠️ MULTI-ELEMENT SELECTION DETECTED ⚠️
+The user selected text that spans MULTIPLE elements in the component. This means you need to
+modify MULTIPLE pieces of text/elements, not just one.
+
+SELECTED TEXT PARTS ({len(text_parts)} parts):
+{text_parts_preview}
+
+SPECIFIC GUIDANCE:
+- Find ALL occurrences of the text parts above in the component
+- Modify ALL of them according to the instruction (the instruction applies to ALL selected text)
+- Keep the component's prop interface unchanged unless necessary
+- Maintain the component's export and structure
+- Ensure changes are consistent across all modified elements
+"""
+            else:
+                # Single element component edit
+                context_note = f"""
 CONTEXT: This is the component definition itself.
 You are editing the component's internal structure and content.
 
@@ -878,9 +1058,35 @@ SPECIFIC GUIDANCE:
         if requires_new_elements:
             new_elements_guidance = "\n⚠️ NEW ELEMENTS: This change requires adding new elements. Make sure they follow the existing code style and maintain semantic HTML."
 
+        # Build business context section
+        business_context_note = ""
+        if business_context:
+            # Extract key business information
+            business_name = business_context.get('business_name', '')
+            business_description = business_context.get('business_description', '')
+            target_audience = business_context.get('target_audience', '')
+            key_offerings = business_context.get('key_offerings', [])
+            value_proposition = business_context.get('value_proposition', '')
+            brand_personality = business_context.get('brand_personality', '')
+
+            business_context_note = f"""
+BUSINESS CONTEXT (use this to inform your edits with relevant, specific content):
+- Business Name: {business_name}
+- Description: {business_description}
+- Target Audience: {target_audience}
+- Value Proposition: {value_proposition}
+- Brand Personality: {brand_personality}
+- Key Offerings: {', '.join(key_offerings[:5]) if key_offerings else 'N/A'}
+
+IMPORTANT: When the user's instruction lacks specific replacement text (e.g., "update this text", "change the title"),
+use the business context above to generate relevant, meaningful content that aligns with the business's brand and offerings.
+DO NOT use generic placeholders like "New Title Placeholder" - instead, create actual content based on the business context.
+"""
+
         prompt = f"""You are a React component editor. Modify the following code based on the user's instruction.
 
 {context_note}
+{business_context_note}
 
 CODE TO EDIT:
 ```tsx
@@ -893,9 +1099,10 @@ USER INSTRUCTION:
 TARGET INFORMATION:
 - Element: {target_element}
 - Tag: {element_context.get('tagName', '')}
-- Text: "{selected_text}"
+- Text: "{selected_text[:100]}{'...' if len(selected_text) > 100 else ''}"
 - Classes: {', '.join(element_context.get('classList', [])[:5])}
 - Component: {component_name}
+- Multi-element: {'YES - ' + str(len(text_parts)) + ' parts' if is_multi_element else 'NO'}
 
 ANALYSIS (Confidence: {confidence:.0%}):
 - Edit Categories: {', '.join(edit_categories)}
