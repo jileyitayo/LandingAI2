@@ -62,7 +62,7 @@ function ReactPreview({
   onSelectorEnabledChange
 }: ReactPreviewProps) {
   const [selectorReady, setSelectorReady] = useState(false);
-  const [showDetailsPanel, setShowDetailsPanel] = useState(true);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Listen for messages from iframe

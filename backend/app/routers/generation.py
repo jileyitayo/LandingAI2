@@ -1490,8 +1490,14 @@ async def edit_project_component(
             file_path=component_file,
             instruction=request.instruction,
             element_context=request.selected_element,
-            project_id=project_id
+            project_id=project_id, 
+            files=files
         )
+        logger.info(f"[COMPONENT EDIT] AI modification successful: {success}")
+        logger.info(f"[COMPONENT EDIT] Old code length: {len(old_code)} characters")
+        logger.info(f"[COMPONENT EDIT] New code length: {len(new_code)} characters")
+        logger.info(f"[COMPONENT EDIT] Error: {error}")
+
 
         if not success:
             logger.error(f"[COMPONENT EDIT] AI modification failed: {error}")

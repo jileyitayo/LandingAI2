@@ -268,41 +268,378 @@ class ComponentEditorService:
             # On error, default to Home page as safe fallback
             return "src/pages/Home.tsx"
     
-    def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Analyze the edit request to determine what type of changes are needed.
+        Advanced AI-powered analysis of edit requests to determine what type of changes are needed.
+
+        Provides accurate detection of edit types (structure, content, style) with support for
+        multi-category edits and confidence scoring.
 
         Args:
             instruction: User's natural language instruction
             element_info: Selected element information (with component hierarchy)
 
         Returns:
-            Analysis of the edit request
+            Comprehensive analysis including:
+            - edit_categories: List of applicable categories (structure/content/style)
+            - primary_edit_type: The main category of edit
+            - confidence: Confidence score (0-1) for the analysis
+            - target_element: Element being edited
+            - component_name: Component containing the element
+            - specific_changes: Detailed breakdown of requested changes
+            - element_context: Full context about the element
         """
         instruction_lower = instruction.lower()
-
-        # Determine edit type
-        edit_type = "unknown"
-        if any(word in instruction_lower for word in ['color', 'background', 'text', 'font', 'size', 'padding', 'margin', 'border', 'style']):
-            edit_type = "style"
-        elif any(word in instruction_lower for word in ['text', 'content', 'title', 'heading', 'button', 'label', 'change', 'wording']):
-            edit_type = "content"
-        elif any(word in instruction_lower for word in ['add', 'remove', 'delete', 'create', 'insert']):
-            edit_type = "structure"
 
         # Extract target element info from new structure
         component_info = element_info.get('component', {})
         target_element = component_info.get('elementName') or element_info.get('attributes', {}).get('data-element', 'unknown')
         component_name = component_info.get('componentName') or element_info.get('attributes', {}).get('data-component', 'Unknown')
+        element_tag = element_info.get('tagName', '')
+        element_text = element_info.get('textContent', '').strip()
+        element_classes = element_info.get('classList', [])
+
+        logger.info(f"[COMPONENT EDITOR] Analyzing instruction: {instruction}")
+        logger.info(f"[COMPONENT EDITOR] Target element: {target_element}, Component: {component_name}")
+
+        # Build comprehensive context for AI analysis
+        element_context = {
+            "tag": element_tag,
+            "text": element_text[:100] if element_text else "",  # Truncate for prompt
+            "classes": element_classes[:5] if element_classes else [],  # Top 5 classes
+            "element_name": target_element,
+            "component": component_name
+        }
+
+        if settings.cost_savings_mode:
+            logger.info(f"[COMPONENT EDITOR] Cost savings mode enabled, using fallback analysis")
+            return self._fallback_analysis(instruction, instruction_lower,
+                                       target_element, component_name, element_tag,
+                                       element_text, element_classes)
+        
+        # Call AI for advanced analysis
+        analysis_prompt = self._build_analysis_prompt(instruction, element_context)
+        
+        try:
+            response, usage = self.prompt_service.call_openai_api(
+                system_prompt="You are an expert at analyzing UI edit requests. Provide precise JSON responses.",
+                user_prompt=analysis_prompt,
+                model="gemini-2.5-flash"
+            )
+
+            logger.info(f"[COMPONENT EDITOR] AI analysis usage: {usage}")
+
+            # Parse AI response
+            ai_analysis = self._parse_analysis_response(response)
+
+            if ai_analysis:
+                logger.info(f"[COMPONENT EDITOR] AI analysis result: {ai_analysis}")
+
+                return {
+                    "edit_categories": ai_analysis.get("categories", ["content"]),
+                    "primary_edit_type": ai_analysis.get("primary_type", "content"),
+                    "confidence": ai_analysis.get("confidence", 0.8),
+                    "target_element": target_element,
+                    "component_name": component_name,
+                    "instruction": instruction,
+                    "specific_changes": ai_analysis.get("specific_changes", {}),
+                    "element_context": {
+                        "tag": element_tag,
+                        "text": element_text,
+                        "classes": element_classes
+                    },
+                    "change_scope": ai_analysis.get("scope", "element"),
+                    "requires_new_elements": ai_analysis.get("requires_new_elements", False),
+                    "affects_layout": ai_analysis.get("affects_layout", False)
+                }
+
+        except Exception as e:
+            logger.warning(f"[COMPONENT EDITOR] AI analysis failed, using fallback: {str(e)}")
+
+        # Fallback to enhanced heuristic analysis if AI fails
+        return self._fallback_analysis(instruction, instruction_lower,
+                                       target_element, component_name, element_tag,
+                                       element_text, element_classes)
+
+    def _build_analysis_prompt(self, instruction: str, element_context: Dict[str, Any]) -> str:
+        """Build prompt for AI-powered edit analysis"""
+        return f"""Analyze this UI edit request and return a JSON response.
+
+INSTRUCTION: "{instruction}"
+
+SELECTED ELEMENT:
+- Tag: {element_context.get('tag', 'unknown')}
+- Text content: "{element_context.get('text', '')}"
+- CSS classes: {', '.join(element_context.get('classes', []))}
+- Element name: {element_context.get('element_name', 'unknown')}
+- Component: {element_context.get('component', 'Unknown')}
+
+Analyze what changes are needed and respond with ONLY a valid JSON object (no markdown, no explanation):
+
+{{
+  "categories": ["structure" | "content" | "style"],  // All applicable categories
+  "primary_type": "structure" | "content" | "style",  // Main category
+  "confidence": 0.0-1.0,  // Your confidence in this analysis
+  "specific_changes": {{
+    "structure": {{
+      "add_elements": ["element types to add"],
+      "remove_elements": ["element types to remove"],
+      "reorder": false,
+      "change_hierarchy": false
+    }},
+    "content": {{
+      "text_changes": ["description of text changes"],
+      "replace_text": "new text if specified",
+      "modify_attributes": ["attributes to change"]
+    }},
+    "style": {{
+      "colors": ["color properties to change"],
+      "typography": ["font/text properties to change"],
+      "layout": ["spacing/positioning properties to change"],
+      "visual_effects": ["effects like borders, shadows, etc."]
+    }}
+  }},
+  "scope": "element" | "component" | "multiple",  // How many things affected
+  "requires_new_elements": true | false,
+  "affects_layout": true | false
+}}
+
+EXAMPLES:
+
+Instruction: "make the text red"
+Response: {{"categories": ["style"], "primary_type": "style", "confidence": 0.95, "specific_changes": {{"style": {{"colors": ["text color to red"]}}}}, "scope": "element", "requires_new_elements": false, "affects_layout": false}}
+
+Instruction: "change this to say 'Welcome'"
+Response: {{"categories": ["content"], "primary_type": "content", "confidence": 0.98, "specific_changes": {{"content": {{"text_changes": ["change text to Welcome"], "replace_text": "Welcome"}}}}, "scope": "element", "requires_new_elements": false, "affects_layout": false}}
+
+Instruction: "add a button below this"
+Response: {{"categories": ["structure"], "primary_type": "structure", "confidence": 0.9, "specific_changes": {{"structure": {{"add_elements": ["button"]}}}}, "scope": "component", "requires_new_elements": true, "affects_layout": true}}
+
+Instruction: "make this heading larger and bold with a blue color"
+Response: {{"categories": ["style", "content"], "primary_type": "style", "confidence": 0.92, "specific_changes": {{"style": {{"typography": ["increase size", "make bold"], "colors": ["text color to blue"]}}}}, "scope": "element", "requires_new_elements": false, "affects_layout": false}}
+
+Respond with ONLY the JSON object for the given instruction:"""
+
+    def _parse_analysis_response(self, response: str) -> Optional[Dict[str, Any]]:
+        """Parse and validate AI analysis response"""
+        try:
+            import json
+
+            # Clean response
+            response = response.strip()
+
+            # Remove markdown code blocks if present
+            if response.startswith('```'):
+                response = re.sub(r'^```(?:json)?\n?', '', response, flags=re.MULTILINE)
+                response = re.sub(r'\n?```$', '', response, flags=re.MULTILINE)
+                response = response.strip()
+
+            # Parse JSON
+            analysis = json.loads(response)
+
+            # Validate required fields
+            required_fields = ['categories', 'primary_type', 'confidence']
+            if not all(field in analysis for field in required_fields):
+                logger.warning("[COMPONENT EDITOR] AI response missing required fields")
+                return None
+
+            # Validate categories
+            valid_categories = {'structure', 'content', 'style'}
+            if not all(cat in valid_categories for cat in analysis['categories']):
+                logger.warning("[COMPONENT EDITOR] Invalid categories in AI response")
+                return None
+
+            # Validate primary type
+            if analysis['primary_type'] not in valid_categories:
+                logger.warning("[COMPONENT EDITOR] Invalid primary_type in AI response")
+                return None
+
+            # Validate confidence
+            if not (0 <= analysis['confidence'] <= 1):
+                logger.warning("[COMPONENT EDITOR] Invalid confidence score")
+                analysis['confidence'] = 0.7  # Default
+
+            return analysis
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"[COMPONENT EDITOR] Failed to parse AI response as JSON: {str(e)}")
+            return None
+        except Exception as e:
+            logger.warning(f"[COMPONENT EDITOR] Error parsing analysis response: {str(e)}")
+            return None
+
+    def _fallback_analysis(
+        self,
+        instruction: str,
+        instruction_lower: str,
+        target_element: str,
+        component_name: str,
+        element_tag: str,
+        element_text: str,
+        element_classes: list
+    ) -> Dict[str, Any]:
+        """Enhanced fallback heuristic analysis when AI is unavailable"""
+
+        # Enhanced keyword detection with context
+        style_keywords = {
+            'color', 'background', 'font', 'size', 'padding', 'margin', 'border',
+            'style', 'width', 'height', 'spacing', 'bold', 'italic', 'underline',
+            'shadow', 'rounded', 'opacity', 'larger', 'smaller', 'bigger'
+        }
+
+        content_keywords = {
+            'text', 'content', 'title', 'heading', 'label', 'wording',
+            'say', 'change to', 'rename', 'update text', 'write', 'modify'
+        }
+
+        structure_keywords = {
+            'add', 'remove', 'delete', 'create', 'insert', 'place',
+            'move', 'reorder', 'organize', 'section', 'new'
+        }
+
+        # Detect all applicable categories
+        categories = []
+        scores = {
+            'style': 0,
+            'content': 0,
+            'structure': 0
+        }
+
+        # Score each category
+        words = instruction_lower.split()
+        for word in words:
+            if any(kw in word for kw in style_keywords):
+                scores['style'] += 1
+            if any(kw in word for kw in content_keywords):
+                scores['content'] += 1
+            if any(kw in word for kw in structure_keywords):
+                scores['structure'] += 1
+
+        # Determine categories based on scores
+        max_score = max(scores.values())
+        if max_score > 0:
+            for category, score in scores.items():
+                if score > 0:
+                    categories.append(category)
+            primary_type = max(scores.items(), key=lambda x: x[1])[0]
+        else:
+            # Default to content if unclear
+            categories = ['content']
+            primary_type = 'content'
+
+        # Analyze specific changes
+        specific_changes = {
+            'structure': {
+                'add_elements': [],
+                'remove_elements': [],
+                'reorder': 'move' in instruction_lower or 'reorder' in instruction_lower,
+                'change_hierarchy': False
+            },
+            'content': {
+                'text_changes': [],
+                'replace_text': None,
+                'modify_attributes': []
+            },
+            'style': {
+                'colors': [],
+                'typography': [],
+                'layout': [],
+                'visual_effects': []
+            }
+        }
+
+        # Detect specific structure changes
+        if 'structure' in categories:
+            if any(word in instruction_lower for word in ['add', 'create', 'insert']):
+                # Try to detect what to add
+                for element_type in ['button', 'input', 'section', 'div', 'image', 'link']:
+                    if element_type in instruction_lower:
+                        specific_changes['structure']['add_elements'].append(element_type)
+
+            if any(word in instruction_lower for word in ['remove', 'delete']):
+                specific_changes['structure']['remove_elements'].append(element_tag or 'element')
+
+        # Detect specific content changes
+        if 'content' in categories:
+            # Check for text replacement patterns
+            replace_patterns = [
+                r'change.*to\s+"([^"]+)"',
+                r'change.*to\s+\'([^\']+)\'',
+                r'say\s+"([^"]+)"',
+                r'say\s+\'([^\']+)\'',
+                r'make.*say\s+"([^"]+)"',
+            ]
+
+            for pattern in replace_patterns:
+                match = re.search(pattern, instruction_lower)
+                if match:
+                    specific_changes['content']['replace_text'] = match.group(1)
+                    specific_changes['content']['text_changes'].append(f"Replace text with: {match.group(1)}")
+                    break
+
+            if not specific_changes['content']['text_changes']:
+                specific_changes['content']['text_changes'].append("Modify text content")
+
+        # Detect specific style changes
+        if 'style' in categories:
+            # Color changes
+            color_words = ['color', 'red', 'blue', 'green', 'yellow', 'black', 'white', 'background']
+            if any(word in instruction_lower for word in color_words):
+                specific_changes['style']['colors'].append("Change color properties")
+
+            # Typography changes
+            typo_words = ['font', 'size', 'bold', 'italic', 'larger', 'smaller', 'bigger']
+            if any(word in instruction_lower for word in typo_words):
+                specific_changes['style']['typography'].append("Adjust typography")
+
+            # Layout changes
+            layout_words = ['padding', 'margin', 'spacing', 'width', 'height', 'position']
+            if any(word in instruction_lower for word in layout_words):
+                specific_changes['style']['layout'].append("Modify layout/spacing")
+
+            # Visual effects
+            effect_words = ['border', 'shadow', 'rounded', 'opacity']
+            if any(word in instruction_lower for word in effect_words):
+                specific_changes['style']['visual_effects'].append("Add/modify visual effects")
+
+        # Determine scope and impact
+        scope = 'element'
+        if any(word in instruction_lower for word in ['all', 'every', 'multiple', 'section']):
+            scope = 'multiple'
+        elif any(word in instruction_lower for word in ['component', 'entire', 'whole']):
+            scope = 'component'
+
+        requires_new_elements = 'structure' in categories and any(
+            word in instruction_lower for word in ['add', 'create', 'insert', 'new']
+        )
+
+        affects_layout = 'structure' in categories or (
+            'style' in categories and any(
+                word in instruction_lower for word in ['padding', 'margin', 'width', 'height', 'position', 'layout']
+            )
+        )
+
+        # Calculate confidence based on keyword matches
+        confidence = min(0.9, 0.5 + (max_score * 0.1))
+
+        logger.info(f"[COMPONENT EDITOR] Fallback analysis - Categories: {categories}, Primary: {primary_type}, Confidence: {confidence}")
 
         return {
-            "edit_type": edit_type,
+            "edit_categories": categories,
+            "primary_edit_type": primary_type,
+            "confidence": confidence,
             "target_element": target_element,
             "component_name": component_name,
             "instruction": instruction,
-            "element_tag": element_info.get('tagName', ''),
-            "element_text": element_info.get('textContent', ''),
-            "element_classes": element_info.get('classList', [])
+            "specific_changes": specific_changes,
+            "element_context": {
+                "tag": element_tag,
+                "text": element_text,
+                "classes": element_classes
+            },
+            "change_scope": scope,
+            "requires_new_elements": requires_new_elements,
+            "affects_layout": affects_layout
         }
     
     async def modify_component_code(
@@ -310,7 +647,8 @@ class ComponentEditorService:
         file_path: str,
         instruction: str,
         element_context: Dict[str, Any],
-        project_id: str
+        project_id: str,
+        files: Dict[str, str]
     ) -> Tuple[bool, str, str, Optional[str]]:
         """
         Use AI to modify component code based on user instruction.
@@ -326,17 +664,17 @@ class ComponentEditorService:
         """
         try:
             # Load current component code
-            files = await project_file_manager.get_project_files(project_id)
             current_code = files.get(file_path)
 
             if not current_code:
                 return False, "", "", f"Component file {file_path} not found in project"
 
-            # Analyze the edit request
-            analysis = self.analyze_edit_request(instruction, element_context)
+            # Analyze the edit request (now async)
+            analysis = await self.analyze_edit_request(instruction, element_context)
 
             # Build AI prompt
             prompt = self._build_edit_prompt(current_code, instruction, element_context, analysis)
+            logger.info(f"[COMPONENT EDITOR] Enhanced prompt built with analysis")
 
             # Call AI service
             logger.info(f"[COMPONENT EDITOR] Calling AI to modify {file_path}")
@@ -471,11 +809,18 @@ class ComponentEditorService:
         element_context: Dict[str, Any],
         analysis: Dict[str, Any]
     ) -> str:
-        """Build the AI prompt for component editing"""
+        """Build the AI prompt for component editing using enhanced analysis"""
 
         target_element = analysis.get('target_element', 'unknown')
         component_name = analysis.get('component_name', 'Unknown')
-        edit_type = analysis.get('edit_type', 'unknown')
+        edit_categories = analysis.get('edit_categories', ['content'])
+        primary_edit_type = analysis.get('primary_edit_type', 'content')
+        specific_changes = analysis.get('specific_changes', {})
+        confidence = analysis.get('confidence', 0.7)
+        change_scope = analysis.get('change_scope', 'element')
+        requires_new_elements = analysis.get('requires_new_elements', False)
+        affects_layout = analysis.get('affects_layout', False)
+
         selected_text = element_context.get('textContent', '').strip()
 
         # Determine if we're editing a prop value or component internals
@@ -513,6 +858,26 @@ SPECIFIC GUIDANCE:
 - Maintain the component's export and structure
 """
 
+        # Build detailed change instructions based on analysis
+        change_details = self._build_change_details(specific_changes, edit_categories)
+
+        # Scope guidance
+        scope_guidance = ""
+        if change_scope == "multiple":
+            scope_guidance = "\n⚠️ SCOPE: This change affects MULTIPLE elements. Make sure to apply the change consistently across all relevant elements."
+        elif change_scope == "component":
+            scope_guidance = "\n⚠️ SCOPE: This change affects the ENTIRE component. Consider the impact on the component's overall structure."
+
+        # Layout warning
+        layout_warning = ""
+        if affects_layout:
+            layout_warning = "\n⚠️ LAYOUT IMPACT: This change may affect the layout. Ensure spacing, positioning, and responsive behavior remain intact."
+
+        # New elements guidance
+        new_elements_guidance = ""
+        if requires_new_elements:
+            new_elements_guidance = "\n⚠️ NEW ELEMENTS: This change requires adding new elements. Make sure they follow the existing code style and maintain semantic HTML."
+
         prompt = f"""You are a React component editor. Modify the following code based on the user's instruction.
 
 {context_note}
@@ -529,31 +894,81 @@ TARGET INFORMATION:
 - Element: {target_element}
 - Tag: {element_context.get('tagName', '')}
 - Text: "{selected_text}"
-- Classes: {', '.join(element_context.get('classList', []))}
+- Classes: {', '.join(element_context.get('classList', [])[:5])}
 - Component: {component_name}
 
-EDIT TYPE: {edit_type}
+ANALYSIS (Confidence: {confidence:.0%}):
+- Edit Categories: {', '.join(edit_categories)}
+- Primary Type: {primary_edit_type}
+- Scope: {change_scope}
+{scope_guidance}{layout_warning}{new_elements_guidance}
+
+SPECIFIC CHANGES REQUIRED:
+{change_details}
 
 REQUIREMENTS:
 1. Make ONLY the requested changes - do not modify other parts
 2. Preserve all existing functionality and structure
 3. Keep the same export style (default or named)
 4. Maintain TypeScript types and interfaces
-5. Use Tailwind CSS classes for styling
+5. Use Tailwind CSS classes for styling (do not add inline styles)
 6. Keep the same component name and file structure
 7. Ensure the modified element is still accessible and semantic
 8. Do not add unnecessary imports or dependencies
 9. Maintain all data attributes (data-component, data-file, data-element)
+10. Follow React best practices and hooks rules
 
 IMPORTANT:
 - Return ONLY the complete modified code
 - Do not include explanations or markdown formatting
 - The code should be ready to use as-is
 - Keep all existing imports and structure intact
+- Make precise, targeted changes based on the analysis above
 
 Return the complete modified code:"""
 
         return prompt
+
+    def _build_change_details(self, specific_changes: Dict[str, Any], categories: list) -> str:
+        """Build detailed change instructions from analysis"""
+        details = []
+
+        # Structure changes
+        if 'structure' in categories and 'structure' in specific_changes:
+            structure = specific_changes['structure']
+            if structure.get('add_elements'):
+                details.append(f"  • ADD ELEMENTS: {', '.join(structure['add_elements'])}")
+            if structure.get('remove_elements'):
+                details.append(f"  • REMOVE ELEMENTS: {', '.join(structure['remove_elements'])}")
+            if structure.get('reorder'):
+                details.append("  • REORDER: Rearrange element positions")
+            if structure.get('change_hierarchy'):
+                details.append("  • HIERARCHY: Modify DOM structure/nesting")
+
+        # Content changes
+        if 'content' in categories and 'content' in specific_changes:
+            content = specific_changes['content']
+            if content.get('replace_text'):
+                details.append(f"  • REPLACE TEXT: Change to \"{content['replace_text']}\"")
+            elif content.get('text_changes'):
+                for change in content['text_changes']:
+                    details.append(f"  • TEXT CHANGE: {change}")
+            if content.get('modify_attributes'):
+                details.append(f"  • ATTRIBUTES: Modify {', '.join(content['modify_attributes'])}")
+
+        # Style changes
+        if 'style' in categories and 'style' in specific_changes:
+            style = specific_changes['style']
+            if style.get('colors'):
+                details.append(f"  • COLORS: {', '.join(style['colors'])}")
+            if style.get('typography'):
+                details.append(f"  • TYPOGRAPHY: {', '.join(style['typography'])}")
+            if style.get('layout'):
+                details.append(f"  • LAYOUT: {', '.join(style['layout'])}")
+            if style.get('visual_effects'):
+                details.append(f"  • EFFECTS: {', '.join(style['visual_effects'])}")
+
+        return "\n".join(details) if details else "  • Make the changes as described in the instruction"
     
     def _extract_code_from_response(self, response: str) -> str:
         """Extract code from AI response, handling markdown code blocks"""

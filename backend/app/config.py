@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     # Set's open ai calls to use already existing data instead of generating new data
     training_wheels: bool = False
+    cost_savings_mode: bool = False
     
     # React Website Generation Validation
     enable_build_validation: bool = True  # Enable actual npm build testing
