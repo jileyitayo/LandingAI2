@@ -42,6 +42,24 @@ class Settings(BaseSettings):
     max_build_retries: int = 2  # Maximum retry attempts for fixing build errors
     build_timeout: int = 120  # Build timeout in seconds 
 
+    # # Model settings
+    # use_premium_models: bool = True
+    # model_temperature: float = 0.7
+    
+    # # Design settings
+    # enable_design_system: bool = True
+    # enable_visual_optimizer: bool = True
+    # min_quality_score: float = 0.8
+    
+    # # Performance
+    # enable_parallel_generation: bool = True
+    # enable_component_cache: bool = True
+    
+    # # Features
+    # enable_animations: bool = True
+    # enable_dark_mode: bool = True
+    # enable_a11y_checks: bool = True
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):

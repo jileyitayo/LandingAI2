@@ -90,6 +90,10 @@ class ReactWebsiteGenerator:
         self.openai_client = PromptOpenAI()
         self.google_client = PromptOpenAI(api_key=settings.google_api_key, url="https://generativelanguage.googleapis.com/v1beta/openai/")
         self.business_analyzer = BusinessAnalyzer()
+        # self.design_system_generator = DesignSystemGenerator()  # NEW
+        # self.visual_optimizer = VisualHierarchyOptimizer()      # NEW
+        # self.pattern_library = ComponentPatternLibrary()        # NEW
+        # self.quality_scorer = WebsiteQualityScorer()           # NEW
 
     def _validate_and_inject_data_attributes(self, file_path: str, content: str) -> tuple[str, bool]:
         """

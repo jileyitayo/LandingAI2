@@ -3,6 +3,23 @@ from app.config import settings
 import logging
 logger = logging.getLogger(__name__)
 
+# class ModelStrategy:
+#     """Smart model selection based on task complexity"""
+    
+#     MODELS = {
+#         "business_analysis": "gpt-4-turbo-preview",  # Better reasoning
+#         "structure_generation": "claude-3-opus",      # Better planning
+#         "page_generation": "gpt-4-turbo-preview",     # Better code
+#         "component_generation": "claude-3-sonnet",    # Fast & good
+#         "validation": "gpt-4o-mini"                   # Fast for checks
+#     }
+    
+#     @classmethod
+#     def get_model_for_task(cls, task_type: str, user_tier: str = "free"):
+#         if user_tier == "pro":
+#             return cls.MODELS.get(task_type, "gpt-4-turbo-preview")
+#         return "gpt-4o-mini"  # Free tier fallback
+
 class PromptOpenAI:
     def __init__(self, model: str = "gpt-4o-mini", api_key: str = settings.openai_api_key, url: str = "https://api.openai.com/v1"):
         self.client = OpenAI(api_key=api_key, base_url=url)
