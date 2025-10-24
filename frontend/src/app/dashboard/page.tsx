@@ -8,6 +8,7 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useProjects,
@@ -26,6 +27,26 @@ const STATUS_FILTERS = [
   { value: "generating", label: "Generating" },
   { value: "failed", label: "Failed" },
 ];
+
+// Shimmer effect for avatar loading
+const shimmer = (w: number, h: number) => `
+<svg width="${w}" height="${h}" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <linearGradient id="g">
+      <stop stop-color="#6366f1" offset="20%" />
+      <stop stop-color="#8b5cf6" offset="50%" />
+      <stop stop-color="#6366f1" offset="70%" />
+    </linearGradient>
+  </defs>
+  <rect width="${w}" height="${h}" fill="#6366f1" />
+  <rect id="r" width="${w}" height="${h}" fill="url(#g)" />
+  <animate xlink:href="#r" attributeName="x" from="-${w}" to="${w}" dur="1s" repeatCount="indefinite"  />
+</svg>`;
+
+const toBase64 = (str: string) =>
+  typeof window === 'undefined'
+    ? Buffer.from(str).toString('base64')
+    : window.btoa(str);
 
 /**
  * Dashboard page - Protected route
@@ -47,6 +68,9 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+
+  // Image error handling
+  const [avatarError, setAvatarError] = useState(false);
 
   // Debounce search query to reduce re-renders during typing
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -185,12 +209,21 @@ export default function DashboardPage() {
                 >
                   {/* Avatar */}
                   <div className="flex items-center space-x-3">
-                    {userProfile?.avatar_url ? (
-                      <img
-                        src={userProfile.avatar_url}
-                        alt="Profile"
-                        className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-200"
-                      />
+                    {userProfile?.avatar_url && !avatarError ? (
+                      <div className="relative w-10 h-10 rounded-full ring-2 ring-gray-200 overflow-hidden">
+                        <Image
+                          src={userProfile.avatar_url}
+                          alt="Profile"
+                          fill
+                          sizes="40px"
+                          className="object-cover"
+                          priority={true}
+                          quality={90}
+                          placeholder="blur"
+                          blurDataURL={`data:image/svg+xml;base64,${toBase64(shimmer(40, 40))}`}
+                          onError={() => setAvatarError(true)}
+                        />
+                      </div>
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm ring-2 ring-gray-200">
                         {getInitials()}

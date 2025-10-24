@@ -1,9 +1,30 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Calendar, Edit, Trash2, Copy, ExternalLink, Clock } from 'lucide-react';
+import Image from 'next/image';
+import { Calendar, Edit, Trash2, Copy, ExternalLink } from 'lucide-react';
 import { Project } from '@/types/project.types';
 import { useState } from 'react';
+
+// Blur placeholder for image loading
+const shimmer = (w: number, h: number) => `
+<svg width="${w}" height="${h}" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <linearGradient id="g">
+      <stop stop-color="#e0e7ff" offset="20%" />
+      <stop stop-color="#c7d2fe" offset="50%" />
+      <stop stop-color="#e0e7ff" offset="70%" />
+    </linearGradient>
+  </defs>
+  <rect width="${w}" height="${h}" fill="#e0e7ff" />
+  <rect id="r" width="${w}" height="${h}" fill="url(#g)" />
+  <animate xlink:href="#r" attributeName="x" from="-${w}" to="${w}" dur="1s" repeatCount="indefinite"  />
+</svg>`;
+
+const toBase64 = (str: string) =>
+  typeof window === 'undefined'
+    ? Buffer.from(str).toString('base64')
+    : window.btoa(str);
 
 interface ProjectCardProps {
   project: Project;
@@ -15,6 +36,7 @@ export default function ProjectCard({ project, onDelete, onDuplicate }: ProjectC
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const handleEdit = () => {
     router.push(`/dashboard/projects/${project.id}`);
@@ -90,12 +112,20 @@ export default function ProjectCard({ project, onDelete, onDuplicate }: ProjectC
     >
       {/* Preview Thumbnail */}
       <div className="h-48 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 relative overflow-hidden">
-        {project.preview_url ? (
+        {project.preview_url && !imageError ? (
           <>
-            <img
+            <Image
               src={project.preview_url}
               alt={project.name}
-              className="w-full h-full object-cover"
+              fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              className="object-cover"
+              priority={false}
+              loading="lazy"
+              quality={75}
+              placeholder="blur"
+              blurDataURL={`data:image/svg+xml;base64,${toBase64(shimmer(700, 475))}`}
+              onError={() => setImageError(true)}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
           </>
