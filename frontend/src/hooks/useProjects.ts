@@ -25,12 +25,34 @@ export interface Project {
 }
 
 /**
- * Hook for fetching all user projects with caching and auto-revalidation
+ * Parameters for fetching projects with pagination and filters
  */
-export function useProjects() {
+export interface ProjectsParams {
+  page?: number;
+  limit?: number;
+  status_filter?: string;
+  search?: string;
+}
+
+/**
+ * Hook for fetching user projects with pagination, caching and auto-revalidation
+ */
+export function useProjects(params: ProjectsParams = {}) {
+  const { page = 1, limit = 12, status_filter, search } = params;
+  const offset = (page - 1) * limit;
+
+  // Create a unique SWR key that includes all parameters
+  const key = {
+    url: "/api/v1/projects",
+    page,
+    limit,
+    status_filter,
+    search,
+  };
+
   const { data, error, isLoading, mutate: mutateProjects } = useSWR<Project[]>(
-    "/api/v1/projects",
-    api.projects.list,
+    key,
+    () => api.projects.list({ limit, offset, status_filter, search }),
     {
       // Revalidate on focus to keep data fresh
       revalidateOnFocus: true,
@@ -53,38 +75,18 @@ export function useProjects() {
 
 /**
  * Hook for deleting a project with optimistic updates
+ * Works with paginated project lists
  */
 export function useDeleteProject() {
   const deleteProject = async (projectId: string) => {
-    // Optimistically update the UI by filtering out the deleted project
+    // Perform the actual deletion
+    await api.projects.delete(projectId);
+
+    // Revalidate all project lists (with different pagination/filter params)
     await mutate(
-      "/api/v1/projects",
-      async (currentProjects: Project[] | undefined) => {
-        if (!currentProjects) return currentProjects;
-
-        // Optimistically remove the project
-        const optimisticData = currentProjects.filter((p) => p.id !== projectId);
-
-        try {
-          // Perform the actual deletion
-          await api.projects.delete(projectId);
-          return optimisticData;
-        } catch (error) {
-          // If deletion fails, revert by returning current data
-          throw error;
-        }
-      },
-      {
-        // Don't revalidate immediately to show optimistic update
-        revalidate: false,
-        // Rollback on error
-        rollbackOnError: true,
-        // Show optimistic update immediately
-        optimisticData: (currentProjects: Project[] | undefined) => {
-          if (!currentProjects) return currentProjects;
-          return currentProjects.filter((p) => p.id !== projectId);
-        },
-      }
+      (key: any) => typeof key === 'object' && key?.url === '/api/v1/projects',
+      undefined,
+      { revalidate: true }
     );
   };
 
@@ -92,7 +94,8 @@ export function useDeleteProject() {
 }
 
 /**
- * Hook for duplicating a project with optimistic updates
+ * Hook for duplicating a project
+ * Works with paginated project lists
  */
 export function useDuplicateProject() {
   const duplicateProject = async (projectId: string) => {
@@ -100,8 +103,12 @@ export function useDuplicateProject() {
       // Call the API to duplicate
       const result = await api.projects.duplicate(projectId);
 
-      // Revalidate to get the fresh list including the new project
-      await mutate("/api/v1/projects");
+      // Revalidate all project lists to show the new duplicate
+      await mutate(
+        (key: any) => typeof key === 'object' && key?.url === '/api/v1/projects',
+        undefined,
+        { revalidate: true }
+      );
 
       return result;
     } catch (error) {

@@ -217,14 +217,6 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Browse Templates Button */}
-              <button
-                onClick={() => router.push("/dashboard/templates")}
-                className="px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
-              >
-                Browse Templates
-              </button>
-
               {/* User Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button

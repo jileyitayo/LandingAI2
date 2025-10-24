@@ -366,11 +366,25 @@ export const api = {
    */
   projects: {
     /**
-     * List all user projects
+     * List all user projects with optional pagination and filters
      * Requires: Authorization header with valid access token
      */
-    list: () =>
-      apiRequest<
+    list: (params?: {
+      limit?: number;
+      offset?: number;
+      status_filter?: string;
+      search?: string;
+    }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.limit) queryParams.append("limit", params.limit.toString());
+      if (params?.offset) queryParams.append("offset", params.offset.toString());
+      if (params?.status_filter) queryParams.append("status_filter", params.status_filter);
+      if (params?.search) queryParams.append("search", params.search);
+
+      const queryString = queryParams.toString();
+      const endpoint = `/api/v1/projects${queryString ? `?${queryString}` : ''}`;
+
+      return apiRequest<
         Array<{
           id: string;
           user_id: string;
@@ -385,7 +399,8 @@ export const api = {
           created_at: string;
           updated_at: string;
         }>
-      >("/api/v1/projects"),
+      >(endpoint);
+    },
 
     /**
      * Get specific project by ID

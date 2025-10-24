@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import ProfileForm from "@/components/ProfileForm";
+import DashboardHeader from "@/components/DashboardHeader";
 
 interface UserProfile {
   id: string;
@@ -104,29 +105,12 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50">
+      <DashboardHeader />
+
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="mb-4 inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900"
-          >
-            <svg
-              className="w-4 h-4 mr-2"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-            Back to Dashboard
-          </button>
           <h1 className="text-3xl font-bold text-gray-900">Profile Settings</h1>
           <p className="mt-2 text-sm text-gray-600">
             Manage your account information and preferences.
@@ -276,7 +260,7 @@ export default function ProfilePage() {
             </div>
           </dl>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
