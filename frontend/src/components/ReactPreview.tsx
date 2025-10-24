@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { RefreshCw, ExternalLink, AlertCircle, Eye, EyeOff, X, ChevronRight, ChevronDown } from 'lucide-react';
 
 interface SelectedElement {
@@ -51,7 +51,7 @@ interface ReactPreviewProps {
   onSelectorEnabledChange?: (enabled: boolean) => void;
 }
 
-export default function ReactPreview({
+function ReactPreview({
   previewUrl,
   isBuilding,
   error,
@@ -71,6 +71,10 @@ export default function ReactPreview({
       if (event.data.type === 'SELECTOR_READY') {
         setSelectorReady(true);
         console.log('Selector script loaded in iframe');
+        // Auto-enable selector when it's ready
+        if (onSelectorEnabledChange && !selectorEnabled) {
+          onSelectorEnabledChange(true);
+        }
       } else if (event.data.type === 'ELEMENT_SELECTED') {
         if (onElementSelect) {
           onElementSelect(event.data.data);
@@ -80,12 +84,17 @@ export default function ReactPreview({
         if (onElementSelect) {
           onElementSelect(event.data.data);
         }
+      } else if (event.data.type === 'PREVIEW_CLICKED') {
+        // Auto-enable selector when user clicks in preview
+        if (onSelectorEnabledChange && !selectorEnabled && selectorReady) {
+          onSelectorEnabledChange(true);
+        }
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [onElementSelect]);
+  }, [onElementSelect, onSelectorEnabledChange, selectorEnabled, selectorReady]);
 
   // Sync selector state with iframe
   useEffect(() => {
@@ -177,6 +186,7 @@ export default function ReactPreview({
     <div className="h-full bg-gray-900 flex">
       {/* Main Preview Area */}
       <div className={`flex-1 flex flex-col transition-all ${selectorEnabled && showDetailsPanel ? 'mr-0' : ''}`}>
+
         {/* Preview Header */}
         <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
           <div className="flex items-center gap-3">
@@ -226,14 +236,25 @@ export default function ReactPreview({
         </div>
 
         {/* Preview Iframe */}
-        <div className="flex-1 bg-white">
+        <div className={`flex-1 bg-white relative transition-all ${
+          selectorEnabled ? 'ring-2 ring-blue-500 ring-inset' : ''
+        }`}>
           <iframe
             ref={iframeRef}
             src={previewUrl}
-            className="w-full h-full border-0"
+            className={`w-full h-full border-0 ${
+              selectorEnabled ? 'cursor-crosshair' : ''
+            }`}
             title="React Preview"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
           />
+          {/* Selector Active Indicator */}
+          {selectorEnabled && (
+            <div className="absolute top-2 left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded shadow-lg flex items-center gap-1 pointer-events-none">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              Click any element to edit
+            </div>
+          )}
         </div>
 
         {/* Preview Footer */}
@@ -396,3 +417,6 @@ export default function ReactPreview({
     </div>
   );
 }
+
+// Export memoized version to prevent unnecessary re-renders
+export default memo(ReactPreview);

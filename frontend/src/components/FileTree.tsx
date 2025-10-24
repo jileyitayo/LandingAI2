@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { ChevronRight, ChevronDown, File, Folder, FolderOpen } from 'lucide-react';
 
 interface FileTreeProps {
@@ -16,21 +16,21 @@ interface TreeNode {
   path: string;
 }
 
-export default function FileTree({ files, selectedFile, onFileSelect }: FileTreeProps) {
+function FileTree({ files, selectedFile, onFileSelect }: FileTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['src']));
 
-  // Parse flat file list into tree structure
-  const buildTree = (): Record<string, TreeNode> => {
-    const tree: Record<string, TreeNode> = {};
+  // Parse flat file list into tree structure - memoized to prevent recalculation
+  const tree = useMemo(() => {
+    const treeStructure: Record<string, TreeNode> = {};
 
     Object.keys(files).forEach(filePath => {
       const parts = filePath.split('/');
-      let current = tree;
+      let current = treeStructure;
       let currentPath = '';
 
       parts.forEach((part, index) => {
         currentPath = currentPath ? `${currentPath}/${part}` : part;
-        
+
         if (!current[part]) {
           const isLast = index === parts.length - 1;
           current[part] = {
@@ -40,15 +40,15 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
             children: isLast ? undefined : {}
           };
         }
-        
+
         if (current[part].children) {
           current = current[part].children!;
         }
       });
     });
 
-    return tree;
-  };
+    return treeStructure;
+  }, [files]);
 
   const toggleFolder = (path: string) => {
     setExpandedFolders(prev => {
@@ -140,8 +140,6 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
     );
   };
 
-  const tree = buildTree();
-
   return (
     <div className="h-full bg-gray-900 border-r border-gray-700 overflow-y-auto">
       <div className="p-2">
@@ -158,3 +156,6 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
     </div>
   );
 }
+
+// Export memoized version to prevent unnecessary re-renders
+export default memo(FileTree);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Save, Download, Eye, Code, FileText, Settings } from 'lucide-react';
 import WebsitePreview from '@/components/WebsitePreview';
 import PublishButton from '@/components/PublishButton';
@@ -15,6 +15,7 @@ import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { Project } from '@/types/project.types';
 import { api, ApiError } from '@/lib/api';
 import { SelectedElement } from '@/types/chat.types';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import Link from 'next/link';
 
 export default function ProjectEditorPage() {
@@ -37,6 +38,24 @@ export default function ProjectEditorPage() {
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
   const [selectorEnabled, setSelectorEnabled] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Keyboard shortcuts for React editor
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useKeyboardShortcuts({
+    onToggleSelector: () => {
+      if ((project as any)?.project_type === 'react') {
+        setSelectorEnabled(prev => !prev);
+      }
+    },
+    onClearSelection: () => {
+      setSelectedElement(null);
+      setSelectorEnabled(false);
+    },
+    onFocusChat: () => {
+      chatInputRef.current?.focus();
+    },
+  });
 
   // Load project from API
   const loadProject = useCallback(async (id: string): Promise<Project> => {
@@ -92,22 +111,22 @@ export default function ProjectEditorPage() {
     onSave: saveProject,
   });
 
-  const handlePublishSuccess = (url: string) => {
+  const handlePublishSuccess = useCallback((url: string) => {
     setDeploymentUrl(url);
     setIsPublished(true);
     setShowPublishModal(true);
-  };
+  }, []);
 
-  const handleUnpublishSuccess = () => {
+  const handleUnpublishSuccess = useCallback(() => {
     setDeploymentUrl(null);
     setIsPublished(false);
-  };
+  }, []);
 
   // Custom download handler for React projects
-  const handleReactDownload = async () => {
+  const handleReactDownload = useCallback(async () => {
     try {
       const response = await api.projects.download(projectId);
-      
+
       // Get filename from Content-Disposition header
       const contentDisposition = response.headers.get('Content-Disposition');
       const filename = contentDisposition
@@ -128,7 +147,7 @@ export default function ProjectEditorPage() {
       console.error('Failed to download React project:', error);
       // You could add a toast notification here
     }
-  };
+  }, [projectId]);
 
   // Load React project files
   const loadReactFiles = useCallback(async () => {
@@ -173,7 +192,7 @@ export default function ProjectEditorPage() {
   }, [reactActiveTab, previewUrl, isBuilding, buildPreview]);
 
   // Handle edit submission from chat window
-  const handleEditSubmit = async (prompt: string) => {
+  const handleEditSubmit = useCallback(async (prompt: string) => {
     if (!selectedElement) {
       throw new Error('No element selected');
     }
@@ -201,7 +220,7 @@ export default function ProjectEditorPage() {
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [selectedElement, projectId, buildPreview]);
 
   if (isLoading) {
     return (
@@ -296,6 +315,7 @@ export default function ProjectEditorPage() {
               selectorEnabled={selectorEnabled}
               onEditSubmit={handleEditSubmit}
               isProcessing={isProcessing}
+              inputRef={chatInputRef}
             />
           </div>
 
