@@ -6,27 +6,19 @@
  * Main dashboard displaying all user projects with search and filter capabilities
  */
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { api } from "@/lib/api";
+import {
+  useProjects,
+  useUserProfile,
+  useDeleteProject,
+  useDuplicateProject,
+  type Project
+} from "@/hooks/useProjects";
+import { useDebounce } from "@/hooks/useDebounce";
 import ProjectCard from "@/components/ProjectCard";
 import { Plus, Search, Filter } from "lucide-react";
-
-interface Project {
-  id: string;
-  user_id: string;
-  name: string;
-  description: string | null;
-  prompt: string | null;
-  template_id: string | null;
-  published: boolean;
-  subdomain: string | null;
-  deployment_url: string | null;
-  generation_status: string;
-  created_at: string;
-  updated_at: string;
-}
 
 const STATUS_FILTERS = [
   { value: "all", label: "All Projects" },
@@ -43,72 +35,38 @@ export default function DashboardPage() {
   const router = useRouter();
   const { user, loading, signOut } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [userProfile, setUserProfile] = useState<{
-    avatar_url?: string | null;
-    first_name?: string | null;
-    last_name?: string | null;
-  } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Projects state
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(true);
+  // Fetch data using SWR hooks
+  const { projects, isLoading: projectsLoading } = useProjects();
+  const { profile: userProfile } = useUserProfile();
+  const { deleteProject } = useDeleteProject();
+  const { duplicateProject } = useDuplicateProject();
+
+  // Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showFilterMenu, setShowFilterMenu] = useState(false);
 
+  // Debounce search query to reduce re-renders during typing
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  // Redirect to login if not authenticated
   useEffect(() => {
     if (!loading && !user) {
       router.push("/auth/login");
     }
   }, [user, loading, router]);
 
-  // Fetch user profile for avatar
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const profile = await api.users.getProfile();
-        setUserProfile(profile);
-      } catch (error) {
-        console.error("Failed to fetch user profile:", error);
-      }
-    };
+  // Apply filters using useMemo for better performance
+  const filteredProjects = useMemo(() => {
+    if (!projects) return [];
 
-    if (user) {
-      fetchProfile();
-    }
-  }, [user]);
-
-  // Fetch projects on mount
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        setProjectsLoading(true);
-        const data = await api.projects.list();
-        setProjects(data);
-        setFilteredProjects(data);
-      } catch (error) {
-        console.error("Failed to fetch projects:", error);
-        setProjects([]);
-        setFilteredProjects([]);
-      } finally {
-        setProjectsLoading(false);
-      }
-    };
-
-    if (user) {
-      fetchProjects();
-    }
-  }, [user]);
-
-  // Apply filters when search or status filter changes
-  useEffect(() => {
     let filtered = [...projects];
 
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+    // Apply search filter with debounced query
+    if (debouncedSearchQuery.trim()) {
+      const query = debouncedSearchQuery.toLowerCase();
       filtered = filtered.filter(
         (project) =>
           project.name.toLowerCase().includes(query) ||
@@ -121,8 +79,8 @@ export default function DashboardPage() {
       filtered = filtered.filter((project) => project.generation_status === statusFilter);
     }
 
-    setFilteredProjects(filtered);
-  }, [searchQuery, statusFilter, projects]);
+    return filtered;
+  }, [projects, debouncedSearchQuery, statusFilter]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -143,9 +101,8 @@ export default function DashboardPage() {
 
   const handleDeleteProject = async (projectId: string) => {
     try {
-      await api.projects.delete(projectId);
-      // Remove from state
-      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+      // Use SWR optimistic update
+      await deleteProject(projectId);
     } catch (error) {
       console.error("Failed to delete project:", error);
       alert("Failed to delete project. Please try again.");
@@ -154,11 +111,8 @@ export default function DashboardPage() {
 
   const handleDuplicateProject = async (projectId: string) => {
     try {
-      const result = await api.projects.duplicate(projectId);
-      // Refresh projects list to show the duplicate
-      const data = await api.projects.list();
-      setProjects(data);
-      setFilteredProjects(data);
+      // Use SWR hook which handles cache revalidation
+      await duplicateProject(projectId);
     } catch (error) {
       console.error("Failed to duplicate project:", error);
       alert("Failed to duplicate project. Please try again.");
