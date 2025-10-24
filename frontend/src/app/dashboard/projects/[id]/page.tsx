@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useState, useEffect } from 'react';
-import { ArrowLeft, Save, Download, Eye, Code, FileText, Settings, MessageSquare, Wand2 } from 'lucide-react';
+import { ArrowLeft, Save, Download, Eye, Code, FileText, Settings } from 'lucide-react';
 import WebsitePreview from '@/components/WebsitePreview';
 import PublishButton from '@/components/PublishButton';
 import PublishModal from '@/components/PublishModal';
@@ -10,7 +10,6 @@ import DeploymentHistory from '@/components/DeploymentHistory';
 import FileTree from '@/components/FileTree';
 import CodeViewer from '@/components/CodeViewer';
 import ReactPreview from '@/components/ReactPreview';
-import VisualEditor from '@/components/VisualEditor';
 import ChatWindow from '@/components/ChatWindow';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { Project } from '@/types/project.types';
@@ -27,7 +26,7 @@ export default function ProjectEditorPage() {
   const [isPublished, setIsPublished] = useState(false);
 
   // React project state
-  const [reactActiveTab, setReactActiveTab] = useState<'code' | 'preview' | 'edit'>('code');
+  const [reactActiveTab, setReactActiveTab] = useState<'code' | 'preview'>('code');
   const [reactFiles, setReactFiles] = useState<Record<string, string>>({});
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -325,17 +324,6 @@ export default function ProjectEditorPage() {
                 <Eye className="w-4 h-4" />
                 <span className="font-medium">Preview</span>
               </button>
-              <button
-                onClick={() => setReactActiveTab('edit')}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                  reactActiveTab === 'edit'
-                    ? 'border-blue-500 text-white bg-gray-900'
-                    : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                <Wand2 className="w-4 h-4" />
-                <span className="font-medium">Edit</span>
-              </button>
             </div>
 
             {/* Tab Content */}
@@ -358,16 +346,12 @@ export default function ProjectEditorPage() {
                     />
                   </div>
                 </div>
-              ) : reactActiveTab === 'preview' ? (
+              ) : (
                 <ReactPreview
                   previewUrl={previewUrl}
                   isBuilding={isBuilding}
                   error={buildError}
                   onRebuild={buildPreview}
-                />
-              ) : (
-                <VisualEditor
-                  previewUrl={previewUrl}
                   selectedElement={selectedElement}
                   onElementSelect={setSelectedElement}
                   selectorEnabled={selectorEnabled}

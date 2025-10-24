@@ -225,17 +225,45 @@ export default function ChatWindow({
                           ) : (
                             <ChevronRight className="w-4 h-4" />
                           )}
-                          {/* <span className="font-medium">View Code Changes</span> */}
-                          <span className="text-gray-400">({message.metadata.file_path})</span>
+                          <span className="font-medium">View Code Changes</span>
+                          <span className="text-gray-400">({message.metadata.file_path?.split('/').pop() || 'File'})</span>
                         </button>
 
                         {expandedMessages.has(message.id) && (
                           <div className="mt-2 bg-gray-800 rounded border border-gray-600 p-3 space-y-2">
-                            <div className="text-xs font-mono">
-                              <div className="font-semibold text-gray-300 mb-1">File: {message.metadata.selected_element?.component?.componentName || 'Unknown'}</div>
-                              <div className="text-gray-100">{message.metadata.file_path}</div>
-                            </div>
+                            <div className="text-xs space-y-2">
+                              {/* Component info */}
+                              <div className="font-mono">
+                                <div className="font-semibold text-blue-300 mb-1">
+                                  Component: {message.metadata.selected_element?.component?.componentName || 'Unknown'}
+                                </div>
+                                <div className="text-gray-300">
+                                  File: {message.metadata.file_path}
+                                </div>
+                              </div>
 
+                              {/* Selected element info */}
+                              {message.metadata.selected_element && (
+                                <div className="pt-2 border-t border-gray-700">
+                                  <div className="text-gray-400 mb-1">Selected Element:</div>
+                                  <div className="font-mono text-gray-200">
+                                    {message.metadata.selected_element.component?.elementName || message.metadata.selected_element.tagName}
+                                  </div>
+                                  {message.metadata.selected_element.textContent && (
+                                    <div className="mt-1 text-gray-400 italic">
+                                      "{message.metadata.selected_element.textContent.slice(0, 60)}{message.metadata.selected_element.textContent.length > 60 ? '...' : ''}"
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Edit ID for tracking */}
+                              {message.metadata.edit_id && (
+                                <div className="pt-2 border-t border-gray-700 text-gray-500">
+                                  Edit ID: {message.metadata.edit_id}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -255,12 +283,20 @@ export default function ChatWindow({
         {selectedElement && (
           <div className="mb-3 bg-purple-900 border border-purple-700 rounded-lg p-3 flex items-center justify-between">
             <div className="flex-1">
-              <div className="text-xs text-purple-300 font-medium mb-1">Selected:</div>
-              <div className="text-sm text-white">
+              <div className="text-xs text-purple-300 font-medium mb-1">SELECTED</div>
+              <div className="text-sm text-white font-medium">
                 {selectedElement.component?.elementName || selectedElement.tagName}
-                {' in '}
-                {selectedElement.component?.componentFile?.split('/').pop()?.replace('.tsx', '').replace('.jsx', '') || 'Unknown'}
+                {selectedElement.component?.componentName && (
+                  <span className="text-purple-200">
+                    {' '}in {selectedElement.component.componentName}
+                  </span>
+                )}
               </div>
+              {selectedElement.component?.componentFile && (
+                <div className="text-xs text-purple-300 mt-1 font-mono">
+                  {selectedElement.component.componentFile.split('/').pop()}
+                </div>
+              )}
             </div>
             <button
               onClick={clearSelection}
