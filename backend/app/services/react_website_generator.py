@@ -1305,7 +1305,7 @@ IMAGES: Use Unsplash URLs (https://images.unsplash.com/...)
    ❌ Building, Circle, User (don't exist)
    ✅ Only use icons from list below (Building2, CircleDot, UserCircle)
    ✅ Icons are CASE-SENSITIVE
-   
+   Ensure used Icons are imported from lucide-react, below are the list of all icons:
 {safe_icons_list}
 
 4. TYPES
@@ -1350,6 +1350,7 @@ Common errors causing build failure:
 • Using type LucideIcon (doesn't exist)
 • Destructuring experienceIcon but never using it
 • Missing required description prop on Cta component
+• Dont escape quotes in the generated code
 
 Verify EVERY item in checklist before generating."""
 

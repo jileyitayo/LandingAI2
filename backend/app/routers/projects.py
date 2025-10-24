@@ -344,10 +344,13 @@ async def delete_project(
             "deleted_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat()
         }).eq("id", project_id).execute()
+
+        # TODO; Delete all project files and chat history from the database
         
         return {
             "message": "Project deleted successfully"
         }
+        
     
     except HTTPException:
         raise
