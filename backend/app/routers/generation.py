@@ -13,6 +13,7 @@ import logging
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import ActionLogger, log_action
 from app.utils.auth import get_current_user
+from app.utils.rate_limiter import RateLimiter
 from app.services.content_generator import content_generator, ContentGenerationError
 from app.services.templates.template_renderer import template_renderer, TemplateRenderError
 from app.services.templates.template_generator import template_generator
@@ -173,123 +174,73 @@ class ChatHistoryResponse(BaseModel):
 
 
 # ============================================================================
-# Rate Limiting Functions
+# Rate Limiting Functions - NEW DUAL RATE LIMITING
 # ============================================================================
 @log_action(action_type='READ', target_resource_type='rate_limit_check')
 async def check_user_rate_limit(user_id: str, supabase_client) -> tuple[bool, Dict[str, Any]]:
     """
-    Check if user has exceeded rate limit.
-    
+    Check if user has exceeded rate limit (per-minute OR daily).
+
+    Uses new dual rate limiting:
+    - Per-minute limit (sliding window): Free=1/min, Pro=2/min
+    - Daily limit: Free=5/day, Pro=30/day
+
     Returns:
         Tuple of (is_allowed, rate_limit_info)
     """
-    try:
-        # Fetch user data
-        response = supabase_client.table("users")\
-            .select("subscription_tier, current_period_generations, current_period_start")\
-            .eq("id", user_id)\
-            .execute()
-        
-        if not response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        user = response.data[0]
-        if user == "jileyitayo@gmail.com":
-            tier = "pro"
-        else:
-            tier = user.get("subscription_tier", "free")
-        current_count = user.get("current_period_generations", 0)
-        period_start = user.get("current_period_start")
-        
-        # Define rate limits per tier
-        rate_limits = {
-            "free": 5,      # 5 generations per hour
-            "pro": 100      # 100 generations per hour (practically unlimited)
-        }
-        
-        limit = rate_limits.get(tier, 5)
-        
-        # Check if period needs reset (hourly)
-        now = datetime.utcnow()
-        if period_start:
-            period_start_dt = datetime.fromisoformat(period_start.replace('Z', '+00:00'))
-            if (now - period_start_dt.replace(tzinfo=None)) > timedelta(hours=1):
-                # Reset the counter
-                supabase_client.table("users")\
-                    .update({
-                        "current_period_generations": 0,
-                        "current_period_start": now.isoformat()
-                    })\
-                    .eq("id", user_id)\
-                    .execute()
-                current_count = 0
-                period_start_dt = now
-        else:
-            # Initialize period start
-            period_start_dt = now
-            supabase_client.table("users")\
-                .update({"current_period_start": now.isoformat()})\
-                .eq("id", user_id)\
-                .execute()
-        
-        # Check limit
-        is_allowed = current_count < limit
-        
-        # Calculate reset time
-        resets_at = period_start_dt + timedelta(hours=1)
-        
-        rate_limit_info = {
-            "tier": tier,
-            "limit": limit,
-            "used": current_count,
-            "remaining": max(0, limit - current_count),
-            "resets_at": resets_at.isoformat()
-        }
-        
-        return is_allowed, rate_limit_info
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error checking rate limit: {str(e)}")
-        # On error, allow the request but log it
-        return True, {
-            "tier": "unknown",
-            "limit": 5,
-            "used": 0,
-            "remaining": 5,
-            "resets_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
-        }
+    rate_limiter = RateLimiter(supabase_client)
+    return await rate_limiter.check_rate_limit(user_id)
 
-async def business_analyzer(prompt: str, ) -> tuple[bool, Dict[str, Any]]:
-    """
-    Check if user has exceeded rate limit.
-    I'm building a website generator and I need to analyze the prompt to determine the site requirements/business analysis to be able to generate a template stucture for a website
-    This analysis will be an input to another AI model to generate a template stucture for a website
-    generate a business analysis for the prompt in json format
-    """
-    return True, {
-        "tier": "unknown",
-        "limit": 5,
-        "used": 0,
-        "remaining": 5,
-        "resets_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
-    }
 
-async def template_creation_analyzer(prompt: str, business_analysis: Dict[str, Any]) -> tuple[bool, Dict[str, Any]]:
+async def log_ai_call(
+    user_id: str,
+    call_type: str,
+    project_id: str = None,
+    endpoint: str = None,
+    supabase_client = None
+) -> None:
     """
-    Check if user has exceeded rate limit.
+    Log AI call for rate limiting tracking.
+
+    Args:
+        user_id: User ID making the call
+        call_type: 'generation', 'edit', or 'question'
+        project_id: Optional project ID
+        endpoint: Optional endpoint path
+        supabase_client: Supabase client instance
     """
-    return True, {
-        "tier": "unknown",
-        "limit": 5,
-        "used": 0,
-        "remaining": 5,
-        "resets_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
-    }
+    if supabase_client is None:
+        supabase_client = get_supabase_client()
+
+    rate_limiter = RateLimiter(supabase_client)
+    await rate_limiter.log_ai_call(user_id, call_type, project_id, endpoint)
+
+# async def business_analyzer(prompt: str, ) -> tuple[bool, Dict[str, Any]]:
+#     """
+#     Check if user has exceeded rate limit.
+#     I'm building a website generator and I need to analyze the prompt to determine the site requirements/business analysis to be able to generate a template stucture for a website
+#     This analysis will be an input to another AI model to generate a template stucture for a website
+#     generate a business analysis for the prompt in json format
+#     """
+#     return True, {
+#         "tier": "unknown",
+#         "limit": 5,
+#         "used": 0,
+#         "remaining": 5,
+#         "resets_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
+#     }
+
+# async def template_creation_analyzer(prompt: str, business_analysis: Dict[str, Any]) -> tuple[bool, Dict[str, Any]]:
+#     """
+#     Check if user has exceeded rate limit.
+#     """
+#     return True, {
+#         "tier": "unknown",
+#         "limit": 5,
+#         "used": 0,
+#         "remaining": 5,
+#         "resets_at": (datetime.utcnow() + timedelta(hours=1)).isoformat()
+#     }
 
 # @log_action(action_type='UPDATE', target_resource_type='generation_count')
 # async def increment_generation_count(user_id: str, supabase_client) -> None:
@@ -631,19 +582,19 @@ async def generate_react_website_from_prompt(
     
     logger.info(f"Website generation requested by user {user_id}")
     try:
-        # Step 1: Check rate limits first
+        # Step 1: Check rate limits first (dual: per-minute + daily)
         logger.info("Checking rate limits...")
         is_allowed, rate_info = await check_user_rate_limit(user_id, supabase)
-        
+
         if not is_allowed:
-            logger.warning(f"Rate limit exceeded for user {user_id}")
+            logger.warning(f"Rate limit exceeded for user {user_id}: {rate_info.get('limit_type')}")
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Rate limit exceeded. You have used {rate_info['used']}/{rate_info['limit']} generations. Resets at {rate_info['resets_at']}",
+                detail=rate_info.get('message', 'Rate limit exceeded'),
                 headers={
-                    "X-RateLimit-Limit": str(rate_info['limit']),
-                    "X-RateLimit-Remaining": str(rate_info['remaining']),
-                    "X-RateLimit-Reset": rate_info['resets_at']
+                    "Retry-After": str(rate_info.get('retry_after_seconds', 60)),
+                    "X-RateLimit-Type": rate_info.get('limit_type', 'unknown'),
+                    "X-RateLimit-Tier": rate_info.get('tier', 'unknown')
                 }
             )
         
@@ -657,6 +608,16 @@ async def generate_react_website_from_prompt(
             template_id=None,
             supabase_client=supabase
         )
+
+        # Step 3: Log AI call for rate limiting (counts as 1 generation)
+        await log_ai_call(
+            user_id=user_id,
+            call_type="generation",
+            project_id=project_id,
+            endpoint="/generate_website",
+            supabase_client=supabase
+        )
+
         # Step 4: Start BACKGROUND generation
         logger.info(f"Starting background generation for project {project_id}")
         background_tasks.add_task(
@@ -894,9 +855,18 @@ async def generate_website(
             template_id=template_id,
             user_id=user_id,
         )
-        
+
+        # Step 7: Log AI call for rate limiting (counts as 1 generation)
+        await log_ai_call(
+            user_id=user_id,
+            call_type="generation",
+            project_id=project_id,
+            endpoint="/generate_website",
+            supabase_client=supabase
+        )
+
         logger.info(f" ✓  Generation initiated for project {project_id}")
-        
+
         return GenerateWebsiteResponse(
             project_id=project_id,
             status="generating",
@@ -1070,19 +1040,19 @@ async def generate_react_website(
     logger.info(f"React website generation requested by user {user_id}")
     
     try:
-        # Step 1: Check rate limits
+        # Step 1: Check rate limits (dual: per-minute + daily)
         logger.info("Checking rate limits...")
         is_allowed, rate_info = await check_user_rate_limit(user_id, supabase)
-        
+
         if not is_allowed:
-            logger.warning(f"Rate limit exceeded for user {user_id}")
+            logger.warning(f"Rate limit exceeded for user {user_id}: {rate_info.get('limit_type')}")
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Rate limit exceeded. You have used {rate_info['used']}/{rate_info['limit']} generations. Resets at {rate_info['resets_at']}",
+                detail=rate_info.get('message', 'Rate limit exceeded'),
                 headers={
-                    "X-RateLimit-Limit": str(rate_info['limit']),
-                    "X-RateLimit-Remaining": str(rate_info['remaining']),
-                    "X-RateLimit-Reset": rate_info['resets_at']
+                    "Retry-After": str(rate_info.get('retry_after_seconds', 60)),
+                    "X-RateLimit-Type": rate_info.get('limit_type', 'unknown'),
+                    "X-RateLimit-Tier": rate_info.get('tier', 'unknown')
                 }
             )
         
@@ -1120,7 +1090,16 @@ async def generate_react_website(
                 "project_type": "react"
             }
         )
-        
+
+        # Step 4.5: Log AI call for rate limiting (counts as 1 generation)
+        await log_ai_call(
+            user_id=user_id,
+            call_type="generation",
+            project_id=project_id,
+            endpoint="/generate_react_website",
+            supabase_client=supabase
+        )
+
         # Step 5: Start background generation
         logger.info(f"Starting React background generation for project {project_id}")
         background_tasks.add_task(
@@ -1129,7 +1108,7 @@ async def generate_react_website(
             prompt=request.prompt,
             user_id=user_id,
         )
-        
+
         logger.info(f"✓ React generation initiated for project {project_id}")
         
         return GenerateReactWebsiteResponse(
@@ -1420,8 +1399,24 @@ async def edit_project_component(
     logger.info(f"[COMPONENT EDIT] Selected element attributes: {request.selected_element.get('attributes', {})}")
     logger.info(f"[COMPONENT EDIT] Full selected element keys: {list(request.selected_element.keys())}")
     logger.info(f"[COMPONENT EDIT] Selected element text content: '{request.selected_element.get('textContent', '')[:50]}...'")
-    
+
     try:
+        # Check rate limits first (dual: per-minute + daily)
+        logger.info(f"[COMPONENT EDIT] Checking rate limits...")
+        is_allowed, rate_info = await check_user_rate_limit(user_id, supabase)
+
+        if not is_allowed:
+            logger.warning(f"[COMPONENT EDIT] Rate limit exceeded for user {user_id}: {rate_info.get('limit_type')}")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=rate_info.get('message', 'Rate limit exceeded'),
+                headers={
+                    "Retry-After": str(rate_info.get('retry_after_seconds', 60)),
+                    "X-RateLimit-Type": rate_info.get('limit_type', 'unknown'),
+                    "X-RateLimit-Tier": rate_info.get('tier', 'unknown')
+                }
+            )
+
         # Verify project ownership and fetch business context
         logger.info(f"[COMPONENT EDIT] Fetching project {project_id} from database")
         response = supabase.table("projects")\
@@ -1588,6 +1583,15 @@ async def edit_project_component(
                 "element_tag": request.selected_element.get('tagName', ''),
                 "element_text": request.selected_element.get('textContent', '')[:100]
             }
+        )
+
+        # Log AI call for rate limiting (counts as 1 edit)
+        await log_ai_call(
+            user_id=user_id,
+            call_type="edit",
+            project_id=project_id,
+            endpoint=f"/edit/project/{project_id}",
+            supabase_client=supabase
         )
 
         logger.info(f"[COMPONENT EDIT] ✓ Component {component_file} edited successfully for project {project_id}")

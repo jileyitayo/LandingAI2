@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, status, UploadFile, File, Depends
 from fastapi.responses import JSONResponse
 from app.utils.auth import get_current_user, get_current_user_optional
+from app.utils.rate_limiter import RateLimiter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -290,5 +291,74 @@ async def upload_avatar(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload avatar: {str(e)}",
+        )
+
+
+@router.get("/usage/current")
+@log_action(action_type='READ', target_resource_type='user_usage_stats')
+async def get_current_usage(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get current usage statistics for the authenticated user.
+
+    Returns detailed information about:
+    - Current subscription tier
+    - Daily usage (limit, used, remaining, reset time)
+    - Per-minute usage (limit, calls in last minute, whether can call now)
+
+    This endpoint helps users understand their usage and when they can make their next AI call.
+
+    Args:
+        request: FastAPI request object
+        current_user: Authenticated user from dependency
+
+    Returns:
+        Dictionary with usage statistics:
+        {
+            "tier": "free",
+            "tier_display_name": "Free Plan",
+            "daily": {
+                "limit": 5,
+                "used": 3,
+                "remaining": 2,
+                "resets_at": "2025-10-25T00:00:00Z",
+                "resets_in_seconds": 43200
+            },
+            "per_minute": {
+                "limit": 1,
+                "calls_in_last_minute": 0,
+                "can_call_now": true,
+                "retry_after_seconds": 0
+            }
+        }
+
+    Raises:
+        HTTPException: If error occurs while fetching usage data
+    """
+    try:
+        user_id = current_user.get("id")
+
+        # Use rate limiter to get usage stats
+        rate_limiter = RateLimiter(supabase)
+        usage_data = await rate_limiter.get_current_usage(user_id)
+
+        if "error" in usage_data:
+            logger.error(f"Error getting usage for user {user_id}: {usage_data['error']}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to fetch usage data: {usage_data['error']}"
+            )
+
+        return usage_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch usage data: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch usage data: {str(e)}",
         )
 
