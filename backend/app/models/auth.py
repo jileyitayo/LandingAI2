@@ -1,7 +1,10 @@
 """Authentication request/response models."""
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from pydantic import BaseModel, EmailStr, Field
+
+if TYPE_CHECKING:
+    from app.models.subscriptions import UserSubscriptionResponse
 
 
 class SignupRequest(BaseModel):
@@ -142,12 +145,13 @@ class ProfileResponse(BaseModel):
     first_name: Optional[str] = Field(None, description="User's first name")
     last_name: Optional[str] = Field(None, description="User's last name")
     avatar_url: Optional[str] = Field(None, description="Avatar image URL")
-    subscription_tier: str = Field(..., description="User's subscription tier")
+    subscription_tier: str = Field(..., description="User's subscription tier (backward compatibility)")
     generation_count: int = Field(..., description="Total generation count")
     current_period_generations: int = Field(..., description="Current period generation count")
     email_verified: bool = Field(..., description="Email verification status")
     created_at: str = Field(..., description="Account creation timestamp")
     updated_at: str = Field(..., description="Last update timestamp")
+    subscription: Optional[dict] = Field(None, description="Detailed subscription information")
 
     model_config = {
         "json_schema_extra": {
@@ -163,6 +167,19 @@ class ProfileResponse(BaseModel):
                 "email_verified": True,
                 "created_at": "2025-10-03T12:00:00Z",
                 "updated_at": "2025-10-03T12:00:00Z",
+                "subscription": {
+                    "id": "sub-123",
+                    "status": "active",
+                    "tier": {
+                        "display_name": "Free Plan",
+                        "description": "Basic features for getting started",
+                        "daily_generation_limit": 5,
+                        "per_minute_limit": 1,
+                        "features": ["5 generations per day", "1 request per minute"]
+                    },
+                    "current_period_start": "2025-10-01T00:00:00Z",
+                    "current_period_end": "2025-11-01T00:00:00Z"
+                }
             }
         }
     }

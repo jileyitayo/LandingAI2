@@ -203,6 +203,28 @@ export const api = {
         email_verified: boolean;
         created_at: string;
         updated_at: string;
+        subscription?: {
+          id: string;
+          status: string;
+          tier: {
+            id: string;
+            tier_name: string;
+            display_name: string;
+            description: string | null;
+            daily_generation_limit: number;
+            per_minute_limit: number;
+            price_monthly: number;
+            price_yearly: number;
+            features: string[];
+            is_active: boolean;
+          };
+          current_period_start: string | null;
+          current_period_end: string | null;
+          cancel_at_period_end: boolean;
+          cancelled_at: string | null;
+          trial_start: string | null;
+          trial_end: string | null;
+        };
       }>("/api/v1/users/profile"),
 
     /**
@@ -260,6 +282,27 @@ export const api = {
         message: string;
       }>;
     },
+
+    /**
+     * Get usage analytics
+     * Requires: Authorization header with valid access token
+     * @param period - Time period: 24h, 7d, 30d, or all
+     * @param granularity - Data granularity: hourly or daily
+     */
+    getAnalytics: (period: "24h" | "7d" | "30d" | "all" = "7d", granularity: "hourly" | "daily" = "daily") =>
+      apiRequest<{
+        period: string;
+        granularity: string;
+        data_points: Array<{
+          timestamp: string;
+          count: number;
+          call_types: Record<string, number>;
+        }>;
+        total_calls: number;
+        rpm_peak: number;
+        rpd_average: number;
+        breakdown_by_type: Record<string, number>;
+      }>(`/api/v1/users/analytics?period=${period}&granularity=${granularity}`),
   },
 
   /**
