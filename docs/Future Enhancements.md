@@ -1,5 +1,6 @@
 ## Future Enhancements
 - What should happen if the user submits a chat message without selecting any component? (e.g., for general questions or new feature requests)
+- use only ai for pro users for structures and analyzers
 - Multi-element selection
 - Undo/redo history
 - Live preview of changes before applying
@@ -9,7 +10,7 @@
 - Vite HMR for instant updates without rebuild
 - Duplicate Project, copies files too
 
-
+I see a lot of warnings after the inital generation. How can I ensure that it generates the pages and components without any error or warnings
 
 
 Current Issues Identified
