@@ -581,6 +581,7 @@ async def generate_react_website_from_prompt(
     supabase = get_supabase_client()
     
     logger.info(f"Website generation requested by user {user_id}")
+    error_message = None
     try:
         # Step 1: Check rate limits first (dual: per-minute + daily)
         logger.info("Checking rate limits...")
@@ -588,6 +589,7 @@ async def generate_react_website_from_prompt(
 
         if not is_allowed:
             logger.warning(f"Rate limit exceeded for user {user_id}: {rate_info.get('limit_type')}")
+            error_message = rate_info.get('message', 'Rate limit exceeded')
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=rate_info.get('message', 'Rate limit exceeded'),
@@ -640,7 +642,7 @@ async def generate_react_website_from_prompt(
         logger.error(f"Unexpected error during generation: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="React website generation failed"
+            detail="React website generation failed. " + error_message
         )
 
 
