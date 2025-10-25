@@ -3,18 +3,20 @@
  * useTemplateGeneration.ts
  *
  * This file provides a custom React hook for managing website generation via API calls.
- * 
+ *
  * Main responsibilities:
  * - Exposes a function to initiate website generation based on user input (prompt and style preferences).
  * - Handles polling and status checking for the generation process.
  * - Manages local state for loading, errors, and the generated project data.
  * - Provides a mechanism to clear errors.
- * 
+ *
  * The hook is intended for use in frontend components that need to trigger and monitor website generation.
  */
 
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { toast } from "sonner";
+
 export const useUnifiedGeneration = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +25,7 @@ export const useUnifiedGeneration = () => {
   const generateWebsite = async (prompt: string, projectName?: string, stylePreferences?: any) => {
     setIsGenerating(true);
     setError(null);
-    
+
     try {
       const result = await api.generation.generateWebsite({
         prompt,
@@ -32,19 +34,45 @@ export const useUnifiedGeneration = () => {
       });
 
       setGeneratedProject(result);
-      
+
       // Start polling for status
       pollStatus(result.project_id);
-      
+
       return result;
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.message);
+        // Handle rate limit errors specifically
+        if (err.status === 429) {
+          const limitType = err.detail?.['X-RateLimit-Type'] || 'unknown';
+          const tier = err.detail?.['X-RateLimit-Tier'] || 'free';
+          const retryAfter = err.detail?.['Retry-After'] || 'soon';
+
+          const message = limitType === 'per_minute'
+            ? `Rate limit exceeded: Too many requests per minute. Please wait ${retryAfter} seconds before trying again.`
+            : `Daily generation limit reached. Your ${tier} tier limit has been exceeded. Please upgrade your plan or try again tomorrow.`;
+
+          toast.error("Rate Limit Exceeded", {
+            description: message,
+            duration: 6000,
+          });
+          setError(message);
+        } else {
+          toast.error("Generation Failed", {
+            description: err.message,
+            duration: 5000,
+          });
+          setError(err.message);
+        }
       } else {
-        setError(err instanceof Error ? err.message : 'Generation failed');
+        const errorMessage = err instanceof Error ? err.message : 'Generation failed';
+        toast.error("Generation Failed", {
+          description: errorMessage,
+          duration: 5000,
+        });
+        setError(errorMessage);
       }
       throw err;
-    } 
+    }
     // finally {
     //   setIsGenerating(false);
     // }

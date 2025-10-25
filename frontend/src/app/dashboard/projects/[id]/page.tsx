@@ -17,6 +17,7 @@ import { api, ApiError } from '@/lib/api';
 import { SelectedElement } from '@/types/chat.types';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import Link from 'next/link';
+import { toast } from 'sonner';
 
 export default function ProjectEditorPage() {
   const params = useParams();
@@ -211,11 +212,40 @@ export default function ProjectEditorPage() {
         // Clear selection after successful edit
         setSelectedElement(null);
         setSelectorEnabled(false);
+
+        // Show success toast
+        toast.success("Component Updated", {
+          description: result.edit_description || "Your changes have been applied successfully.",
+          duration: 4000,
+        });
       } else {
         throw new Error(result.message || 'Failed to apply changes');
       }
     } catch (error: any) {
       console.error('Edit failed:', error);
+
+      // Handle rate limit errors specifically
+      if (error instanceof ApiError && error.status === 429) {
+        const limitType = error.detail?.['X-RateLimit-Type'] || 'unknown';
+        const tier = error.detail?.['X-RateLimit-Tier'] || 'free';
+        const retryAfter = error.detail?.['Retry-After'] || 'soon';
+
+        const message = limitType === 'per_minute'
+          ? `Rate limit exceeded: Too many requests per minute. Please wait ${retryAfter} seconds before trying again.`
+          : `Daily edit limit reached. Your ${tier} tier limit has been exceeded. Please upgrade your plan or try again tomorrow.`;
+
+        toast.error("Rate Limit Exceeded", {
+          description: message,
+          duration: 6000,
+        });
+      } else {
+        // Show generic error toast
+        toast.error("Edit Failed", {
+          description: error instanceof ApiError ? error.message : "Failed to apply changes. Please try again.",
+          duration: 5000,
+        });
+      }
+
       throw error;
     } finally {
       setIsProcessing(false);
