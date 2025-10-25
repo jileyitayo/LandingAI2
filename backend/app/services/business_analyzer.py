@@ -58,7 +58,7 @@ Modern glassmorphism effects
 class BusinessAnalyzer():
     def __init__(self):
         self.client = PromptOpenAI()
-        self.google_client = PromptOpenAI(api_key=settings.google_api_key, url="https://generativelanguage.googleapis.com/v1beta/openai/")
+        self.google_client = PromptOpenAI(is_google=True)
 
 
     def generate_business_analysis(self, user_prompt: str) -> BusinessAnalysis:

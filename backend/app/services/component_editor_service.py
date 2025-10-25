@@ -17,7 +17,7 @@ class ComponentEditorService:
     """Service for AI-powered component editing"""
     
     def __init__(self):
-        self.prompt_service = PromptOpenAI(api_key=settings.google_api_key, url="https://generativelanguage.googleapis.com/v1beta/openai/")
+        self.prompt_service = PromptOpenAI(is_google=True)
 
     def _is_multi_element_selection(self, text_content: str) -> bool:
         """
