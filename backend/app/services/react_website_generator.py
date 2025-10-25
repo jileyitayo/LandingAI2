@@ -88,7 +88,8 @@ class ReactWebsiteGenerator:
 
     def __init__(self):
         self.openai_client = PromptOpenAI()
-        self.google_client = PromptOpenAI(api_key=settings.google_api_key, url="https://generativelanguage.googleapis.com/v1beta/openai/")
+        self.google_client = PromptOpenAI(is_google=True)
+        self.anthropic_client = PromptOpenAI(is_anthropic=True)
         self.business_analyzer = BusinessAnalyzer()
         # self.design_system_generator = DesignSystemGenerator()  # NEW
         # self.visual_optimizer = VisualHierarchyOptimizer()      # NEW
@@ -262,16 +263,21 @@ Your task:
 3. Map business requirements to appropriate React components
 4. Ensure logical flow and user experience
 5. Determing if its a single page website (ONLY 1 page) or multiple pages website (more than 1 page).
-6. If its a single page website, ensure the page is named HomePage and the path is /, with header navigation urls pointing to the sections in the page with #menu for menu for example
+6. If its a single page website, ensure the page is named Home and the path is "/" not "", with header navigation urls pointing to the sections in the page with #menu for menu for example
 
 CRITICAL: Navigation and Pages MUST Match Exactly
 7. For EVERY navigation item you create, there MUST be a corresponding page with the EXACT same path
 8. For EVERY page you create, there MUST be a corresponding navigation item (except utility pages like 404, privacy)
-9. Navigation item path MUST exactly match page path
+9. Navigation item path MUST exactly match page path. except for "home" page which must be "/", not "". 
    Example: 
-   Navigation: {{label: "About", path: "/about"}}
-   Page: {{name: "About", path: "/about"}}
+    Navigation: {{label: "About", path: "/about"}}
+    Page: {{name: "About", path: "/about"}}
+   Example 2 (Always use this pattern for the home/main/entry page):
+    Navigation: {{label: "Home", path: "/"}}
+    Page: {{name: "Home", path: "/"}}
    There must be a one to one mapping between navigation items and pages
+   NEVER do this: 
+   - Navigation: {{label: "HomePage", path: "/homePage"}} Page: {{name: "HomePage", path: "/#home"}}
 10. Do NOT create navigation items without creating the page
 11. Do NOT create pages without adding them to navigation (unless utility pages)
 12. ENSURE that all values in the "props" are generated with appropriate values, not just empty strings or numbers. And make use of href for links, not just url.
@@ -607,8 +613,16 @@ Create a website structure with appropriate pages and components for each page."
         
         # Call LLM to generate page and components
         logger.info(f"[PAGE GEN] Calling LLM for page {page.name} generation...")
-        # self.openai_client.set_max_completion_tokens(16000)
-        # response, usage = self.openai_client.call_openai_api_structured(
+        self.openai_client.set_max_completion_tokens(16000)
+        response, usage = self.openai_client.call_openai_api_structured(
+            system_prompt,
+            user_prompt,
+            PageGenerationResponse,
+            model="o4-mini"
+        )
+
+        # self.google_client.set_max_completion_tokens(8000)
+        # response, usage = self.google_client.call_openai_api_structured(
         #     system_prompt,
         #     user_prompt,
         #     PageGenerationResponse,
@@ -1139,9 +1153,9 @@ function Hero() {{ return <div /> }}
 export {{ Hero }};
 export default Hero; // ERROR: Duplicate!
 
-Page Components (src/pages/HomePage.tsx):
+Page Components (src/pages/Home.tsx):
 CORRECT - Default Export:
-export default function HomePage() {{
+export default function Home() {{
   return <main>...</main>
 }}
 
@@ -1176,7 +1190,7 @@ RULE 5: PREFERRED PATTERNS
 
 Section components: Named exports → import {{ Header }} from '@/components/Header'
 UI primitives components: Named exports → import {{ Button }} from '@/components/ui/button'
-Pages: Default exports → import HomePage from '@/pages/HomePage'
+Pages: Default exports → import Home from '@/pages/Home'
 
 
 MANDATORY PRE-GENERATION CHECKLIST
@@ -1230,6 +1244,8 @@ Your generated code must:
 - Have ZERO unused variables (all declared variables must be used)
 - Use ONLY defined TypeScript types (no LucideIcon or other undefined types)
 - All lucide-react icon imports must be rendered in JSX
+- 🚨 CRITICAL: ALL section components have data-component and data-file on root element
+- 🚨 CRITICAL: Major interactive elements have data-element attributes
 
 
 When in doubt:
@@ -1306,7 +1322,8 @@ IMAGES: Use Unsplash URLs (https://images.unsplash.com/...)
    ✅ Only use icons from list below (Building2, CircleDot, UserCircle)
    ✅ Icons are CASE-SENSITIVE
    Ensure used Icons are imported from lucide-react, below are the list of all icons:
-{safe_icons_list}
+    {safe_icons_list}
+    You must use only the icons from the list above.
 
 4. TYPES
    ❌ icon: LucideIcon (undefined type)
@@ -1325,8 +1342,8 @@ PRE-GENERATION CHECKLIST:
 □ No undefined types (no LucideIcon)
 □ One export per file, imports match export style
 □ Ensure the year is the current year at the footer
-□ 🚨 CRITICAL: ALL section components have data-component and data-file on root element
-□ 🚨 CRITICAL: Major interactive elements have data-element attributes
+□ CRITICAL: ALL section components have data-component and data-file on root element
+□ CRITICAL: Major interactive elements have data-element attributes
 
 STRUCTURE:
 - Sections: src/components/<Name>.tsx (named export)
@@ -1348,6 +1365,7 @@ Common errors causing build failure:
 • Declaring const bgClass but never using it in className
 • Importing Camera, Heart, Star but only rendering Heart
 • Using type LucideIcon (doesn't exist)
+• import only what you render and ensure they are imported from lucide-react and valid from the list of verified icons
 • Destructuring experienceIcon but never using it
 • Missing required description prop on Cta component
 • Dont escape quotes in the generated code
@@ -1499,6 +1517,9 @@ Generate now."""
         available_section_components: List[str]
     ) -> str:
         """Concise user prompt for page generation"""
+
+        # Add icon whitelist directly to prompt
+        safe_icons = get_safe_icons()  # Just names, not full guide
         
         # Format component requirements
         components_list = [
@@ -1528,6 +1549,7 @@ AVAILABLE COMPONENTS
 UI (@/components/ui/): {', '.join(available_ui_components) or 'None - create as needed'}
 Sections (@/components/): {', '.join(available_section_components) or 'None - create as needed'}
 
+ALLOWED ICONS (use ONLY these): {', '.join(safe_icons)}
 
 NAVIGATION
 {chr(10).join(nav_list) if nav_list else '  • Single page (no nav)'}
