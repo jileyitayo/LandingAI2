@@ -64,10 +64,11 @@ class VitePreviewService:
                 "react-dom": "^19.1.1",
                 "react-router-dom": "^6.8.0",
                 "@tanstack/react-query": "^5.0.0",
-                "lucide-react": "^0.462.0",
+                "lucide-react": "^0.544.0",
                 "class-variance-authority": "^0.7.0",
                 "clsx": "^2.0.0",
                 "tailwind-merge": "^2.0.0",
+                "next-themes": "^0.4.6",
                 "@radix-ui/react-slot": "^1.0.2",
                 "@radix-ui/react-label": "^2.0.2",
                 "@radix-ui/react-select": "^2.0.0",
@@ -378,7 +379,7 @@ export default defineConfig({{
             start_time = time.time()
             
             result = subprocess.run(
-                ["npm", "run", "build"],
+                ["npm", "run", "build:dev"],
                 cwd=preview_dir,
                 capture_output=True,
                 text=True,

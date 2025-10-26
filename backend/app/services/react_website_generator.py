@@ -19,7 +19,7 @@ from app.services.react_models import (
     ValidationResult, ValidationError, BuildTestResult, GenerationResult
 )
 from app.services.react_file_manager import react_file_manager
-from app.services.validators.icon_validator import format_icons_for_prompt, validate_and_fix_icon, is_valid_icon
+from app.services.validators.icon_validator import format_icons_for_prompt, validate_and_fix_icon, is_valid_icon, get_safe_icons
 from app.services.validators.code_validator import code_validator, fix_lucide_icons_in_content, CodeValidationError
 from app.services.validators.error_fixer import error_fixer
 from app.services.validators.build_tester import build_tester, BuildError
@@ -1294,9 +1294,9 @@ If you generate code with these errors, the entire build will fail. Triple-check
         """Create concise system prompt for page generation - captures all critical validation rules"""
         
         # Get formatted list of safe icons
-        safe_icons_list = format_icons_for_prompt()
+        safe_icons_list = get_safe_icons()
         
-        return f"""Expert React 19 + TypeScript developer. Generate production-ready page + missing components.
+        return f"""Expert React 19 + TypeScript + Vite developer. Generate production-ready page + missing components.
 
 UI COMPONENTS REFERENCE (Do not recreate existing ui components in the in the @/components/ui/ path or the ones below):
 {self._get_all_ui_components_usage_guide()}
@@ -1318,13 +1318,13 @@ IMAGES: Use Unsplash URLs (https://images.unsplash.com/...)
    ✅ Prop names must EXACTLY match interface
 
 3. ICONS
+CRITICAL: Ensure you use ONLY the icons from the list below, and ensure Icons are properly imported from lucide-react:
+{safe_icons_list}
+
    ❌ Building, Circle, User (don't exist)
    ✅ Only use icons from list below (Building2, CircleDot, UserCircle)
    ✅ Icons are CASE-SENSITIVE
-   Ensure used Icons are imported from lucide-react, below are the list of all icons:
-    {safe_icons_list}
-    You must use only the icons from the list above.
-
+   
 4. TYPES
    ❌ icon: LucideIcon (undefined type)
    ✅ Use: string, number, boolean, React.ReactNode, JSX.Element
@@ -1519,7 +1519,7 @@ Generate now."""
         """Concise user prompt for page generation"""
 
         # Add icon whitelist directly to prompt
-        safe_icons = get_safe_icons()  # Just names, not full guide
+        safe_icons_list = get_safe_icons()
         
         # Format component requirements
         components_list = [
@@ -1549,7 +1549,8 @@ AVAILABLE COMPONENTS
 UI (@/components/ui/): {', '.join(available_ui_components) or 'None - create as needed'}
 Sections (@/components/): {', '.join(available_section_components) or 'None - create as needed'}
 
-ALLOWED ICONS (use ONLY these): {', '.join(safe_icons)}
+CRITICAL: Ensure you use ONLY the icons from the list below, and ensure Icons are properly imported from lucide-react:
+{safe_icons_list}
 
 NAVIGATION
 {chr(10).join(nav_list) if nav_list else '  • Single page (no nav)'}

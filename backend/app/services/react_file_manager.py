@@ -341,17 +341,17 @@ MIT
         # more permanent is to read from Database
         template_ui_path = Path("templates/src/components/ui")
 
-        allowed_components = ["button", "card", "input", "textarea", "label", "select", "dialog", "badge", "alert", "avatar", "separator", "switch", "progress", "skeleton", "accordion", "tabs", "tooltip", "popover", "dropdown-menu", "toggle", "radio-group", "table", "sonner"]
+        allowed_components = {"button", "card", "input", "textarea", "label", "select", "dialog", "badge", "alert", "avatar", "separator", "switch", "progress", "skeleton", "accordion", "tabs", "tooltip", "popover", "dropdown-menu", "toggle", "radio-group", "table", "sonner"}
         
         # Read all UI component files from the template directory
         if template_ui_path.exists():
             for component_file in template_ui_path.glob("*.tsx"):
                 try:
-                    if component_file.name in allowed_components:
-                      with open(component_file, 'r', encoding='utf-8') as f:
-                          content = f.read()
-                          # Store with the correct path structure for the generated project
-                          files[f"src/components/ui/{component_file.name}"] = content
+                  if component_file.name.split(".")[0].lower() in allowed_components:
+                    with open(component_file, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        # Store with the correct path structure for the generated project
+                        files[f"src/components/ui/{component_file.name}"] = content
                 except Exception as e:
                     print(f"Warning: Could not read {component_file}: {e}")
         
