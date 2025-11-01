@@ -89,8 +89,8 @@ class CodeValidator:
         for match in matches:
             imported_icons = match.group(1)
             # Split by comma and clean up
-            icons = [icon.strip() for icon in imported_icons.split(',')]
-            
+            icons = [icon.strip() for icon in imported_icons.split(',') if icon.strip()]
+
             for icon in icons:
                 if icon and not is_valid_icon(icon):
                     alternative, _ = validate_and_fix_icon(icon)
@@ -213,7 +213,7 @@ class CodeValidator:
             reexport_pattern = r"export\s+\{([^}]+)\}"
             reexports = re.findall(reexport_pattern, content)
             for reexport in reexports:
-                names = [n.strip() for n in reexport.split(',')]
+                names = [n.strip() for n in reexport.split(',') if n.strip()]
                 for name in names:
                     export_map[file_path][name] = 'named'
         
@@ -241,7 +241,7 @@ class CodeValidator:
                     
                     # Check named imports
                     if named_imports:
-                        import_names = [n.strip() for n in named_imports.split(',')]
+                        import_names = [n.strip() for n in named_imports.split(',') if n.strip()]
                         for raw_name in import_names:
                             # Normalize 'type' imports and aliases: e.g., "type Project as ProjectType"
                             # Capture optional 'type' prefix, base name, and optional alias
@@ -419,7 +419,7 @@ class CodeValidator:
                 
                 if named_imports:
                     # Check each named import
-                    import_names = [n.strip() for n in named_imports.split(',')]
+                    import_names = [n.strip() for n in named_imports.split(',') if n.strip()]
                     for import_name in import_names:
                         # Remove any alias (e.g., "Button as Btn" -> "Btn")
                         actual_name = import_name.split(' as ')[-1].strip()
@@ -552,8 +552,8 @@ def fix_lucide_icons_in_content(content: str) -> Tuple[str, List[str]]:
     
     def replace_icons(match):
         imported_icons = match.group(1)
-        icons = [icon.strip() for icon in imported_icons.split(',')]
-        
+        icons = [icon.strip() for icon in imported_icons.split(',') if icon.strip()]
+
         fixed_icons = []
         for icon in icons:
             if icon:

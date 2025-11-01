@@ -56,6 +56,7 @@ class VitePreviewService:
             "scripts": {
                 "dev": "vite",
                 "build": "vite build",
+                "build:dev": "vite build --mode development",
                 "lint": "eslint .",
                 "preview": "vite preview"
             },

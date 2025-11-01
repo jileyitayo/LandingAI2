@@ -35,6 +35,7 @@ class ErrorFixer:
     
     def __init__(self):
         self.openai_client = PromptOpenAI()
+        self.google_client = PromptOpenAI(is_google=True)
         self.max_retries = 3
     
     def fix_validation_errors(
@@ -239,15 +240,15 @@ CURRENT FILE CONTENT:
 Return the complete fixed file content. Make sure to fix ALL the errors listed above."""
 
         try:
-            self.openai_client.set_max_completion_tokens(4000)
-            
+            self.google_client.set_max_completion_tokens(8000)
+            logger.info(f"Fixing validation errors in {file_path}")
             # Call LLM to fix the code
-            response = self.openai_client.call_openai_api(
+            response, usage = self.google_client.call_openai_api(
                 system_prompt,
                 user_prompt,
-                model="gpt-4o-mini"
+                model="gemini-2.5-flash"
             )
-            
+            print(f"Usage for validation error fixing: {usage}")
             # Extract code from response
             fixed_content = self._extract_code_from_response(response)
             

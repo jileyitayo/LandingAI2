@@ -134,7 +134,7 @@ class PromptOpenAI:
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
                         ],
-                        temperature=0.7,
+                        temperature=0.3,
                         max_tokens=self.max_completion_tokens,
                         response_format=json_format
                     )

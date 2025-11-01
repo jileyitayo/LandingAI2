@@ -202,6 +202,10 @@ class ReactWebsiteGenerator:
 
         # print(f"Website structure: \n{website_structure.model_dump_json(indent=2)}")
         
+        # Fix home page path
+        logger.info("[REACT GEN] Fixing home page path...")
+        self._fix_home_page_path(website_structure)
+        
         # Validate navigation matches pages
         logger.info("[REACT GEN] Validating structure consistency...")
         self._validate_structure_consistency(website_structure)
@@ -341,6 +345,82 @@ Create a website structure with appropriate pages and components for each page."
         print(f"Usage for structure generation: {usage}")
         
         return response
+    
+    def _is_home_page(self, name: str) -> bool:
+        """
+        Check if a page name represents a home page
+        Handles various forms like 'home', 'home_page', 'homePage', 'Home Page', etc.
+        """
+        if not name:
+            return False
+        
+        # Convert to lowercase and remove spaces/underscores for comparison
+        normalized_name = name.lower().replace(" ", "").replace("_", "").replace("-", "")
+        
+        # Check for various home page patterns
+        home_patterns = [
+            "home",
+            "homepage", 
+            "homepage",
+            "main",
+            "index",
+            "landing",
+            "start"
+        ]
+        
+        return normalized_name in home_patterns
+
+
+    def _fix_home_page_path(self, website_structure: WebsiteStructure) -> Dict[str, Any]:
+        """
+        Fix Home page path from '/home' or any other path to '/' in the website structure (in place)
+        Handles various forms of home page names like 'home', 'home_page', 'homePage', 'Home Page', etc.
+        
+        Args:
+            website_structure: Website structure data dictionary (modified in place)
+            
+        Returns:
+            dict: Dictionary containing:
+                - fixed: bool - Whether any fixes were made
+                - fixes_made: list - List of fixes that were applied
+                - original_paths: dict - Original paths before fixing
+        """
+        fixes_made = []
+        original_paths = {}
+        fixed = False
+        
+        pages = website_structure.pages
+        navigation = website_structure.navigation
+        
+        # Fix Home page path - check all pages for home-like names
+        for i, page in enumerate(pages):
+            page_name = page.name
+            if self._is_home_page(page_name):
+                current_path = page.path
+                if current_path != "/":
+                    original_paths["home_page"] = current_path
+                    page.path = "/"
+                    fixes_made.append(f"Changed {page_name} page path from '{current_path}' to '/'")
+                    fixed = True
+                break
+        
+        # Fix Home navigation path - check all navigation items for home-like labels
+        for i, nav_item in enumerate(navigation):
+            nav_label = nav_item.label
+            if self._is_home_page(nav_label):
+                current_path = nav_item.path
+                if current_path != "/":
+                    original_paths["home_navigation"] = current_path
+                    nav_item.path = "/"
+                    fixes_made.append(f"Changed {nav_label} navigation path from '{current_path}' to '/'")
+                    fixed = True
+                break
+        
+        return {
+            "fixed": fixed,
+            "fixes_made": fixes_made,
+            "original_paths": original_paths
+        }
     
     def _validate_structure_consistency(self, structure: WebsiteStructure) -> None:
         """
