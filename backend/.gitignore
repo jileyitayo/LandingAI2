@@ -54,3 +54,5 @@ logs/
 
 # Generated sites
 */data/
+tests/gentest/
+tests/edittests/
