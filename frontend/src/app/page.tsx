@@ -27,45 +27,6 @@ export default function Home() {
               Sign In
             </Link>
           </div>
-
-          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-3xl mx-auto border border-gray-100">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Phase 2: Authentication ✓
-            </h2>
-            <p className="text-gray-600 mb-6">
-              Milestone 2.1: Frontend Authentication UI is complete!
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
-              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                <h3 className="font-medium text-green-900 mb-2">
-                  ✓ Features Implemented:
-                </h3>
-                <ul className="text-sm text-green-700 space-y-1">
-                  <li>• User login with email/password</li>
-                  <li>• User signup with validation</li>
-                  <li>• Forgot password flow</li>
-                  <li>• Password reset functionality</li>
-                  <li>• Email verification</li>
-                  <li>• Protected routes</li>
-                </ul>
-              </div>
-
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <h3 className="font-medium text-blue-900 mb-2">
-                  🛠️ Technologies:
-                </h3>
-                <ul className="text-sm text-blue-700 space-y-1">
-                  <li>• React Hook Form</li>
-                  <li>• Zod validation</li>
-                  <li>• Tailwind CSS</li>
-                  <li>• Supabase Auth</li>
-                  <li>• Next.js App Router</li>
-                  <li>• TypeScript</li>
-                </ul>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
