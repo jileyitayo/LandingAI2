@@ -208,9 +208,13 @@ class CodeValidator:
         component_exports = re.findall(component_export_pattern, content)
         
         if has_default and component_exports:
+            # Remove comments before checking for default exports to avoid false positives
+            content_no_comments = re.sub(r'//.*?$', '', content, flags=re.MULTILINE)
+            content_no_comments = re.sub(r'/\*.*?\*/', '', content_no_comments, flags=re.DOTALL)
+            
             # Check if default export matches a named export
             default_pattern = r"export\s+default\s+(\w+)"
-            default_matches = re.findall(default_pattern, content)
+            default_matches = re.findall(default_pattern, content_no_comments)
             for default_name in default_matches:
                 if default_name in component_exports:
                     self.errors.append(CodeValidationError(
@@ -603,6 +607,7 @@ class CodeValidator:
 def fix_lucide_icons_in_content(content: str) -> Tuple[str, List[str]]:
     """
     Automatically fix invalid lucide-react icons in content
+    Fixes both import statements AND JSX usage
     
     Args:
         content: File content with potential invalid icons
@@ -611,11 +616,12 @@ def fix_lucide_icons_in_content(content: str) -> Tuple[str, List[str]]:
         Tuple of (fixed_content, list_of_changes)
     """
     changes = []
+    icon_replacements = {}  # Map invalid icon -> valid icon
     
-    # Find all lucide-react imports
+    # Find all lucide-react imports and build replacement map
     icon_import_pattern = r"import\s+\{([^}]+)\}\s+from\s+['\"]lucide-react['\"]"
     
-    def replace_icons(match):
+    def replace_icons_in_import(match):
         imported_icons = match.group(1)
         icons = [icon.strip() for icon in imported_icons.split(',') if icon.strip()]
 
@@ -624,12 +630,48 @@ def fix_lucide_icons_in_content(content: str) -> Tuple[str, List[str]]:
             if icon:
                 fixed_icon, was_changed = validate_and_fix_icon(icon)
                 if was_changed:
+                    icon_replacements[icon] = fixed_icon
                     changes.append(f"Replaced '{icon}' with '{fixed_icon}'")
                 fixed_icons.append(fixed_icon)
         
         return f"import {{ {', '.join(fixed_icons)} }} from 'lucide-react'"
     
-    fixed_content = re.sub(icon_import_pattern, replace_icons, content)
+    # First pass: Fix import statements and build replacement map
+    fixed_content = re.sub(icon_import_pattern, replace_icons_in_import, content)
+    
+    # Second pass: Replace icon usages in JSX code
+    # Patterns to match:
+    # - <IconName /> (self-closing)
+    # - <IconName ...> (opening tag)
+    # - </IconName> (closing tag)
+    # - {IconName} (in JSX expressions)
+    
+    for invalid_icon, valid_icon in icon_replacements.items():
+        # Replace in JSX self-closing tags: <InvalidIcon /> or <InvalidIcon className="..." />
+        jsx_self_closing_pattern = rf'<{re.escape(invalid_icon)}((\s[^>]*?)?)\s*/>'
+        def replace_self_closing(match):
+            attrs = match.group(1) if match.group(1) else ''
+            return f'<{valid_icon}{attrs} />'
+        fixed_content = re.sub(jsx_self_closing_pattern, replace_self_closing, fixed_content)
+        
+        # Replace in JSX opening tags: <InvalidIcon ...>
+        jsx_opening_pattern = rf'<{re.escape(invalid_icon)}((\s[^>]*?)?)>'
+        def replace_opening(match):
+            attrs = match.group(1) if match.group(1) else ''
+            return f'<{valid_icon}{attrs}>'
+        fixed_content = re.sub(jsx_opening_pattern, replace_opening, fixed_content)
+        
+        # Replace closing tags: </InvalidIcon>
+        closing_tag_pattern = rf'</{re.escape(invalid_icon)}>'
+        fixed_content = re.sub(closing_tag_pattern, f'</{valid_icon}>', fixed_content)
+        
+        # Replace in JSX expressions: {InvalidIcon}
+        jsx_expr_pattern = rf'\{{{re.escape(invalid_icon)}\}}'
+        fixed_content = re.sub(jsx_expr_pattern, f'{{{valid_icon}}}', fixed_content)
+        
+        # Replace in JSX expressions with props: {InvalidIcon(...)}
+        jsx_expr_with_props_pattern = rf'\{{{re.escape(invalid_icon)}\('
+        fixed_content = re.sub(jsx_expr_with_props_pattern, f'{{{valid_icon}}}(', fixed_content)
     
     return fixed_content, changes
 

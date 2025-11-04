@@ -36,6 +36,7 @@ class NavItem(BaseModel):
 class WebsiteStructure(BaseModel):
     """Complete website structure"""
     name: str = Field(..., description="Website/business name")
+    page_count: int = Field(default=1, description="Number of pages in the website")
     tagline: str = Field(..., description="Main tagline/slogan")
     description: str = Field(..., description="Business description")
     color_scheme: str = Field(..., description="Primary color (e.g., blue, indigo, emerald)")

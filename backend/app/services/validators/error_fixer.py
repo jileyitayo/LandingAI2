@@ -194,6 +194,11 @@ class ErrorFixer:
         all_files: Dict[str, str]
     ) -> Optional[str]:
         """Fix errors in a single file using LLM"""
+
+        # Skip fixing utility and hook files - they're pre-tested templates
+        if '/utils/' in file_path or '/hooks/' in file_path:
+            logger.info(f"[ERROR FIXER] Skipping LLM fix for template file: {file_path}")
+            return original_content
         
         # Create error summary
         error_messages = [f"- {error.error_type}: {error.message}" for error in errors]

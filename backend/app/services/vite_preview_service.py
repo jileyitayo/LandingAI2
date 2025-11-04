@@ -12,6 +12,11 @@ import json
 import time
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
+from app.services.react_file_manager import ReactFileManager
+from app.services.react_models import WebsiteStructure
+from app.services.react_models import PageStructure
+from app.services.react_models import PageComponent
+from app.services.react_models import NavItem
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,80 +43,38 @@ class VitePreviewService:
     def _ensure_shared_template(self):
         """Create and initialize shared template with node_modules (one-time setup)"""
         logger.info("[VITE PREVIEW] Ensuring shared template is initialized...")
+        always_recreate = False
         
         # Check if shared template already exists
-        if (self.shared_template_dir / "node_modules").exists():
+        if (self.shared_template_dir / "node_modules").exists() and not always_recreate:
             logger.info("[VITE PREVIEW] Shared template already exists")
             return
         
+        logger.info("[VITE PREVIEW] Creating shared template directory...")
+
         # Create shared template directory
         self.shared_template_dir.mkdir(exist_ok=True)
         
         # Write package.json with all dependencies
-        package_json = {
-            "name": "preview-template",
-            "private": True,
-            "version": "0.0.0",
-            "type": "module",
-            "scripts": {
-                "dev": "vite",
-                "build": "vite build",
-                "build:dev": "vite build --mode development",
-                "lint": "eslint .",
-                "preview": "vite preview"
-            },
-            "dependencies": {
-                "react": "^19.1.1",
-                "react-dom": "^19.1.1",
-                "react-router-dom": "^6.8.0",
-                "@tanstack/react-query": "^5.0.0",
-                "lucide-react": "^0.544.0",
-                "class-variance-authority": "^0.7.0",
-                "clsx": "^2.0.0",
-                "tailwind-merge": "^2.0.0",
-                "next-themes": "^0.4.6",
-                "@radix-ui/react-slot": "^1.0.2",
-                "@radix-ui/react-label": "^2.0.2",
-                "@radix-ui/react-select": "^2.0.0",
-                "@radix-ui/react-dialog": "^1.0.5",
-                "@radix-ui/react-avatar": "^1.0.4",
-                "@radix-ui/react-separator": "^1.0.3",
-                "@radix-ui/react-switch": "^1.0.3",
-                "@radix-ui/react-progress": "^1.0.3",
-                "@radix-ui/react-accordion": "^1.1.2",
-                "@radix-ui/react-tabs": "^1.0.4",
-                "@radix-ui/react-tooltip": "^1.0.7",
-                "@radix-ui/react-popover": "^1.0.7",
-                "@radix-ui/react-alert-dialog": "^1.0.5",
-                "@radix-ui/react-dropdown-menu": "^2.0.6",
-                "@radix-ui/react-toggle": "^1.0.3",
-                "@radix-ui/react-toggle-group": "^1.0.4",
-                "@radix-ui/react-radio-group": "^1.1.3",
-                "@radix-ui/react-context-menu": "^2.1.5",
-                "sonner": "^1.3.1"
-            },
-            "devDependencies": {
-                "@eslint/js": "^9.36.0",
-                "@types/node": "^20.0.0",
-                "@types/react": "^19.1.13",
-                "@types/react-dom": "^19.1.9",
-                "@vitejs/plugin-react": "^5.0.3",
-                "autoprefixer": "^10.4.0",
-                "eslint": "^9.36.0",
-                "eslint-plugin-react-hooks": "^5.2.0",
-                "eslint-plugin-react-refresh": "^0.4.20",
-                "globals": "^16.4.0",
-                "postcss": "^8.4.0",
-                "tailwindcss": "^3.4.0",
-                "typescript": "~5.8.3",
-                "typescript-eslint": "^8.44.0",
-                "vite": "^7.1.7"
-            }
-        }
-        
-        (self.shared_template_dir / "package.json").write_text(json.dumps(package_json, indent=2))
+        react_file_manager = ReactFileManager()
+        sample_structure = WebsiteStructure(
+            name="Preview Website",
+            tagline="Preview Website",
+            description="This is a preview website",
+            color_scheme="blue",
+            secondary_color="indigo",
+            accent_color="emerald",
+            pages=[PageStructure(name="Home", path="/", title="Home", description="Home page", has_header=True, has_footer=True, components=[])],
+            navigation=[NavItem(label="Home", path="/")],
+            header=PageComponent(name="Header", type="header", props=[]),
+            footer=PageComponent(name="Footer", type="footer", props=[])
+        )
+        config_files = react_file_manager.generate_config_files(sample_structure)
+
+        (self.shared_template_dir / "package.json").write_text(config_files["package.json"])
         
         # Write vite.config.ts
+        # This is needed specifically for vite preview 
         vite_config = '''import { defineConfig } from 'vite'
             import react from '@vitejs/plugin-react'
             import path from 'path'
@@ -136,150 +99,28 @@ class VitePreviewService:
         (self.shared_template_dir / "vite.config.ts").write_text(vite_config)
         
         # Write tsconfig.json
-        tsconfig = {
-            "files": [],
-            "references": [
-                {
-                "path": "./tsconfig.app.json"
-                },
-                {
-                "path": "./tsconfig.node.json"
-                }
-            ]
-            }
-        (self.shared_template_dir / "tsconfig.json").write_text(json.dumps(tsconfig, indent=2))
+        tsconfig = config_files["tsconfig.json"]
+        (self.shared_template_dir / "tsconfig.json").write_text(tsconfig)
         
         # Write tsconfig.node.json
-        tsconfig_node = {
-            "compilerOptions": {
-                "composite": True,
-                "skipLibCheck": True,
-                "module": "ESNext",
-                "moduleResolution": "bundler",
-                "allowSyntheticDefaultImports": True
-            },
-            "include": ["vite.config.ts"]
-        }
-        (self.shared_template_dir / "tsconfig.node.json").write_text(json.dumps(tsconfig_node, indent=2))
+        tsconfig_node = config_files["tsconfig.node.json"]
+        (self.shared_template_dir / "tsconfig.node.json").write_text(tsconfig_node)
         
         # Write tsconfig.node.json
-        tsconfig_app = {
-            "compilerOptions": {
-                "target": "ES2020",
-                "useDefineForClassFields": True,
-                "lib": [
-                "ES2020",
-                "DOM",
-                "DOM.Iterable"
-                ],
-                "module": "ESNext",
-                "skipLibCheck": True,
-                "moduleResolution": "bundler",
-                "allowImportingTsExtensions": True,
-                "isolatedModules": True,
-                "moduleDetection": "force",
-                "noEmit": True,
-                "jsx": "react-jsx",
-                "strict": True,
-                "noUnusedLocals": True,
-                "noUnusedParameters": True,
-                "noFallthroughCasesInSwitch": True,
-                "baseUrl": ".",
-                "paths": {
-                    "@/*": [
-                        "./src/*"
-                    ]
-                }
-            },
-            "include": [
-                "src"
-            ]
-        }
-        (self.shared_template_dir / "tsconfig.app.json").write_text(json.dumps(tsconfig_app, indent=2))
+        tsconfig_app = config_files["tsconfig.app.json"]
+        (self.shared_template_dir / "tsconfig.app.json").write_text(tsconfig_app)
         
 
         # Write tailwind.config.js
-        tailwind_config = '''/** @type {import('tailwindcss').Config} */
-export default {
-  darkMode: ["class"],
-  content: [
-    './pages/**/*.{ts,tsx}',
-    './components/**/*.{ts,tsx}',
-    './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
-  ],
-  theme: {
-    extend: {
-      colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-        },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
-        },
-      },
-      borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
-      },
-    },
-  },
-  plugins: [],
-}
-'''
+        tailwind_config = config_files["tailwind.config.js"]
         (self.shared_template_dir / "tailwind.config.js").write_text(tailwind_config)
-        
+
         # Write postcss.config.js
-        postcss_config = '''export default {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
-}'''
+        postcss_config = config_files["postcss.config.js"]
         (self.shared_template_dir / "postcss.config.js").write_text(postcss_config)
         
         # Write index.html
-        index_html = '''<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Preview</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>'''
+        index_html = config_files["index.html"]
         (self.shared_template_dir / "index.html").write_text(index_html)
         
         # Run npm install
@@ -475,31 +316,6 @@ export default defineConfig({{
                 str(self.shared_template_dir / "package.json"),
                 str(preview_dir / "package.json")
             )
-            # Don't symlink vite.config.ts - copy it instead
-            # os.symlink(
-            #     str(self.shared_template_dir / "vite.config.ts"),
-            #     str(preview_dir / "vite.config.ts")
-            # )
-            # os.symlink(
-            #     str(self.shared_template_dir / "tsconfig.json"),
-            #     str(preview_dir / "tsconfig.json")
-            # )
-            # os.symlink(
-            #     str(self.shared_template_dir / "tsconfig.node.json"),
-            #     str(preview_dir / "tsconfig.node.json")
-            # )
-            # os.symlink(
-            #     str(self.shared_template_dir / "tsconfig.app.json"),
-            #     str(preview_dir / "tsconfig.app.json")
-            # )
-            # os.symlink(
-            #     str(self.shared_template_dir / "tailwind.config.js"),
-            #     str(preview_dir / "tailwind.config.js")
-            # )
-            # os.symlink(
-            #     str(self.shared_template_dir / "postcss.config.js"),
-            #     str(preview_dir / "postcss.config.js")
-            # )
         except OSError as e:
             # On Windows, symlinks might not work, try copying instead
             logger.warning("[VITE PREVIEW] Symlink failed, copying files instead: " + str(e))
@@ -507,13 +323,7 @@ export default defineConfig({{
             # Remove existing files/directories before copying
             files_to_copy = [
                 ("node_modules", "copytree"),
-                ("package.json", "copy2"),
-                # ("vite.config.ts", "copy2"),
-                # ("tsconfig.json", "copy2"),
-                # ("tsconfig.node.json", "copy2"),
-                # ("tsconfig.app.json", "copy2"),
-                # ("tailwind.config.js", "copy2"),
-                # ("postcss.config.js", "copy2")
+                ("package.json", "copy2")
             ]
             
             for file_name, copy_method in files_to_copy:

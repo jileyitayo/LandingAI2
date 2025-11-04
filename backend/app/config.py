@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Icon Configuration
     use_essential_icons_only: bool = True  # Use minimal 63-icon set (True) or full 313-icon set (False)
     
+    # Animation Configuration
+    enable_animations_default: bool = True  # Enable animations by default for all users (Pro users always get animations)
+    
     # LangGraph settings
     enable_langgraph_checkpoints: bool = True
     langgraph_max_retries: int = 3
