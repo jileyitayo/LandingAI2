@@ -4,10 +4,13 @@ Manages all file generation for React projects including configs, UI components,
 """
 
 import json
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 from app.services.react_models import WebsiteStructure
 import os
 from pathlib import Path
+
+if TYPE_CHECKING:
+    from app.services.default_theme import ThemeColors
 # UI components are now read from template files instead of hardcoded
 
 
@@ -456,27 +459,21 @@ createRoot(document.getElementById('root')!).render(
         
         return files
     
-    def generate_style_files(self, structure: WebsiteStructure) -> Dict[str, str]:
-        """Generate CSS files"""
-        
+    def generate_style_files(self, structure: WebsiteStructure, theme: 'ThemeColors' = None) -> Dict[str, str]:
+        """Generate CSS files
+
+        Args:
+            structure: Website structure
+            theme: Optional ThemeColors object (AI-generated or fallback)
+        """
+
         files = {}
-        
-        # Get primary color from structure
-        color = structure.color_scheme or "blue"
-        
-        # Map color names to HSL values
-        color_map = {
-            "blue": "221.2 83.2% 53.3%",
-            "indigo": "239 84% 67%",
-            "emerald": "142.1 76.2% 36.3%",
-            "green": "142.1 76.2% 36.3%",
-            "purple": "262.1 83.3% 57.8%",
-            "pink": "330 81% 60%",
-            "red": "0 72% 51%",
-            "orange": "24.6 95% 53.1%",
-        }
-        
-        primary_color = color_map.get(color.lower(), color_map["blue"])
+
+        # Use provided theme or fallback to theme variant based on color_scheme
+        if not theme:
+            # Fallback: Generate theme from color_scheme
+            from app.services.default_theme import get_theme_variant
+            theme = get_theme_variant(structure.color_scheme)
         
         files["src/index.css"] = f'''@tailwind base;
 @tailwind components;
@@ -484,48 +481,26 @@ createRoot(document.getElementById('root')!).render(
 
 @layer base {{
   :root {{
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: {primary_color};
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: {primary_color};
-    --radius: 0.5rem;
-  }}
-
-  .dark {{
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: {primary_color};
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: {primary_color};
+    --background: {theme.background};
+    --foreground: {theme.foreground};
+    --card: {theme.card};
+    --card-foreground: {theme.card_foreground};
+    --popover: {theme.popover};
+    --popover-foreground: {theme.popover_foreground};
+    --primary: {theme.primary};
+    --primary-foreground: {theme.primary_foreground};
+    --secondary: {theme.secondary};
+    --secondary-foreground: {theme.secondary_foreground};
+    --muted: {theme.muted};
+    --muted-foreground: {theme.muted_foreground};
+    --accent: {theme.accent};
+    --accent-foreground: {theme.accent_foreground};
+    --destructive: {theme.destructive};
+    --destructive-foreground: {theme.destructive_foreground};
+    --border: {theme.border};
+    --input: {theme.input};
+    --ring: {theme.ring};
+    --radius: {theme.radius};
   }}
 }}
 

@@ -334,26 +334,40 @@ class ReactWebsiteGenerator:
     
     def _generate_all_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, enable_animations: bool = False) -> Dict[str, str]:
         """Generate all React project files
-        
+
         Args:
             structure: Website structure
             analysis: Business analysis
             enable_animations: Whether to include animation files
         """
-        
+
         files = {}
-        
+
         # Core config files (package.json, vite.config, etc.)
         files.update(react_file_manager.generate_config_files(structure))
-        
+
         # UI components (shadcn/ui primitives - base set)
         files.update(react_file_manager.generate_ui_components())
-        
+
         # App setup files (App.tsx, main.tsx)
         files.update(react_file_manager.generate_app_files(structure, enable_animations))
-        
-        # Style files (index.css)
-        files.update(react_file_manager.generate_style_files(structure))
+
+        # Generate custom theme based on business analysis
+        logger.info("[REACT GEN] Generating custom theme...")
+        theme = None
+        try:
+            from app.services.theme_generator import theme_generator
+            theme = theme_generator.generate_theme_with_fallback(
+                business_analysis=analysis,
+                color_scheme=structure.color_scheme
+            )
+            logger.info(f"[REACT GEN] ✓ Theme generated: primary={theme.primary}")
+        except Exception as e:
+            logger.warning(f"[REACT GEN] ⚠ Theme generation warning: {str(e)}, using fallback")
+            # theme will remain None, generate_style_files will handle fallback
+
+        # Style files (index.css) with custom theme
+        files.update(react_file_manager.generate_style_files(structure, theme))
         
         # Animation files (if enabled)
         if enable_animations:
