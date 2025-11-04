@@ -17,7 +17,7 @@ anthropic==0.40.0
 python-dotenv==1.0.1
 pydantic==2.12.0
 pydantic-settings==2.6.0
-pydantic[email]==2.9.2
+pydantic[email]==2.12.0
 
 # HTTP & CORS
 httpx==0.27.2
@@ -34,5 +34,15 @@ python-dateutil==2.9.0
 pytest==8.3.3
 pytest-asyncio==0.24.0
 pytest-cov==5.0.0
-httpx==0.28.1
 
+langchain==0.3.27
+langchain-core==0.3.78
+langchain-google-genai==2.1.12
+langchain-openai==0.3.35
+langchain-text-splitters==0.3.11
+langgraph==0.6.9
+langgraph-checkpoint==2.1.2
+langgraph-checkpoint-sqlite==2.0.11
+langgraph-prebuilt==0.6.4
+langgraph-sdk==0.2.9
+langsmith==0.4.33

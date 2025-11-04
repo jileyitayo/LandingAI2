@@ -277,34 +277,34 @@ dist-ssr
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 18+
 - npm or yarn
 
 ### Installation
 
-\`\`\`bash
+```bash
 npm install
-\`\`\`
+```
 
 ### Development
 
-\`\`\`bash
+```bash
 npm run dev
-\`\`\`
+```
 
 Visit http://localhost:5173
 
 ### Build
 
-\`\`\`bash
+```bash
 npm run build
-\`\`\`
+```
 
 ### Preview Production Build
 
-\`\`\`bash
+```bash
 npm run preview
-\`\`\`
+```
 
 ## Tech Stack
 
@@ -317,13 +317,13 @@ npm run preview
 
 ## Project Structure
 
-\`\`\`
+```
 src/
 ├── components/     # Reusable components
 ├── pages/          # Page components
 ├── lib/            # Utility functions
 └── App.tsx         # Main app component
-\`\`\`
+```
 
 ## License
 

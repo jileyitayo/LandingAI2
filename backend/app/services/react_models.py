@@ -24,7 +24,9 @@ class PageStructure(BaseModel):
     path: str = Field(..., description="Route path (e.g., /, /about, /services, etc.)")
     title: str = Field(..., description="Page title for SEO")
     description: str = Field(..., description="Page description for SEO")
-    components: List[PageComponent] = Field(..., description="List of components/sections on this page")
+    has_header: bool = Field(..., description="Whether this page has a header component")
+    has_footer: bool = Field(..., description="Whether this page has a footer component")
+    components: List[PageComponent] = Field(..., description="List of components/sections on this page with no header or footer components")
 
 class NavItem(BaseModel):
     """Navigation menu item"""
@@ -37,8 +39,12 @@ class WebsiteStructure(BaseModel):
     tagline: str = Field(..., description="Main tagline/slogan")
     description: str = Field(..., description="Business description")
     color_scheme: str = Field(..., description="Primary color (e.g., blue, indigo, emerald)")
+    secondary_color: str = Field(..., description="Secondary color (e.g., blue, indigo, emerald)")
+    accent_color: str = Field(..., description="Accent color (e.g., blue, indigo, emerald)")
     pages: List[PageStructure] = Field(..., description="List of all pages")
     navigation: List[NavItem] = Field(..., description="Header Navigation menu items")
+    header: PageComponent = Field(..., description="Header component for all pages")
+    footer: PageComponent = Field(..., description="Footer component for all pages showing current year and copyright text in addition to other items")
 
 class ComponentFile(BaseModel):
     """Represents a generated component file"""

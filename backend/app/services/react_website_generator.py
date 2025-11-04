@@ -109,70 +109,7 @@ class ReactWebsiteGenerator:
         # self.pattern_library = ComponentPatternLibrary()        # NEW
         # self.quality_scorer = WebsiteQualityScorer()           # NEW
 
-    def _validate_and_inject_data_attributes(self, file_path: str, content: str) -> tuple[str, bool]:
-        """
-        Validate that component has data-component and data-file attributes on root element.
-        If missing, attempt to inject them.
-
-        Args:
-            file_path: Path to the component file (e.g., "src/components/Hero.tsx")
-            content: Component file content
-
-        Returns:
-            Tuple of (modified_content, was_modified)
-        """
-        # Only process component files, not pages
-        if not file_path.startswith("src/components/") or "/ui/" in file_path:
-            return content, False
-
-        # Extract component name from file path
-        component_name = file_path.split("/")[-1].replace(".tsx", "").replace(".jsx", "")
-
-        # Check if data attributes already exist
-        has_data_component = 'data-component=' in content
-        has_data_file = 'data-file=' in content
-
-        if has_data_component and has_data_file:
-            logger.info(f"[VALIDATION] ✓ {file_path} already has data attributes")
-            return content, False
-
-        logger.warning(f"[VALIDATION] ⚠ {file_path} missing data attributes - attempting injection")
-
-        # Find the root element (first JSX element in return statement)
-        # Pattern: return ( ... <tagName ...> or return <tagName ...>
-        # We want to inject into the first opening tag after 'return'
-
-        # Pattern to find first JSX element after return
-        # Matches: <section, <div, <header, etc. but not self-closing or closing tags
-        pattern = r'(return\s*\(?[\s\n]*<)([a-zA-Z][a-zA-Z0-9]*)([\s\n]+|>)'
-
-        def inject_attributes(match):
-            before_tag = match.group(1)  # "return (<" or "return <"
-            tag_name = match.group(2)     # "section", "div", etc.
-            after_tag = match.group(3)    # space or ">"
-
-            # Build the data attributes
-            data_attrs = []
-            if not has_data_component:
-                data_attrs.append(f'data-component="{component_name}"')
-            if not has_data_file:
-                data_attrs.append(f'data-file="{file_path}"')
-
-            # If after_tag is just ">", we need to insert a space
-            if after_tag == ">":
-                return f'{before_tag}{tag_name} {" ".join(data_attrs)}>'
-            else:
-                # There's already whitespace
-                return f'{before_tag}{tag_name} {" ".join(data_attrs)}{after_tag}'
-
-        modified_content = re.sub(pattern, inject_attributes, content, count=1)
-
-        if modified_content != content:
-            logger.info(f"[VALIDATION] ✓ Injected data attributes into {file_path}")
-            return modified_content, True
-        else:
-            logger.warning(f"[VALIDATION] ⚠ Could not inject data attributes into {file_path} - pattern not found")
-            return content, False
+    
     
     def generate_website_structure(
         self, 
@@ -615,20 +552,20 @@ class ReactWebsiteGenerator:
         
         # Call LLM to generate page and components
         logger.info(f"[PAGE GEN] Calling LLM for page {page.name} generation...")
-        self.openai_client.set_max_completion_tokens(16000)
-        response, usage = self.openai_client.call_openai_api_structured(
-            system_prompt,
-            user_prompt,
-            PageGenerationResponse,
-            model="o4-mini"
-        )
+        # self.openai_client.set_max_completion_tokens(16000)
+        # response, usage = self.openai_client.call_openai_api_structured(
+        #     system_prompt,
+        #     user_prompt,
+        #     PageGenerationResponse,
+        #     model="o4-mini"
+        # )
 
         # self.google_client.set_max_completion_tokens(8000)
         # response, usage = self.google_client.call_openai_api_structured(
         #     system_prompt,
         #     user_prompt,
         #     PageGenerationResponse,
-        #     model="o4-mini"
+        #     model="o4-mini"   
         # )
 
         self.google_client.set_max_completion_tokens(16000)
@@ -660,7 +597,7 @@ class ReactWebsiteGenerator:
             component_file.content = fixed_content
 
             # Validate and inject data attributes
-            validated_content, was_modified = self._validate_and_inject_data_attributes(
+            validated_content, was_modified = code_validator._validate_and_inject_data_attributes(
                 component_file.path,
                 component_file.content
             )

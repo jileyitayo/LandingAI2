@@ -46,7 +46,14 @@ class Settings(BaseSettings):
     max_parallel_fixes: int = 5  # Maximum number of files to fix in parallel
 
     # Icon Configuration
-    use_essential_icons_only: bool = True  # Use minimal 63-icon set (True) or full 313-icon set (False) 
+    use_essential_icons_only: bool = True  # Use minimal 63-icon set (True) or full 313-icon set (False)
+    
+    # LangGraph settings
+    enable_langgraph_checkpoints: bool = True
+    langgraph_max_retries: int = 3
+    langgraph_parallel_workers: int = 3
+    guardrails_max_prompt_length: int = 10000
+    guardrails_rate_limit_per_minute: int = 60 
 
     # # Model settings
     # use_premium_models: bool = True
