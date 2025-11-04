@@ -114,7 +114,8 @@ class ReactWebsiteGenerator:
     def generate_website_structure(
         self, 
         prompt: str, 
-        enable_build_validation: Optional[bool] = None
+        enable_build_validation: Optional[bool] = None,
+        enable_animations: Optional[bool] = None
     ) -> Dict[str, Any]:
         """
         Main entry point: Generate complete React website from prompt with validation
@@ -122,6 +123,7 @@ class ReactWebsiteGenerator:
         Args:
             prompt: User's website description
             enable_build_validation: Whether to run actual build tests (None = use config default)
+            enable_animations: Whether to include animations (None = use config default)
         
         Returns a dictionary containing:
         - website_structure: Complete website structure
@@ -135,9 +137,11 @@ class ReactWebsiteGenerator:
         """
         start_time = time.time()
         
-        # Use config default if not specified
+        # Use config defaults if not specified
         if enable_build_validation is None:
             enable_build_validation = settings.enable_build_validation
+        if enable_animations is None:
+            enable_animations = settings.enable_animations_default
         
         logger.info("[REACT GEN] Starting React website generation with validation...")
         
@@ -157,8 +161,9 @@ class ReactWebsiteGenerator:
         self._fix_home_page_path(website_structure)
         
         # Validate navigation matches pages
-        logger.info("[REACT GEN] Validating structure consistency...")
-        self._validate_structure_consistency(website_structure)
+        if website_structure.page_count > 1: # might need to remove if it doesnt skip for single page websites
+            logger.info("[REACT GEN] Validating structure consistency...")
+            self._validate_structure_consistency(website_structure)
         
         # Debug: Write schema and structure to files
         # with open('/tmp/website_structure_schema.json', 'w') as f:
@@ -171,8 +176,9 @@ class ReactWebsiteGenerator:
         
         # Step 3: Generate file contents
         logger.info("[REACT GEN] Generating React files...")
+        logger.info(f"[REACT GEN] Animations enabled: {enable_animations}")
 
-        files = self._generate_all_files(website_structure, business_analysis)
+        files = self._generate_all_files(website_structure, business_analysis, enable_animations)
         
         # Step 4: Validation and error fixing loop
         logger.info("[REACT GEN] Starting validation and error fixing...")
@@ -297,6 +303,7 @@ class ReactWebsiteGenerator:
         missing_nav = page_paths - nav_paths - utility_paths
         
         # Report errors
+        
         if missing_pages:
             logger.error(f"[STRUCTURE VALIDATION] ❌ Navigation items without pages: {missing_pages}")
             logger.error("[STRUCTURE VALIDATION] These navigation items link to pages that don't exist!")
@@ -325,8 +332,14 @@ class ReactWebsiteGenerator:
         logger.info(f"[STRUCTURE VALIDATION] Pages: {', '.join(page_list)}")
         logger.info(f"[STRUCTURE VALIDATION] Navigation: {', '.join(nav_list)}")
     
-    def _generate_all_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis) -> Dict[str, str]:
-        """Generate all React project files"""
+    def _generate_all_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, enable_animations: bool = False) -> Dict[str, str]:
+        """Generate all React project files
+        
+        Args:
+            structure: Website structure
+            analysis: Business analysis
+            enable_animations: Whether to include animation files
+        """
         
         files = {}
         
@@ -337,13 +350,18 @@ class ReactWebsiteGenerator:
         files.update(react_file_manager.generate_ui_components())
         
         # App setup files (App.tsx, main.tsx)
-        files.update(react_file_manager.generate_app_files(structure))
+        files.update(react_file_manager.generate_app_files(structure, enable_animations))
         
         # Style files (index.css)
         files.update(react_file_manager.generate_style_files(structure))
         
+        # Animation files (if enabled)
+        if enable_animations:
+            logger.info("[REACT GEN] Including animation utilities...")
+            files.update(react_file_manager.generate_animation_files())
+        
         # Page components (will auto-generate any missing section/UI components)
-        files.update(self._generate_page_files(structure, analysis, files))
+        files.update(self._generate_page_files(structure, analysis, files, enable_animations))
         
         # Post-generation validation
         logger.info("[REACT GEN] Running post-generation validation...")
@@ -504,20 +522,27 @@ class ReactWebsiteGenerator:
         
         return current_files, validation_result, retry_count, fixed_errors
     
-    def _generate_page_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str]) -> Dict[str, str]:
-        """Generate page component files"""
+    def _generate_page_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str], enable_animations: bool = False) -> Dict[str, str]:
+        """Generate page component files
+        
+        Args:
+            structure: Website structure
+            analysis: Business analysis
+            files: Existing files dictionary
+            enable_animations: Whether animations are enabled
+        """
         
         # files = {}
         
         for page in structure.pages:
             print(f"Generating page: {page.name}")
-            page_content = self._generate_page_component(page, structure, analysis, files)
+            page_content = self._generate_page_component(page, structure, analysis, files, enable_animations)
             page_filename = page.name.lower().replace(" ", "-")
             files[f"src/pages/{page_filename}.tsx"] = page_content
         
         return files
     
-    def _generate_page_component(self, page: PageStructure, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str]) -> str:
+    def _generate_page_component(self, page: PageStructure, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str], enable_animations: bool = False) -> str:
         """
         Generate individual page component using LLM.
         Automatically generates any missing section or UI components needed.
@@ -539,7 +564,7 @@ class ReactWebsiteGenerator:
         logger.info(f"[PAGE GEN] Available section components: {available_section_components}")
         
         # Create system prompt
-        system_prompt = self._create_page_generation_system_prompt1()
+        system_prompt = self._create_page_generation_system_prompt1(enable_animations, analysis)
         
         # Create user prompt with context
         user_prompt = self._create_page_generation_user_prompt1(
@@ -1229,11 +1254,22 @@ Common errors that will cause IMMEDIATE BUILD FAILURE:
 If you generate code with these errors, the entire build will fail. Triple-check before outputting."""
 
 
-    def _create_page_generation_system_prompt1(self) -> str:
-        """Create concise system prompt for page generation - captures all critical validation rules"""
+    def _create_page_generation_system_prompt1(self, enable_animations: bool = False, analysis: BusinessAnalysis = None) -> str:
+        """Create concise system prompt for page generation - captures all critical validation rules
+        
+        Args:
+            enable_animations: Whether to include animation instructions
+            analysis: Business analysis for animation style selection
+        """
         
         # Get formatted list of safe icons
         safe_icons_list = get_safe_icons()
+        
+        # Get animation instructions if enabled
+        animation_instructions = ""
+        if enable_animations and analysis:
+            from app.services.animation_config import get_component_animation_instructions
+            animation_instructions = get_component_animation_instructions(analysis.business_type)
         
         return f"""Expert React 19 + TypeScript + Vite developer. Generate production-ready page + missing components.
 
@@ -1308,6 +1344,8 @@ Common errors causing build failure:
 • Destructuring experienceIcon but never using it
 • Missing required description prop on Cta component
 • Dont escape quotes in the generated code
+
+{animation_instructions}
 
 Verify EVERY item in checklist before generating."""
 
@@ -1500,21 +1538,48 @@ TASK
 3. <Header /> and <Footer /> usage: no props; define values internally using nav above
 4. Reuse existing UI components as-is
 
+🔗 NAVIGATION & SMOOTH SCROLLING (For Single-Page Websites):
+When creating a Header component with navigation links to page sections:
+- Import smooth scroll utility: `import {{ handleSmoothScroll }} from '@/utils/smoothScroll';`
+- For navigation links, use onClick handler:
+   ```tsx
+   <a 
+     href="#features" 
+     onClick={{(e) => handleSmoothScroll(e, '#features')}}
+     className="..."
+   >
+     Features
+   </a>
+   ```
+- For mobile menu, pass callback to close menu:
+   ```tsx
+   <a 
+     href="#features"
+     onClick={{(e) => handleSmoothScroll(e, '#features', () => setIsMenuOpen(false))}}
+     className="..."
+   >
+     Features
+   </a>
+   ```
+- Ensure ALL section components have `id` attribute matching their lowercase name
+- Example: Features component should have `<section id="features" ...>`
+
 🚨 CRITICAL: VISUAL EDITING TRACKING - MANDATORY 🚨
 5. EVERY section component's ROOT element MUST have these exact attributes:
    - data-component="ComponentName" (exact component name, e.g., "Hero", "Features", "Footer")
    - data-file="src/components/ComponentName.tsx" (exact file path)
+   - id="componentname" (lowercase component name for navigation, e.g., "hero", "features", "contact")
 6. EXAMPLE - Hero.tsx component:
    ✅ CORRECT:
    export function Hero() {{
      return (
-       <section data-component="Hero" data-file="src/components/Hero.tsx" className="...">
+       <section id="hero" data-component="Hero" data-file="src/components/Hero.tsx" className="...">
          <h1 data-element="hero-title">Title</h1>
          <button data-element="hero-cta">Get Started</button>
        </section>
      )
    }}
-   ❌ WRONG (missing data attributes):
+   ❌ WRONG (missing data attributes and id):
    export function Hero() {{
      return (
        <section className="...">
@@ -1524,7 +1589,8 @@ TASK
    }}
 7. These attributes MUST be on the FIRST/ROOT element in the return statement
 8. Without these attributes, visual editing will NOT work
-9. This is absolutely required for ALL section components (Header, Hero, Footer, etc.)
+9. The `id` attribute enables smooth navigation from the header to sections
+10. This is absolutely required for ALL section components (Header, Hero, Footer, etc.)
 
 
 

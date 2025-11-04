@@ -15,7 +15,12 @@ class ReactFileManager:
     """Handles generation of all React project files"""
     
     def generate_config_files(self, structure: WebsiteStructure) -> Dict[str, str]:
-        """Generate configuration files (package.json, tsconfig, etc.)"""
+        """Generate configuration files (package.json, tsconfig, etc.)
+        
+        Args:
+            structure: Website structure
+            enable_animations: Whether to include framer-motion dependency
+        """
         
         files = {}
         
@@ -28,6 +33,7 @@ class ReactFileManager:
             "scripts": {
                 "dev": "vite",
                 "build": "vite build",
+                "build:dev": "vite build --mode development",
                 "lint": "eslint .",
                 "preview": "vite preview"
             },
@@ -41,6 +47,7 @@ class ReactFileManager:
                 "class-variance-authority": "^0.7.0",
                 "clsx": "^2.0.0",
                 "tailwind-merge": "^2.0.0",
+                "framer-motion": "^11.0.0",
                 "@radix-ui/react-slot": "^1.0.2",
                 "@radix-ui/react-label": "^2.0.2",
                 "@radix-ui/react-select": "^2.0.0",
@@ -378,7 +385,7 @@ MIT
         
         return files
     
-    def generate_app_files(self, structure: WebsiteStructure) -> Dict[str, str]:
+    def generate_app_files(self, structure: WebsiteStructure, enable_animations: bool = False) -> Dict[str, str]:
         """Generate App.tsx, main.tsx, and routing"""
         
         files = {}
@@ -394,16 +401,42 @@ MIT
             routes.append(f'          <Route path="{page.path}" element={{<{page_name} />}} />')
         
         # App.tsx
-        files["src/App.tsx"] = f'''import {{ BrowserRouter, Routes, Route }} from 'react-router-dom'
+        if enable_animations:
+          files["src/App.tsx"] = f'''import {{ useEffect }} from 'react'
+import {{ BrowserRouter, Routes, Route }} from 'react-router-dom'
+import {{ initializeSmoothScroll }} from '@/utils/smoothScroll'
 {chr(10).join(page_imports)}
 
-const App = () => (
-  <BrowserRouter>
-    <Routes>
+const App = () => {{
+  useEffect(() => {{
+    // Initialize smooth scrolling for hash navigation
+    initializeSmoothScroll()
+  }}, [])
+
+  return (
+    <BrowserRouter>
+      <Routes>
 {chr(10).join(routes)}
-    </Routes>
-  </BrowserRouter>
-)
+      </Routes>
+    </BrowserRouter>
+  )
+}}
+
+export default App
+'''
+        else:
+          files["src/App.tsx"] = f'''import {{ BrowserRouter, Routes, Route }} from 'react-router-dom'
+{chr(10).join(page_imports)}
+
+const App = () => {{
+  return (
+    <BrowserRouter>
+      <Routes>
+{chr(10).join(routes)}
+      </Routes>
+    </BrowserRouter>
+  )
+}}
 
 export default App
 '''
@@ -506,6 +539,39 @@ createRoot(document.getElementById('root')!).render(
 }}
 '''
         
+        return files
+    
+    def generate_animation_files(self) -> Dict[str, str]:
+        """Generate animation utility files (animations.ts and useScrollAnimation.ts)"""
+        
+        files = {}
+        
+        # Read animation template files
+        template_dir = Path(__file__).parent.parent.parent / "templates" / "src"
+        
+        # animations.ts
+        animations_path = template_dir / "utils" / "animations.ts"
+        if animations_path.exists():
+          try:
+              with open(animations_path, 'r', encoding='utf-8') as f:
+                  files["src/utils/animations.ts"] = f.read()
+          except Exception as e:
+              print(f"Warning: Could not read animations.ts: {e}")
+
+        # Read the smooth scroll utility file
+        smooth_scroll_path = template_dir / "utils" / "smoothScroll.ts"
+        if smooth_scroll_path.exists():
+            try:
+                with open(smooth_scroll_path, 'r', encoding='utf-8') as f:
+                    files["src/utils/smoothScroll.ts"] = f.read()
+            except Exception as e:
+                print(f"Warning: Could not read smoothScroll.ts: {e}")
+        
+        # useScrollAnimation.ts
+        scroll_hook_path = template_dir / "hooks" / "useScrollAnimation.ts"
+        if scroll_hook_path.exists():
+            with open(scroll_hook_path, 'r', encoding='utf-8') as f:
+                files["src/hooks/useScrollAnimation.ts"] = f.read()
         return files
 
 

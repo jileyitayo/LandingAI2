@@ -127,6 +127,7 @@ Generates modern React/TypeScript/Tailwind websites from user prompts.
 - Generates multi-page website structure
 - Creates React components with TypeScript
 - Uses shadcn/ui components for UI primitives
+- **Smooth Section Navigation**: Automatically adds `id` attributes to sections and implements smooth scrolling for single-page websites
 - Outputs: Complete Vite + React project
 
 #### 📦 React File Manager (`react_file_manager.py`)
@@ -247,7 +248,44 @@ For detailed API documentation and usage examples, see [Services README](./backe
 - ✅ One-click publishing
 - ✅ Subscription management (Stripe)
 - ✅ WhatsApp integration
+- ✅ Smooth section navigation for single-page websites
 
+## 🔗 Navigation Features
+
+### Smooth Scroll Navigation
+Generated single-page websites automatically include smooth scrolling navigation:
+
+**What's Included:**
+- **Automatic Section IDs**: All section components get `id` attributes (e.g., `id="hero"`, `id="features"`)
+- **Smooth Scroll Utility** (`utils/smoothScroll.ts`): Handles smooth navigation with offset for fixed headers
+- **Header Integration**: Navigation links automatically scroll smoothly to sections
+- **Mobile-Friendly**: Closes mobile menu after navigation
+- **Browser History**: Updates URL hash without page reload
+- **Deep Linking**: Direct links to sections work on page load
+
+**How It Works:**
+1. Each section component gets a lowercase `id` attribute matching its name
+2. Header navigation links use the `handleSmoothScroll` utility
+3. Clicking a nav link smoothly scrolls to the target section
+4. URL updates to reflect the current section (e.g., `/#features`)
+
+**Example Generated Code:**
+```tsx
+// Section component
+<section id="features" data-component="Features" className="...">
+  {/* Section content */}
+</section>
+
+// Header navigation
+import { handleSmoothScroll } from '@/utils/smoothScroll';
+
+<a 
+  href="#features" 
+  onClick={(e) => handleSmoothScroll(e, '#features')}
+>
+  Features
+</a>
+```
 
 See [prd.md](./prd.md) for complete development roadmap.
 

@@ -22,6 +22,7 @@ from app.services.react_website_generator import react_website_generator
 from app.services.project_file_manager import project_file_manager
 from app.services.vite_preview_service import vite_preview_service
 from app.services.component_editor_service import component_editor_service
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["generation"])
@@ -653,8 +654,32 @@ async def process_react_generation( project_id: str,prompt: str, user_id: str):
     try:
         logger.info(f"[BG] Starting React generation for project {project_id}")
         
+        # Step 0: Determine if animations should be enabled based on user tier
+        enable_animations = settings.enable_animations_default  # Start with config default
+        
+        try:
+            # Fetch user subscription tier
+            user_response = supabase.table("users").select(
+                "user_subscriptions(subscription_tiers(tier_name))"
+            ).eq("id", user_id).single().execute()
+            
+            if user_response.data and user_response.data.get("user_subscriptions"):
+                tier_data = user_response.data["user_subscriptions"].get("subscription_tiers", {})
+                tier_name = tier_data.get("tier_name", "free")
+                
+                # Pro and enterprise users always get  nimations
+                if tier_name in ["pro", "enterprise"]:
+                    enable_animations = True
+                    logger.info(f"[BG] Animations enabled for {tier_name} tier user")
+                else:
+                    logger.info(f"[BG] Animations {'enabled' if enable_animations else 'disabled'} based on config (tier: {tier_name})")
+            else:
+                logger.warning(f"[BG] No subscription found for user {user_id}, using config default: {enable_animations}")
+        except Exception as e:
+            logger.warning(f"[BG] Failed to fetch user tier: {str(e)}, using config default: {enable_animations}")
+        
         # Step 1: Generate React website (SYNC function)
-        result = react_website_generator.generate_website_structure(prompt)
+        result = react_website_generator.generate_website_structure(prompt, enable_animations=enable_animations)
         
         website_structure = result["website_structure"]
         business_analysis = result["business_analysis"]
