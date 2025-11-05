@@ -62,6 +62,10 @@ export interface SelectedElement {
   hasChildren: boolean;
   childCount: number;
   outerHTML: string;
+  // Visual editor properties (top-level for convenience)
+  elementSelector?: string; // data-element attribute value
+  componentFile?: string; // data-file attribute value or derived from component
+  elementType?: string; // data-element-type attribute value
   component?: {
     tagName: string;
     selector: string;

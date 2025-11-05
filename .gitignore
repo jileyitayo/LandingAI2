@@ -52,4 +52,14 @@ coverage/
 
 # Others
 setup.sh
-backend/previews/
+backend/previews/builds/
+backend/previews/shared_template/node_modules/
+backend/previews/shared_template/package-lock.json
+backend/previews/shared_template/package.json
+backend/previews/shared_template/tsconfig.json
+backend/previews/shared_template/tsconfig.node.json
+backend/previews/shared_template/tsconfig.app.json
+backend/previews/shared_template/tailwind.config.js
+backend/previews/shared_template/postcss.config.js
+backend/previews/shared_template/index.html
+backend/previews/shared_template/vite.config.ts

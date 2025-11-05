@@ -658,7 +658,7 @@ export const api = {
       }>(`/api/v1/react_website/${projectId}`),
 
     /**
-     * Edit React component using visual selection
+     * Edit React component using visual selection (natural language - legacy)
      */
     editComponent: (projectId: string, data: {
       selected_element: Record<string, any>;
@@ -674,6 +674,37 @@ export const api = {
         edit_description?: string;
         chat_message_id?: string;
       }>(`/api/v1/edit/project/${projectId}`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    /**
+     * Edit React component properties directly (click-to-edit system)
+     */
+    editProperties: (projectId: string, data: {
+      element_selector: string;
+      component_file: string;
+      properties: Array<{
+        property: string;
+        value: string | number | boolean;
+        oldValue?: string | number | boolean;
+        unit?: string;
+      }>;
+      batch?: boolean;
+    }) =>
+      apiRequest<{
+        success: boolean;
+        message: string;
+        updated_file: string;
+        changes_applied: Array<{
+          property: string;
+          value: string | number | boolean;
+          oldValue?: string | number | boolean;
+        }>;
+        preview_url?: string;
+        new_code?: string;
+        old_code?: string;
+      }>(`/api/v1/edit/project/${projectId}/properties`, {
         method: "POST",
         body: JSON.stringify(data),
       }),

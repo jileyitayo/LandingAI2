@@ -1254,7 +1254,9 @@ Your generated code must:
 - Use ONLY defined TypeScript types (no LucideIcon or other undefined types)
 - All lucide-react icon imports must be rendered in JSX
 - 🚨 CRITICAL: ALL section components have data-component and data-file on root element
-- 🚨 CRITICAL: Major interactive elements have data-element attributes
+- 🚨 CRITICAL: ALL editable elements MUST have data-element and data-element-type attributes
+- 🚨 CRITICAL: Text content elements need data-editable-text="true"
+- 🚨 CRITICAL: Images need data-editable-src="true"
 
 
 When in doubt:
@@ -1337,7 +1339,7 @@ RECOMMENDED DIMENSIONS BY USE CASE:
 - Logos: 400/400
 
 EXAMPLES:
-✅ Hero image: https://picsum.photos/1920/1080
+✅ Hero image: https://picsum.photos/2560/1440
 ✅ About image: https://picsum.photos/1200/800
 ✅ Grayscale hero: https://picsum.photos/1600/900?grayscale
 ✅ Specific ID: https://picsum.photos/id/42/1200/800
@@ -1413,6 +1415,95 @@ Common errors causing build failure:
 
 {animation_instructions}
 
+🎨 VISUAL EDITING REQUIREMENTS (REQUIRED FOR ALL COMPONENTS):
+
+All generated components MUST include data attributes for visual editing:
+
+1. SECTION COMPONENTS (Root element of every section):
+   data-component="ComponentName"
+   data-file="src/components/ComponentName.tsx"
+
+2. EDITABLE ELEMENTS (All user-facing content):
+   Required attributes for ALL elements users might want to edit:
+   
+   a) Text Elements (headings, paragraphs, labels, spans):
+      data-element="descriptive-name" 
+      data-element-type="heading|paragraph|label|span"
+      data-editable-text="true"
+      
+   b) Images:
+      data-element="image-name"
+      data-element-type="image"
+      data-editable-src="true"
+      
+   c) Links:
+      data-element="link-name"
+      data-element-type="link"
+      
+   d) Buttons:
+      data-element="button-name"
+      data-element-type="button"
+      
+   e) Containers (divs, sections that affect layout):
+      data-element="container-name"
+      data-element-type="container"
+
+EXAMPLES:
+
+✅ Hero Title:
+<h1 
+  className="text-4xl font-bold" 
+  data-element="hero-title" 
+  data-element-type="heading"
+  data-editable-text="true"
+>
+  Welcome to Our Platform
+</h1>
+
+✅ Feature Description:
+<p 
+  className="text-gray-600" 
+  data-element="feature-description" 
+  data-element-type="paragraph"
+  data-editable-text="true"
+>
+  Build amazing websites in minutes
+</p>
+
+✅ Hero Image:
+<img 
+  src="https://picsum.photos/2560/1440"
+  alt="Hero background"
+  data-element="hero-image"
+  data-element-type="image"
+  data-editable-src="true"
+/>
+
+✅ CTA Button:
+<button 
+  className="bg-blue-600 text-white px-6 py-3 rounded-lg"
+  data-element="primary-cta"
+  data-element-type="button"
+>
+  Get Started
+</button>
+
+✅ Feature Card Container:
+<div 
+  className="bg-white p-6 rounded-lg shadow-md"
+  data-element="feature-card"
+  data-element-type="container"
+>
+  {{/* card content */}}
+</div>
+
+NAMING CONVENTIONS for data-element:
+- Use kebab-case (e.g., "hero-title", "about-description")
+- Be descriptive and specific (e.g., "pricing-tier-1-price" not just "price")
+- Include context when needed (e.g., "testimonial-1-author" not just "author")
+
+⚠️ CRITICAL: Missing data attributes will break the visual editor. Add them to ALL user-facing elements.
+
 Verify EVERY item in checklist before generating."""
 
     def _create_page_generation_system_prompt2(self) -> str:
@@ -1465,6 +1556,18 @@ Quality:
 - Maintainable and well-typed code.
 
 If any required section or UI component does not exist, define it in "new_components" (with path and code). Do not duplicate components that already exist.
+
+🎨 VISUAL EDITING REQUIREMENTS:
+All components MUST include data attributes for visual editing:
+- Section roots: data-component="Name" data-file="path"
+- Text elements: data-element="name" data-element-type="heading|paragraph|label|span" data-editable-text="true"
+- Images: data-element="name" data-element-type="image" data-editable-src="true"
+- Buttons: data-element="name" data-element-type="button"
+- Links: data-element="name" data-element-type="link"
+- Containers: data-element="name" data-element-type="container"
+
+Use kebab-case for data-element names (e.g., "hero-title", "feature-description").
+Missing data attributes will break the visual editor!
 
 OUTPUT JSON FORMAT:
 - page_content: Complete, default-exported page component code

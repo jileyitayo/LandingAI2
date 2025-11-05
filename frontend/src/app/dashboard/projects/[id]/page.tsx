@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Save, Download, Eye, Code, FileText, Settings } from 'lucide-react';
 import WebsitePreview from '@/components/WebsitePreview';
 import PublishButton from '@/components/PublishButton';
@@ -10,12 +10,13 @@ import DeploymentHistory from '@/components/DeploymentHistory';
 import FileTree from '@/components/FileTree';
 import CodeViewer from '@/components/CodeViewer';
 import ReactPreview from '@/components/ReactPreview';
-import ChatWindow from '@/components/ChatWindow';
+import EditSidebar from '@/components/EditSidebar';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { Project } from '@/types/project.types';
 import { api, ApiError } from '@/lib/api';
 import { SelectedElement } from '@/types/chat.types';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { PropertyType, PageInfo } from '@/types/property-edit.types';
 import Link from 'next/link';
 import { toast } from 'sonner';
 
@@ -35,13 +36,18 @@ export default function ProjectEditorPage() {
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
 
-  // Chat and selector state
+  // Element selection and editing state
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
   const [selectorEnabled, setSelectorEnabled] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
 
-  // Keyboard shortcuts for React editor
-  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  // Page info for sidebar
+  const [pageInfo, setPageInfo] = useState<PageInfo>({
+    title: '',
+    description: '',
+    componentCount: 0,
+    elementCount: 0,
+  });
 
   useKeyboardShortcuts({
     onToggleSelector: () => {
@@ -52,9 +58,6 @@ export default function ProjectEditorPage() {
     onClearSelection: () => {
       setSelectedElement(null);
       setSelectorEnabled(false);
-    },
-    onFocusChat: () => {
-      chatInputRef.current?.focus();
     },
   });
 
@@ -158,10 +161,21 @@ export default function ProjectEditorPage() {
       // Auto-select first file
       const firstFile = Object.keys(data.files)[0];
       setSelectedFile(firstFile);
+      
+      // Compute page info
+      const componentFiles = Object.keys(data.files).filter(f => f.startsWith('src/components/') && !f.includes('/ui/'));
+      const pageFiles = Object.keys(data.files).filter(f => f.startsWith('src/pages/'));
+      
+      setPageInfo({
+        title: project?.name || 'React Project',
+        description: project?.description || 'Edit your React components',
+        componentCount: componentFiles.length,
+        elementCount: componentFiles.length + pageFiles.length, // Simplified count
+      });
     } catch (error) {
       console.error('Failed to load React files:', error);
     }
-  }, [projectId]);
+  }, [projectId, project]);
 
   // Build preview
   const buildPreview = useCallback(async () => {
@@ -192,65 +206,129 @@ export default function ProjectEditorPage() {
     }
   }, [reactActiveTab, previewUrl, isBuilding, buildPreview]);
 
-  // Handle edit submission from chat window
-  const handleEditSubmit = useCallback(async (prompt: string) => {
+  // Ref to track pending backend saves
+  const pendingSaveRef = useRef<NodeJS.Timeout | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  // Apply optimistic update to preview iframe (instant feedback)
+  const applyOptimisticUpdate = useCallback((selector: string, property: PropertyType, value: string | number | boolean) => {
+    // Find the iframe (it's in the ReactPreview component)
+    const iframe = document.querySelector('iframe[title="React Preview"]') as HTMLIFrameElement;
+    
+    if (!iframe || !iframe.contentWindow) {
+      console.warn('Preview iframe not found for optimistic update');
+      return false;
+    }
+    
+    // Send update message to iframe
+    iframe.contentWindow.postMessage({
+      type: 'UPDATE_PROPERTY',
+      selector: selector,
+      property: property,
+      value: value
+    }, '*');
+    
+    console.log('Sent optimistic update to iframe:', { selector, property, value });
+    return true;
+  }, []);
+
+  // Debounced backend save (500ms after last change)
+  const debouncedBackendSave = useCallback(async (
+    property: PropertyType,
+    value: string | number | boolean,
+    element: SelectedElement
+  ) => {
+    // Clear any pending save
+    if (pendingSaveRef.current) {
+      clearTimeout(pendingSaveRef.current);
+    }
+
+    // Schedule new save
+    pendingSaveRef.current = setTimeout(async () => {
+      console.log('Saving to backend (debounced):', { property, value });
+      setIsAutoSaving(true);
+
+      try {
+        const response = await api.generation.editProperties(projectId, {
+          element_selector: element.elementSelector || '',
+          component_file: element.componentFile || '',
+          properties: [{
+            property,
+            value,
+            oldValue: undefined,
+          }],
+          batch: false,
+        });
+
+        if (response.success) {
+          console.log('Backend save successful');
+          
+          // Update the code view with the new code from backend
+          // Backend returns the updated code, so we can update it directly
+          if (response.new_code && element.componentFile) {
+            setReactFiles(prev => ({
+              ...prev,
+              [element.componentFile!]: response.new_code!
+            }));
+            console.log('Code view updated instantly');
+          }
+          
+          // DON'T reload the preview! The optimistic update already applied the changes.
+          // Reloading would cause a flicker and defeat the purpose of optimistic updates.
+          // The backend has saved the changes, they'll persist on next full reload.
+          
+          // No toast notification - the sidebar status indicator is enough!
+        } else {
+          throw new Error(response.message || 'Save failed');
+        }
+      } catch (error: any) {
+        console.error('Backend save failed:', error);
+        // Only show toast for errors - more subtle than showing on every save
+        toast.error("Could not save", {
+          description: "Changes may not persist",
+          duration: 2000,
+        });
+        // Note: Optimistic update is already applied, so preview still looks correct
+        // We just warn the user that it didn't save
+      } finally {
+        setIsAutoSaving(false);
+      }
+    }, 500); // Wait 500ms after last change
+  }, [projectId, loadReactFiles]);
+
+  // Handle property changes with optimistic updates
+  const handlePropertyChange = useCallback((property: PropertyType, value: string | number | boolean) => {
     if (!selectedElement) {
-      throw new Error('No element selected');
+      console.warn('No element selected');
+      return;
     }
 
-    setIsProcessing(true);
-    try {
-      const result = await api.generation.editComponent(projectId, {
-        selected_element: selectedElement,
-        instruction: prompt,
+    // Validate that we have the necessary data
+    if (!selectedElement.componentFile || !selectedElement.elementSelector) {
+      console.error('Missing component file or element selector', selectedElement);
+      toast.error("Update Failed", {
+        description: "Cannot update: missing component information",
+        duration: 3000,
       });
-
-      if (result.success) {
-        // Rebuild preview to show changes
-        await buildPreview();
-
-        // Clear selection after successful edit
-        setSelectedElement(null);
-        setSelectorEnabled(false);
-
-        // Show success toast
-        toast.success("Component Updated", {
-          description: result.edit_description || "Your changes have been applied successfully.",
-          duration: 4000,
-        });
-      } else {
-        throw new Error(result.message || 'Failed to apply changes');
-      }
-    } catch (error: any) {
-      console.error('Edit failed:', error);
-
-      // Handle rate limit errors specifically
-      if (error instanceof ApiError && error.status === 429) {
-        const limitType = error.detail?.['X-RateLimit-Type'] || 'unknown';
-        const tier = error.detail?.['X-RateLimit-Tier'] || 'free';
-        const retryAfter = error.detail?.['Retry-After'] || 'soon';
-
-        const message = limitType === 'per_minute'
-          ? `Rate limit exceeded: Too many requests per minute. Please wait ${retryAfter} seconds before trying again.`
-          : `Daily edit limit reached. Your ${tier} tier limit has been exceeded. Please upgrade your plan or try again tomorrow.`;
-
-        toast.error("Rate Limit Exceeded", {
-          description: message,
-          duration: 6000,
-        });
-      } else {
-        // Show generic error toast
-        toast.error("Edit Failed", {
-          description: error instanceof ApiError ? error.message : "Failed to apply changes. Please try again.",
-          duration: 5000,
-        });
-      }
-
-      throw error;
-    } finally {
-      setIsProcessing(false);
+      return;
     }
-  }, [selectedElement, projectId, buildPreview]);
+
+    console.log('Property change:', { property, value });
+    
+    // Step 1: Apply optimistic update to preview IMMEDIATELY (< 50ms)
+    const optimisticSuccess = applyOptimisticUpdate(
+      selectedElement.elementSelector,
+      property,
+      value
+    );
+    
+    // No toast for optimistic update - the visual change in preview is feedback enough!
+    // Toast notifications would be distracting when typing rapidly
+    
+    // Step 2: Save to backend (debounced - waits 500ms after last change)
+    debouncedBackendSave(property, value, selectedElement);
+    
+  }, [selectedElement, applyOptimisticUpdate, debouncedBackendSave]);
 
   if (isLoading) {
     return (
@@ -335,17 +413,14 @@ export default function ProjectEditorPage() {
 
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left Panel - Chat Window (1/4) */}
+          {/* Left Panel - Edit Sidebar (1/4) */}
           <div className="w-1/4 flex flex-col bg-gray-900 border-r border-gray-700">
-            <ChatWindow
-              projectId={projectId}
+            <EditSidebar
               selectedElement={selectedElement}
-              onSelectedElementChange={setSelectedElement}
-              onSelectorModeChange={setSelectorEnabled}
-              selectorEnabled={selectorEnabled}
-              onEditSubmit={handleEditSubmit}
-              isProcessing={isProcessing}
-              inputRef={chatInputRef}
+              pageInfo={pageInfo}
+              onClearSelection={() => setSelectedElement(null)}
+              onPropertyChange={handlePropertyChange}
+              isAutoSaving={isAutoSaving}
             />
           </div>
 

@@ -132,6 +132,90 @@ class CodeValidator:
             logger.warning(f"[VALIDATION] ⚠ Could not inject data attributes into {file_path} - pattern not found")
             return content, False
     
+    def _validate_data_attributes(self, file_path: str, content: str):
+        """
+        Validate that components have proper data attributes for visual editing.
+        Checks for:
+        1. Section components: data-component and data-file on root element
+        2. Editable elements: data-element and data-element-type attributes
+        """
+        # Skip non-component files
+        if not file_path.startswith('src/components/'):
+            return
+        
+        # Skip UI components (they're less likely to be directly edited)
+        if '/ui/' in file_path:
+            return
+        
+        # Check for root-level data attributes (data-component, data-file)
+        has_data_component = 'data-component=' in content
+        has_data_file = 'data-file=' in content
+        
+        if not (has_data_component and has_data_file):
+            self.warnings.append(CodeValidationError(
+                file_path,
+                "missing_section_data_attributes",
+                "Section component missing data-component or data-file attributes on root element",
+                "warning"
+            ))
+        
+        # Check for editable element attributes
+        # Count elements that should have data-element attributes
+        editable_elements = 0
+        elements_with_attributes = 0
+        
+        # Patterns for editable elements (headings, paragraphs, images, buttons)
+        # We look for JSX tags that typically contain user-facing content
+        jsx_element_pattern = r'<(h[1-6]|p|span|img|button|a|div)\s+([^>]*?)>'
+        
+        for match in re.finditer(jsx_element_pattern, content):
+            tag_name = match.group(1)
+            attributes = match.group(2)
+            
+            # Skip if it's a component (starts with uppercase)
+            if tag_name[0].isupper():
+                continue
+            
+            editable_elements += 1
+            
+            # Check if this element has data-element and data-element-type
+            has_data_element = 'data-element=' in attributes
+            has_data_element_type = 'data-element-type=' in attributes
+            
+            if has_data_element and has_data_element_type:
+                elements_with_attributes += 1
+        
+        # If we have editable elements but none have proper attributes, warn
+        if editable_elements > 0:
+            coverage = elements_with_attributes / editable_elements
+            
+            if coverage == 0:
+                self.warnings.append(CodeValidationError(
+                    file_path,
+                    "missing_element_data_attributes",
+                    f"Component has {editable_elements} editable elements but none have data-element attributes for visual editing",
+                    "warning"
+                ))
+            elif coverage < 0.5:
+                self.warnings.append(CodeValidationError(
+                    file_path,
+                    "incomplete_element_data_attributes",
+                    f"Only {elements_with_attributes}/{editable_elements} editable elements have data-element attributes",
+                    "warning"
+                ))
+            else:
+                logger.info(f"[VALIDATION] ✓ {file_path} has good data attribute coverage ({elements_with_attributes}/{editable_elements})")
+        
+        # Check for editable text attributes
+        text_elements = len(re.findall(r'data-editable-text="true"', content))
+        if text_elements > 0:
+            logger.info(f"[VALIDATION] ✓ {file_path} has {text_elements} editable text elements")
+        
+        # Check for editable image attributes
+        img_elements = len(re.findall(r'data-editable-src="true"', content))
+        if img_elements > 0:
+            logger.info(f"[VALIDATION] ✓ {file_path} has {img_elements} editable images")
+    
     def _validate_typescript_file(self, file_path: str, content: str):
         """Validate a single TypeScript/React file"""
         
@@ -143,6 +227,9 @@ class CodeValidator:
         
         # Validate basic TypeScript syntax
         self._validate_typescript_syntax(file_path, content)
+        
+        # Validate visual editing data attributes
+        self._validate_data_attributes(file_path, content)
     
     def _validate_lucide_icons(self, file_path: str, content: str):
         """Check that all lucide-react icons are valid"""

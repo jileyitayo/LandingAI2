@@ -5,7 +5,7 @@ API endpoints for AI website content generation and rendering.
 
 from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
 from pydantic import BaseModel, Field, validator
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Union
 from datetime import datetime, timedelta
 import uuid
 import json
@@ -22,6 +22,8 @@ from app.services.react_website_generator import react_website_generator
 from app.services.project_file_manager import project_file_manager
 from app.services.vite_preview_service import vite_preview_service
 from app.services.component_editor_service import component_editor_service
+from app.services.direct_code_editor import direct_code_editor
+from app.services.component_relationship_tracker import ComponentRelationshipTracker
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -145,6 +147,33 @@ class ComponentEditResponse(BaseModel):
     new_code: Optional[str] = None
     edit_description: Optional[str] = None
     chat_message_id: Optional[str] = None
+
+
+class PropertyChange(BaseModel):
+    """Model for a single property change"""
+    property: str = Field(..., description="Property name (e.g., 'textColor', 'fontSize')")
+    value: Union[str, int, float, bool] = Field(..., description="New property value")
+    oldValue: Optional[Union[str, int, float, bool]] = Field(None, description="Previous value (optional)")
+    unit: Optional[str] = Field(None, description="Unit for the value (e.g., 'px', 'rem', '%')")
+
+
+class PropertyEditRequest(BaseModel):
+    """Request model for property editing"""
+    element_selector: str = Field(..., description="CSS selector for the element")
+    component_file: str = Field(..., description="Path to the component file to edit")
+    properties: List[PropertyChange] = Field(..., min_items=1, description="List of property changes")
+    batch: bool = Field(False, description="Whether to apply all changes at once")
+
+
+class PropertyEditResponse(BaseModel):
+    """Response model for property editing"""
+    success: bool
+    message: str
+    updated_file: str
+    changes_applied: List[PropertyChange]
+    preview_url: Optional[str] = None
+    new_code: Optional[str] = None
+    old_code: Optional[str] = None
 
 
 class ChatMessageRequest(BaseModel):
@@ -1371,6 +1400,13 @@ async def create_project_preview(
         # Create preview
         result = vite_preview_service.create_preview(project_id, files)
         
+        # Store preview ID in project for future updates
+        preview_id = result.get("preview_id")
+        if preview_id:
+            supabase.table("projects").update({
+                "preview_id": preview_id
+            }).eq("id", project_id).execute()
+        
         logger.info(f"✓ Preview created for project {project_id}: {result['preview_id']}")
         
         return result
@@ -1689,6 +1725,259 @@ async def edit_project_component(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to edit component"
+        )
+
+
+@router.post("/edit/project/{project_id}/properties", response_model=PropertyEditResponse)
+async def edit_project_properties(
+    project_id: str,
+    request: PropertyEditRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Edit React component properties directly (click-to-edit system).
+    
+    This endpoint allows direct property editing without natural language processing.
+    It modifies component files by updating Tailwind classes, inline styles, or text content.
+    
+    Note: This is a placeholder endpoint for Phase 1. Full implementation requires
+    the direct_code_editor service which will be created in the next phase.
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    
+    logger.info(f"[PROPERTY EDIT] Starting property edit for project {project_id}")
+    logger.info(f"[PROPERTY EDIT] Editing {request.component_file} with {len(request.properties)} property changes")
+    
+    try:
+        # Verify project ownership and type
+        project_response = supabase.table("projects").select("*").eq("id", project_id).single().execute()
+        
+        if not project_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        project = project_response.data
+        
+        if project.get("user_id") != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to edit this project"
+            )
+        
+        if project.get("project_type") != "react":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Property editing is only supported for React projects"
+            )
+        
+        # Load ALL project files (needed for prop-aware editing)
+        logger.info(f"[PROPERTY EDIT] Loading all project files for {project_id}")
+        project_files = await project_file_manager.get_project_files(project_id)
+
+        if not project_files:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project files not found"
+            )
+
+        # Check if the component file exists
+        if request.component_file not in project_files:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Component file '{request.component_file}' not found in project"
+            )
+
+        # Get the component file content
+        original_code = project_files[request.component_file]
+
+        logger.info(f"[PROPERTY EDIT] Applying {len(request.properties)} property changes to {request.component_file}")
+
+        # Convert PropertyChange objects to dicts for direct_code_editor
+        properties_dict = [
+            {
+                "property": p.property,
+                "value": p.value,
+                "oldValue": p.oldValue,
+                "unit": p.unit
+            }
+            for p in request.properties
+        ]
+
+        # Apply property changes using direct code editor
+        success, modified_code, error_message, prop_edit_metadata = direct_code_editor.edit_properties(
+            code=original_code,
+            element_selector=request.element_selector,
+            properties=properties_dict
+        )
+
+        # Check if this is a prop edit that needs parent component update
+        if prop_edit_metadata and prop_edit_metadata.get('type') == 'prop_edit':
+            logger.info(f"[PROPERTY EDIT] Prop edit detected - updating prop '{prop_edit_metadata['prop_name']}' at source")
+
+            # Build component relationship map
+            component_tracker = ComponentRelationshipTracker()
+            component_tracker.analyze_project_structure(project_files)
+
+            # Update prop at source (parent component)
+            prop_success, updated_files, prop_error = direct_code_editor.update_prop_at_source(
+                files=project_files,
+                component_file=request.component_file,
+                prop_name=prop_edit_metadata['prop_name'],
+                new_value=prop_edit_metadata['new_value'],
+                component_tracker=component_tracker
+            )
+
+            if prop_success and updated_files:
+                logger.info(f"[PROPERTY EDIT] Successfully updated prop at source")
+
+                # Save all updated files
+                files_updated = []
+                for file_path, file_content in updated_files.items():
+                    if file_content != project_files.get(file_path):
+                        logger.info(f"[PROPERTY EDIT] Saving updated file: {file_path}")
+                        await project_file_manager.save_project_file(
+                            project_id=project_id,
+                            file_path=file_path,
+                            file_content=file_content,
+                            overwrite=False
+                        )
+                        files_updated.append(file_path)
+
+                # Use updated files for preview
+                project_files = updated_files
+                modified_code = project_files[request.component_file]
+
+                logger.info(f"[PROPERTY EDIT] Updated {len(files_updated)} files: {files_updated}")
+            else:
+                # Fallback: Couldn't update at source, hardcode the value
+                logger.warning(f"[PROPERTY EDIT] Could not update prop at source: {prop_error}")
+                logger.warning(f"[PROPERTY EDIT] Falling back to hardcoding the value in component")
+
+                # Hardcode the value by directly replacing the JSX expression
+                # Replace {propName} with the actual value
+                prop_expr = f"{{{prop_edit_metadata['prop_name']}}}"
+                new_value = prop_edit_metadata['new_value']
+
+                # Use regex to find and replace the prop expression in the element
+                # This is a simple find-replace that should work for most cases
+                if prop_expr in original_code:
+                    # Find the element and replace the prop expression
+                    # We need to be careful to only replace within the specific element
+                    element_selector = request.element_selector
+
+                    # Use the direct editor to find the element content
+                    from app.services.direct_code_editor import DirectCodeEditor
+                    editor = DirectCodeEditor()
+                    element_data = editor._find_element_content(original_code, element_selector)
+
+                    if element_data:
+                        _, tag_end, content_end, _, _, old_content = element_data
+
+                        if prop_expr in old_content:
+                            # Replace the prop expression with the new value
+                            new_content = old_content.replace(prop_expr, new_value)
+                            modified_code = original_code[:tag_end] + new_content + original_code[content_end:]
+
+                            logger.info(f"[PROPERTY EDIT] Successfully hardcoded value in component")
+
+                            # Save the hardcoded version
+                            await project_file_manager.save_project_file(
+                                project_id=project_id,
+                                file_path=request.component_file,
+                                file_content=modified_code,
+                                overwrite=False
+                            )
+
+                            # Update project_files dict for preview
+                            project_files[request.component_file] = modified_code
+                        else:
+                            # Couldn't find prop expression in element
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Could not update prop '{prop_edit_metadata['prop_name']}' at source and fallback failed: {prop_error}"
+                            )
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Could not locate element for fallback edit: {prop_error}"
+                        )
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Could not update prop '{prop_edit_metadata['prop_name']}' at source: {prop_error}"
+                    )
+
+        elif not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to apply property changes: {error_message}"
+            )
+
+        else:
+            # Regular direct edit (not a prop)
+            # Save the updated file
+            logger.info(f"[PROPERTY EDIT] Saving updated file to project {project_id}")
+            await project_file_manager.save_project_file(
+                project_id=project_id,
+                file_path=request.component_file,
+                file_content=modified_code,
+                overwrite=False
+            )
+
+            # Update project_files dict for preview
+            project_files[request.component_file] = modified_code
+        
+        # NOTE: With optimistic updates, we skip the preview rebuild entirely!
+        # The frontend applies changes instantly via DOM manipulation.
+        # We just need to save to database for persistence.
+        logger.info(f"[PROPERTY EDIT] Skipping preview rebuild (optimistic updates enabled)")
+        preview_url = None
+        
+        # We still track the preview_id for when user manually rebuilds
+        existing_preview = project.get("preview_id")
+        if existing_preview:
+            logger.info(f"[PROPERTY EDIT] Preview {existing_preview} exists, will be updated on next manual rebuild")
+        else:
+            logger.info(f"[PROPERTY EDIT] No preview yet, will be created on first preview build")
+        
+        # Log the successful action
+        action_logger = ActionLogger(supabase)
+        await action_logger.log_action(
+            user_id=user_id,
+            action="property_edit_applied",
+            details={
+                "project_id": project_id,
+                "component_file": request.component_file,
+                "properties_changed": [p.property for p in request.properties],
+                "element_selector": request.element_selector,
+                "batch_mode": request.batch,
+                "success": True
+            }
+        )
+        
+        logger.info(f"[PROPERTY EDIT] Property edit completed successfully")
+        
+        return PropertyEditResponse(
+            success=True,
+            message=f"Successfully updated {len(request.properties)} properties",
+            updated_file=request.component_file,
+            changes_applied=request.properties,
+            preview_url=preview_url,
+            new_code=modified_code,
+            old_code=original_code
+        )
+        
+    except HTTPException as e:
+        logger.error(f"[PROPERTY EDIT] HTTPException: {e.status_code} - {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"[PROPERTY EDIT] Unexpected error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to edit properties"
         )
 
 

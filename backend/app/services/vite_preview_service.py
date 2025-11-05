@@ -424,6 +424,134 @@ export default defineConfig({{
         
         # Re-run npm install
         self._ensure_shared_template()
+    
+    def update_preview_files(self, preview_id: str, updated_files: Dict[str, str]) -> Dict[str, Any]:
+        """
+        Update specific files in an existing preview directory for HMR.
+        
+        This allows for fast updates without rebuilding the entire preview.
+        Vite's file watcher (if running) will detect the changes and hot-reload.
+        
+        Args:
+            preview_id: The preview ID
+            updated_files: Dictionary of file paths to new contents
+            
+        Returns:
+            {
+                "success": bool,
+                "files_updated": List[str],
+                "preview_url": str
+            }
+        """
+        logger.info(f"[VITE PREVIEW] Updating {len(updated_files)} files in preview {preview_id}")
+        
+        # Check if preview exists
+        if preview_id not in self.active_previews:
+            logger.error(f"[VITE PREVIEW] Preview {preview_id} not found in active previews")
+            return {
+                "success": False,
+                "error": "Preview not found or expired",
+                "files_updated": []
+            }
+        
+        preview_dir = self.builds_dir / preview_id
+        
+        if not preview_dir.exists():
+            logger.error(f"[VITE PREVIEW] Preview directory {preview_id} does not exist")
+            return {
+                "success": False,
+                "error": "Preview directory not found",
+                "files_updated": []
+            }
+        
+        files_updated = []
+        
+        try:
+            # Update the files in the preview directory
+            for file_path, content in updated_files.items():
+                # Skip config files
+                if file_path in ["package.json", "vite.config.ts"]:
+                    logger.warning(f"[VITE PREVIEW] Skipping config file update: {file_path}")
+                    continue
+                
+                # Handle App.tsx router replacement
+                if file_path == "src/App.tsx":
+                    content = content.replace("BrowserRouter", "HashRouter")
+                
+                full_path = preview_dir / file_path
+                
+                # Ensure parent directory exists
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Write the updated content
+                full_path.write_text(content, encoding='utf-8')
+                files_updated.append(file_path)
+                logger.info(f"[VITE PREVIEW] Updated file: {file_path}")
+            
+            # Trigger a rebuild for the updated files
+            # Note: For true HMR, we'd need a running dev server
+            # For now, we'll do a fast rebuild
+            logger.info(f"[VITE PREVIEW] Rebuilding preview {preview_id} after file updates...")
+            start_time = time.time()
+            
+            result = subprocess.run(
+                ["npm", "run", "build:dev"],
+                cwd=preview_dir,
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            
+            build_time = time.time() - start_time
+            
+            if result.returncode != 0:
+                logger.error(f"[VITE PREVIEW] Rebuild failed for {preview_id}: {result.stderr}")
+                return {
+                    "success": False,
+                    "error": f"Rebuild failed: {result.stderr[:200]}",
+                    "files_updated": files_updated
+                }
+            
+            # Re-inject selector script
+            dist_dir = preview_dir / "dist"
+            preview_path = dist_dir / "index.html"
+            
+            if preview_path.exists():
+                html_content = preview_path.read_text(encoding="utf-8")
+                selector_injection_path = self.shared_template_dir / "selector-injection.js"
+                
+                if selector_injection_path.exists():
+                    selector_script = "<script>\n" + selector_injection_path.read_text(encoding="utf-8") + "\n</script>"
+                    # Remove old selector script if exists
+                    html_content = html_content.replace(selector_script, '')
+                    # Add new selector script
+                    html_content = html_content.replace('</body>', f'{selector_script}</body>')
+                    preview_path.write_text(html_content, encoding="utf-8")
+                    logger.info("[VITE PREVIEW] Selector script re-injected successfully")
+            
+            logger.info(f"[VITE PREVIEW] Preview {preview_id} rebuilt successfully in {round(build_time, 1)}s")
+            
+            return {
+                "success": True,
+                "files_updated": files_updated,
+                "preview_url": f"/previews/builds/{preview_id}/dist/index.html",
+                "build_time": round(build_time, 1)
+            }
+            
+        except subprocess.TimeoutExpired:
+            logger.error(f"[VITE PREVIEW] Rebuild timed out for {preview_id}")
+            return {
+                "success": False,
+                "error": "Rebuild timed out",
+                "files_updated": files_updated
+            }
+        except Exception as e:
+            logger.error(f"[VITE PREVIEW] Failed to update preview files: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "files_updated": files_updated
+            }
 
 
 # Singleton instance
