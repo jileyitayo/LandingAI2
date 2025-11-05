@@ -1930,18 +1930,39 @@ async def edit_project_properties(
             # Update project_files dict for preview
             project_files[request.component_file] = modified_code
         
-        # NOTE: With optimistic updates, we skip the preview rebuild entirely!
-        # The frontend applies changes instantly via DOM manipulation.
-        # We just need to save to database for persistence.
-        logger.info(f"[PROPERTY EDIT] Skipping preview rebuild (optimistic updates enabled)")
-        preview_url = None
+        # Rebuild preview in background so it's ready for next load (tab switch, page reload)
+        # Don't return preview_url to frontend to avoid iframe reload (keeps optimistic update visible)
+        logger.info(f"[PROPERTY EDIT] Rebuilding preview in background")
+        preview_url = None  # Don't return URL to frontend
         
-        # We still track the preview_id for when user manually rebuilds
-        existing_preview = project.get("preview_id")
-        if existing_preview:
-            logger.info(f"[PROPERTY EDIT] Preview {existing_preview} exists, will be updated on next manual rebuild")
-        else:
-            logger.info(f"[PROPERTY EDIT] No preview yet, will be created on first preview build")
+        try:
+            existing_preview = project.get("preview_id")
+            
+            if existing_preview:
+                preview_status = vite_preview_service.get_preview_status(existing_preview)
+                
+                if preview_status and preview_status.get("exists"):
+                    # Update existing preview in background
+                    logger.info(f"[PROPERTY EDIT] Updating preview {existing_preview} in background")
+                    changed_files = {request.component_file: modified_code}
+                    
+                    update_result = vite_preview_service.update_preview_files(
+                        preview_id=existing_preview,
+                        updated_files=changed_files
+                    )
+                    
+                    if update_result.get("success"):
+                        build_time = update_result.get("build_time", 0)
+                        logger.info(f"[PROPERTY EDIT] Background rebuild completed in {build_time}s")
+                    else:
+                        logger.warning(f"[PROPERTY EDIT] Background rebuild failed: {update_result.get('error')}")
+                else:
+                    logger.warning(f"[PROPERTY EDIT] Preview expired, will recreate on next view")
+            else:
+                logger.info(f"[PROPERTY EDIT] No preview yet, will create on first view")
+                    
+        except Exception as preview_error:
+            logger.error(f"[PROPERTY EDIT] Background rebuild failed: {str(preview_error)}", exc_info=True)
         
         # Log the successful action
         action_logger = ActionLogger(supabase)

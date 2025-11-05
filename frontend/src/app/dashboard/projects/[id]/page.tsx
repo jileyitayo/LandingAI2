@@ -200,15 +200,31 @@ export default function ProjectEditorPage() {
   }, [project, loadReactFiles]);
 
   // Auto-build preview when switching to preview tab
+  // Also refresh preview to pick up any background rebuilds
   useEffect(() => {
-    if (reactActiveTab === 'preview' && !previewUrl && !isBuilding) {
-      buildPreview();
+    // Only run this logic when tab actually changes (not on every render)
+    const tabChanged = previousTabRef.current !== reactActiveTab;
+    previousTabRef.current = reactActiveTab;
+
+    if (reactActiveTab === 'preview' && tabChanged) {
+      if (!previewUrl && !isBuilding) {
+        // No preview exists, build it
+        buildPreview();
+      } else if (previewUrl) {
+        // Preview exists, refresh it to pick up any edits
+        // This ensures iframe loads the latest build (from background rebuilds)
+        const baseUrl = previewUrl.split('?')[0];
+        const timestamp = Date.now();
+        setPreviewUrl(`${baseUrl}?_t=${timestamp}`);
+      }
     }
   }, [reactActiveTab, previewUrl, isBuilding, buildPreview]);
 
   // Ref to track pending backend saves
   const pendingSaveRef = useRef<NodeJS.Timeout | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  // Ref to track previous tab to prevent infinite loop
+  const previousTabRef = useRef<'code' | 'preview'>('code');
 
   // Apply optimistic update to preview iframe (instant feedback)
   const applyOptimisticUpdate = useCallback((selector: string, property: PropertyType, value: string | number | boolean) => {
