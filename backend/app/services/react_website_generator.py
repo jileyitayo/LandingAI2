@@ -1291,7 +1291,28 @@ UI COMPONENTS REFERENCE (Do not recreate existing ui components in the in the @/
 {self._get_all_ui_components_usage_guide()}
 
 TECH STACK: React 19, TypeScript (strict), Tailwind, shadcn/ui, lucide-react, Vite, React Router (Link for internal nav)
-IMAGES: Use Unsplash URLs (https://images.unsplash.com/...)
+
+📸 IMAGE URLs - USE PICSUM PHOTOS (100% RELIABLE): Use Lorem Picsum for all images:
+FORMATS:
+- Random image: https://picsum.photos/1200/800
+- Specific image: https://picsum.photos/id/237/1200/800 (id can be 1-1000+)
+- Grayscale: https://picsum.photos/1200/800?grayscale
+- Blur effect: https://picsum.photos/1200/800?blur
+
+RECOMMENDED DIMENSIONS BY USE CASE:
+- Hero sections: 1920/1080 or 1600/900
+- Content images: 1200/800 or 800/600
+- Profile/testimonial: 400/400 or 600/600
+- Logos: 400/400
+
+EXAMPLES:
+✅ Hero image: https://picsum.photos/1920/1080
+✅ About image: https://picsum.photos/1200/800
+✅ Grayscale hero: https://picsum.photos/1600/900?grayscale
+✅ Specific ID: https://picsum.photos/id/42/1200/800
+✅ Team photo: https://picsum.photos/600/600
+
+RULE: All image URLs MUST use picsum.photos format. No other image sources.
 
 🚫 ZERO-TOLERANCE BUILD FAILURES (any violation = build fails):
 
@@ -1520,7 +1541,36 @@ Generate now."""
         
         # Format navigation
         nav_list = [f"  • {nav.label} → {nav.path}" for nav in structure.navigation]
-        
+
+        smooth_scroll_instructions = ""
+        if structure.page_count == 1:
+            smooth_scroll_instructions = """
+            🔗 NAVIGATION & SMOOTH SCROLLING (For Single-Page Websites):
+When creating a Header component with navigation links to page sections:
+- Import smooth scroll utility: `import {{ handleSmoothScroll }} from '@/utils/smoothScroll';`
+- For navigation links, use onClick handler:
+   ```tsx
+   <a 
+     href="#features" 
+     onClick={{(e) => handleSmoothScroll(e, '#features')}}
+     className="..."
+   >
+     Features
+   </a>
+   ```
+- For mobile menu, pass callback to close menu:
+   ```tsx
+   <a 
+     href="#features"
+     onClick={{(e) => handleSmoothScroll(e, '#features', () => setIsMenuOpen(false))}}
+     className="..."
+   >
+     Features
+   </a>
+   ```
+- Ensure ALL section components have `id` attribute matching their lowercase name
+- Example: Features component should have `<section id="features" ...>`
+            """
         return f"""BUILD THIS PAGE BASED ON THE FOLLOWING CONTEXT:
 
 PAGE: {page.name} ({page.path})
@@ -1552,31 +1602,7 @@ TASK
 3. <Header /> and <Footer /> usage: no props; define values internally using nav above
 4. Reuse existing UI components as-is
 
-🔗 NAVIGATION & SMOOTH SCROLLING (For Single-Page Websites):
-When creating a Header component with navigation links to page sections:
-- Import smooth scroll utility: `import {{ handleSmoothScroll }} from '@/utils/smoothScroll';`
-- For navigation links, use onClick handler:
-   ```tsx
-   <a 
-     href="#features" 
-     onClick={{(e) => handleSmoothScroll(e, '#features')}}
-     className="..."
-   >
-     Features
-   </a>
-   ```
-- For mobile menu, pass callback to close menu:
-   ```tsx
-   <a 
-     href="#features"
-     onClick={{(e) => handleSmoothScroll(e, '#features', () => setIsMenuOpen(false))}}
-     className="..."
-   >
-     Features
-   </a>
-   ```
-- Ensure ALL section components have `id` attribute matching their lowercase name
-- Example: Features component should have `<section id="features" ...>`
+{smooth_scroll_instructions}
 
 🚨 CRITICAL: VISUAL EDITING TRACKING - MANDATORY 🚨
 5. EVERY section component's ROOT element MUST have these exact attributes:

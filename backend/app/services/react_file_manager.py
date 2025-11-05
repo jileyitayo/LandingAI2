@@ -404,7 +404,7 @@ MIT
             routes.append(f'          <Route path="{page.path}" element={{<{page_name} />}} />')
         
         # App.tsx
-        if enable_animations:
+        if enable_animations and structure.page_count == 1:
           files["src/App.tsx"] = f'''import {{ useEffect }} from 'react'
 import {{ BrowserRouter, Routes, Route }} from 'react-router-dom'
 import {{ initializeSmoothScroll }} from '@/utils/smoothScroll'
