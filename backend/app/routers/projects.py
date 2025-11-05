@@ -63,6 +63,7 @@ class ProjectDetail(BaseModel):
     seo_description: Optional[str]
     generation_status: str
     generation_error: Optional[str]
+    generation_cost: Optional[dict] = None  # Cost breakdown from generation_cost_tracking
     created_at: str
     updated_at: str
 
@@ -171,7 +172,7 @@ async def get_project(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Get detailed information about a specific project.
+    Get detailed information about a specific project, including cost breakdown.
     """
     user_id = current_user["id"]
     supabase = get_supabase_client()
@@ -190,6 +191,32 @@ async def get_project(
         
         # Verify ownership
         verify_project_ownership(project, user_id)
+        
+        # Fetch cost information from generation_cost_tracking
+        from app.services.cost_calculator import get_project_costs
+        cost_data = get_project_costs(project_id, supabase)
+        
+        if cost_data:
+            # Format cost breakdown for response
+            project["generation_cost"] = {
+                "total_cost_usd": float(cost_data.get("total_cost_usd", 0)),
+                "breakdown": {
+                    "business_analysis": float(cost_data.get("business_analysis_cost", 0)),
+                    "structure_generation": float(cost_data.get("structure_generation_cost", 0)),
+                    "theme_generation": float(cost_data.get("theme_generation_cost", 0)),
+                    "page_generation": float(cost_data.get("page_generation_cost", 0)),
+                    "validation": float(cost_data.get("validation_cost", 0)),
+                    "edit": float(cost_data.get("edit_cost", 0))
+                },
+                "total_tokens": cost_data.get("total_tokens", 0),
+                "total_input_tokens": cost_data.get("total_input_tokens", 0),
+                "total_output_tokens": cost_data.get("total_output_tokens", 0),
+                "models_used": cost_data.get("models_used", []),
+                "generation_time_seconds": float(cost_data.get("generation_time_seconds", 0)),
+                "status": cost_data.get("status", "unknown")
+            }
+        else:
+            project["generation_cost"] = None
         
         return ProjectDetail(**project)
     

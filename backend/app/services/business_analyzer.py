@@ -61,9 +61,16 @@ class BusinessAnalyzer():
         self.google_client = PromptOpenAI(is_google=True)
 
 
-    def generate_business_analysis(self, user_prompt: str) -> BusinessAnalysis:
+    def generate_business_analysis(self, user_prompt: str, cost_tracker=None) -> BusinessAnalysis:
         """
         Generate extensive and complete business analysis for website template generation.
+        
+        Args:
+            user_prompt: User's prompt describing their business/website needs
+            cost_tracker: Optional CostTracker instance to track AI costs
+        
+        Returns:
+            BusinessAnalysis object
         """
         system_prompt_old = """You are a website strategy expert. Analyze user requests and extract ONLY the essential information needed for an LLM to generate accurate website templates and content.
 
@@ -115,6 +122,15 @@ class BusinessAnalyzer():
         self.google_client.set_max_completion_tokens(6000)
         self.business_analysis, usage = self.google_client.call_openai_api_structured(system_prompt, user_prompt, BusinessAnalysis, model="gemini-2.5-flash")
         print(f"Usage for business analysis: {usage}")
+        
+        # Track cost if cost_tracker is provided
+        if cost_tracker:
+            cost_tracker.track_call(
+                service_name="business_analysis",
+                model_name="gemini-2.5-flash",
+                usage=usage
+            )
+        
         return self.business_analysis
 
 

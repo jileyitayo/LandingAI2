@@ -18,8 +18,17 @@ class StructureGenerator:
         """Initialize the structure generator with Google AI client"""
         self.google_client = PromptOpenAI(is_google=True)
 
-    def generate_structure(self, analysis: BusinessAnalysis) -> WebsiteStructure:
-        """Convert business analysis into website structure"""
+    def generate_structure(self, analysis: BusinessAnalysis, cost_tracker=None) -> WebsiteStructure:
+        """
+        Convert business analysis into website structure
+        
+        Args:
+            analysis: Business analysis data
+            cost_tracker: Optional CostTracker instance to track AI costs
+        
+        Returns:
+            WebsiteStructure object
+        """
         
         system_prompt = f"""You are a website architect. Based on a business analysis, generate a comprehensive website structure.
 Begin with a concise checklist (3-7 bullets) of what steps you will perform to generate the site structure; keep items high-level and conceptual.
@@ -107,6 +116,14 @@ Create a website structure with appropriate pages and components for each page."
         )
 
         print(f"Usage for structure generation: {usage}")
+        
+        # Track cost if cost_tracker is provided
+        if cost_tracker:
+            cost_tracker.track_call(
+                service_name="structure_generation",
+                model_name="gemini-2.5-flash",
+                usage=usage
+            )
         
         return response
 

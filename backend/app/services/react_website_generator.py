@@ -115,7 +115,8 @@ class ReactWebsiteGenerator:
         self, 
         prompt: str, 
         enable_build_validation: Optional[bool] = None,
-        enable_animations: Optional[bool] = None
+        enable_animations: Optional[bool] = None,
+        cost_tracker=None
     ) -> Dict[str, Any]:
         """
         Main entry point: Generate complete React website from prompt with validation
@@ -124,6 +125,7 @@ class ReactWebsiteGenerator:
             prompt: User's website description
             enable_build_validation: Whether to run actual build tests (None = use config default)
             enable_animations: Whether to include animations (None = use config default)
+            cost_tracker: Optional CostTracker instance to track AI costs
         
         Returns a dictionary containing:
         - website_structure: Complete website structure
@@ -134,6 +136,7 @@ class ReactWebsiteGenerator:
         - retry_count: Number of retry attempts made
         - fixed_errors: List of errors that were auto-fixed
         - generation_time: Total generation time
+        - cost_breakdown: Cost breakdown if cost_tracker provided
         """
         start_time = time.time()
         
@@ -147,12 +150,12 @@ class ReactWebsiteGenerator:
         
         # Step 1: Analyze business requirements
         logger.info("[REACT GEN] Analyzing business requirements...")
-        business_analysis = self.business_analyzer.generate_business_analysis(prompt)
+        business_analysis = self.business_analyzer.generate_business_analysis(prompt, cost_tracker=cost_tracker)
         # print(f"Business analysis: \n{business_analysis.model_dump_json(indent=2)}")
         
         # Step 2: Generate website structure
         logger.info("[REACT GEN] Generating website structure...")
-        website_structure = self.structure_generator.generate_structure(business_analysis)
+        website_structure = self.structure_generator.generate_structure(business_analysis, cost_tracker=cost_tracker)
 
         # print(f"Website structure: \n{website_structure.model_dump_json(indent=2)}")
         
@@ -178,7 +181,7 @@ class ReactWebsiteGenerator:
         logger.info("[REACT GEN] Generating React files...")
         logger.info(f"[REACT GEN] Animations enabled: {enable_animations}")
 
-        files = self._generate_all_files(website_structure, business_analysis, enable_animations)
+        files = self._generate_all_files(website_structure, business_analysis, enable_animations, cost_tracker=cost_tracker)
         
         # Step 4: Validation and error fixing loop
         logger.info("[REACT GEN] Starting validation and error fixing...")
@@ -199,7 +202,7 @@ class ReactWebsiteGenerator:
         
         written_files = write_files_to_disk(files, output_path)
         
-        return {
+        result = {
             "name": website_name,
             "website_structure": website_structure.model_dump(),
             "business_analysis": business_analysis.model_dump(),
@@ -210,6 +213,14 @@ class ReactWebsiteGenerator:
             "fixed_errors": fixed_errors,
             "generation_time": generation_time
         }
+        
+        # Add cost breakdown if cost_tracker was used
+        if cost_tracker:
+            cost_breakdown = cost_tracker.get_breakdown()
+            result["cost_breakdown"] = cost_breakdown
+            logger.info(f"[REACT GEN] {cost_tracker.get_summary_string()}")
+        
+        return result
     
     def _is_home_page(self, name: str) -> bool:
         """
@@ -332,13 +343,14 @@ class ReactWebsiteGenerator:
         logger.info(f"[STRUCTURE VALIDATION] Pages: {', '.join(page_list)}")
         logger.info(f"[STRUCTURE VALIDATION] Navigation: {', '.join(nav_list)}")
     
-    def _generate_all_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, enable_animations: bool = False) -> Dict[str, str]:
+    def _generate_all_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, enable_animations: bool = False, cost_tracker=None) -> Dict[str, str]:
         """Generate all React project files
 
         Args:
             structure: Website structure
             analysis: Business analysis
             enable_animations: Whether to include animation files
+            cost_tracker: Optional CostTracker instance to track AI costs
         """
 
         files = {}
@@ -359,7 +371,8 @@ class ReactWebsiteGenerator:
             from app.services.theme_generator import theme_generator
             theme = theme_generator.generate_theme_with_fallback(
                 business_analysis=analysis,
-                color_scheme=structure.color_scheme
+                color_scheme=structure.color_scheme,
+                cost_tracker=cost_tracker
             )
             logger.info(f"[REACT GEN] ✓ Theme generated: primary={theme.primary}")
         except Exception as e:
@@ -375,7 +388,7 @@ class ReactWebsiteGenerator:
             files.update(react_file_manager.generate_animation_files())
         
         # Page components (will auto-generate any missing section/UI components)
-        files.update(self._generate_page_files(structure, analysis, files, enable_animations))
+        files.update(self._generate_page_files(structure, analysis, files, enable_animations, cost_tracker=cost_tracker))
         
         # Post-generation validation
         logger.info("[REACT GEN] Running post-generation validation...")
@@ -536,7 +549,7 @@ class ReactWebsiteGenerator:
         
         return current_files, validation_result, retry_count, fixed_errors
     
-    def _generate_page_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str], enable_animations: bool = False) -> Dict[str, str]:
+    def _generate_page_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str], enable_animations: bool = False, cost_tracker=None) -> Dict[str, str]:
         """Generate page component files
         
         Args:
@@ -544,22 +557,31 @@ class ReactWebsiteGenerator:
             analysis: Business analysis
             files: Existing files dictionary
             enable_animations: Whether animations are enabled
+            cost_tracker: Optional CostTracker instance to track AI costs
         """
         
         # files = {}
         
         for page in structure.pages:
             print(f"Generating page: {page.name}")
-            page_content = self._generate_page_component(page, structure, analysis, files, enable_animations)
+            page_content = self._generate_page_component(page, structure, analysis, files, enable_animations, cost_tracker=cost_tracker)
             page_filename = page.name.lower().replace(" ", "-")
             files[f"src/pages/{page_filename}.tsx"] = page_content
         
         return files
     
-    def _generate_page_component(self, page: PageStructure, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str], enable_animations: bool = False) -> str:
+    def _generate_page_component(self, page: PageStructure, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str], enable_animations: bool = False, cost_tracker=None) -> str:
         """
         Generate individual page component using LLM.
         Automatically generates any missing section or UI components needed.
+        
+        Args:
+            page: Page structure
+            structure: Website structure
+            analysis: Business analysis
+            files: Existing files dictionary
+            enable_animations: Whether animations are enabled
+            cost_tracker: Optional CostTracker instance to track AI costs
         """
         
         logger.info(f"[PAGE GEN] Generating page: {page.name}")
@@ -616,6 +638,15 @@ class ReactWebsiteGenerator:
         )
 
         print(f"Usage for page {page.name} generation: {usage}")
+        
+        # Track cost if cost_tracker is provided
+        if cost_tracker:
+            cost_tracker.track_call(
+                service_name="page_generation",
+                model_name="gemini-2.5-pro",
+                usage=usage,
+                metadata={"page_name": page.name, "page_path": page.path}
+            )
         
         # Post-validation: Fix any invalid icons in generated code
         logger.info(f"[PAGE GEN] Validating generated code...")

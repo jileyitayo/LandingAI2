@@ -19,12 +19,13 @@ class ThemeGenerator:
     def __init__(self):
         self.google_client = PromptOpenAI(is_google=True)
 
-    def generate_theme(self, business_analysis: BusinessAnalysis) -> ThemeColors:
+    def generate_theme(self, business_analysis: BusinessAnalysis, cost_tracker=None) -> ThemeColors:
         """
         Generate a custom theme based on business analysis
 
         Args:
             business_analysis: Business analysis data
+            cost_tracker: Optional CostTracker instance to track AI costs
 
         Returns:
             ThemeColors object with AI-generated or fallback theme
@@ -50,6 +51,14 @@ class ThemeGenerator:
             logger.info(f"[THEME GEN] ✓ AI theme generated successfully")
             logger.info(f"[THEME GEN] Usage: {usage}")
             logger.info(f"[THEME GEN] Primary color: hsl({theme.primary})")
+
+            # Track cost if cost_tracker is provided
+            if cost_tracker:
+                cost_tracker.track_call(
+                    service_name="theme_generation",
+                    model_name="gemini-2.5-flash",
+                    usage=usage
+                )
 
             return theme
 
@@ -179,7 +188,8 @@ Generate the theme now in the exact JSON format specified, with all HSL values i
     def generate_theme_with_fallback(
         self,
         business_analysis: Optional[BusinessAnalysis] = None,
-        color_scheme: Optional[str] = None
+        color_scheme: Optional[str] = None,
+        cost_tracker=None
     ) -> ThemeColors:
         """
         Generate theme with multiple fallback levels
@@ -187,6 +197,7 @@ Generate the theme now in the exact JSON format specified, with all HSL values i
         Args:
             business_analysis: Business analysis for AI generation
             color_scheme: Fallback color scheme name
+            cost_tracker: Optional CostTracker instance to track AI costs
 
         Returns:
             ThemeColors object (AI-generated, variant, or default)
@@ -194,7 +205,7 @@ Generate the theme now in the exact JSON format specified, with all HSL values i
         # Level 1: Try AI generation
         if business_analysis:
             try:
-                return self.generate_theme(business_analysis)
+                return self.generate_theme(business_analysis, cost_tracker=cost_tracker)
             except Exception as e:
                 logger.warning(f"[THEME GEN] AI generation failed, trying fallback: {str(e)}")
 

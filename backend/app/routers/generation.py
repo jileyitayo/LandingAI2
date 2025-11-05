@@ -647,12 +647,22 @@ async def generate_react_website_from_prompt(
         )
 
 
-async def process_react_generation( project_id: str,prompt: str, user_id: str):
+async def process_react_generation(project_id: str, prompt: str, user_id: str):
     """Background task that actually does the generation"""
     supabase = get_supabase_client()
+    
+    # Import CostTracker
+    from app.services.cost_calculator import CostTracker
+    
+    # Initialize cost tracker
+    cost_tracker = CostTracker(
+        generation_type="website",
+        endpoint="/generate_website"
+    )
 
     try:
         logger.info(f"[BG] Starting React generation for project {project_id}")
+        logger.info(f"[BG] Cost tracker initialized for project {project_id}")
         
         # Step 0: Determine if animations should be enabled based on user tier
         enable_animations = settings.enable_animations_default  # Start with config default
@@ -678,13 +688,18 @@ async def process_react_generation( project_id: str,prompt: str, user_id: str):
         except Exception as e:
             logger.warning(f"[BG] Failed to fetch user tier: {str(e)}, using config default: {enable_animations}")
         
-        # Step 1: Generate React website (SYNC function)
-        result = react_website_generator.generate_website_structure(prompt, enable_animations=enable_animations)
+        # Step 1: Generate React website (SYNC function) with cost tracking
+        result = react_website_generator.generate_website_structure(
+            prompt, 
+            enable_animations=enable_animations,
+            cost_tracker=cost_tracker
+        )
         
         website_structure = result["website_structure"]
         business_analysis = result["business_analysis"]
         validation_result = result["validation"]
         files = result["files"]
+        cost_breakdown = result.get("cost_breakdown")
 
         # Step 2: Save files to database (ASYNC)
         logger.info(f"[BG] Saving {len(files)} files to database...")
@@ -698,18 +713,24 @@ async def process_react_generation( project_id: str,prompt: str, user_id: str):
 
         # Step 3: Update project with metadata
         logger.info(f"[BG] Updating project metadata...")
+        generation_metadata = {
+            "retry_count": result.get("retry_count", 0),
+            "fixed_errors": result.get("fixed_errors", []),
+            "generation_time": result.get("generation_time", 0),
+            "files_count": stats.get("inserted", 0),
+            "total_size_bytes": stats.get("total_size", 0)
+        }
+        
+        # Add cost breakdown to metadata if available
+        if cost_breakdown:
+            generation_metadata["cost_breakdown"] = cost_breakdown
+        
         update_data = {
             "name": result.get("name", "My Generated Website - " + datetime.utcnow().strftime("%Y-%m-%d %H:%M")),
             "website_structure": website_structure,
             "business_analysis": business_analysis,
             "validation_result": validation_result,
-            "generation_metadata": {
-                "retry_count": result.get("retry_count", 0),
-                "fixed_errors": result.get("fixed_errors", []),
-                "generation_time": result.get("generation_time", 0),
-                "files_count": stats.get("inserted", 0),
-                "total_size_bytes": stats.get("total_size", 0)
-            },
+            "generation_metadata": generation_metadata,
             "generation_status": "completed",
             "last_generated_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat()
@@ -717,6 +738,18 @@ async def process_react_generation( project_id: str,prompt: str, user_id: str):
 
         supabase.table("projects").update(update_data).eq("id", project_id).execute()
 
+        # Step 4: Save cost tracking to database
+        if cost_tracker:
+            cost_tracker.mark_completed()
+            tracking_id = await cost_tracker.save_to_database(
+                project_id=project_id,
+                user_id=user_id,
+                supabase_client=supabase
+            )
+            if tracking_id:
+                logger.info(f"[BG] ✓ Cost tracking saved: {tracking_id}")
+            else:
+                logger.warning(f"[BG] ⚠ Failed to save cost tracking")
 
         logger.info(f"[BG] ✓ React generation completed for project {project_id}")
 
@@ -774,6 +807,20 @@ async def process_react_generation( project_id: str,prompt: str, user_id: str):
         
     except Exception as e:
         logger.error(f"[BG] ✗ React generation failed: {str(e)}", exc_info=True)
+        
+        # Mark cost tracker as failed and save
+        if cost_tracker:
+            cost_tracker.mark_failed(str(e))
+            try:
+                tracking_id = await cost_tracker.save_to_database(
+                    project_id=project_id,
+                    user_id=user_id,
+                    supabase_client=supabase
+                )
+                if tracking_id:
+                    logger.info(f"[BG] ✓ Failed generation cost tracking saved: {tracking_id}")
+            except Exception as cost_error:
+                logger.error(f"[BG] Failed to save cost tracking: {str(cost_error)}")
         
         # Update project status to failed
         await update_project_status(
