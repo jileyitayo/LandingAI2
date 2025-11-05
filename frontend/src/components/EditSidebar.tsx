@@ -355,10 +355,14 @@ export default function EditSidebar({
             'image',
             <Eye className="w-4 h-4 text-teal-400" />,
             'Image',
-            <div className="text-sm text-gray-400">
-              <p className="mb-2">Image properties (src, alt)</p>
-              <p className="text-xs text-gray-500">Property editors are being finalized...</p>
-            </div>
+            <ImageEditor
+              imageUrl={selectedElement?.attributes?.src || ''}
+              imageAlt={selectedElement?.attributes?.alt || ''}
+              imageFit={selectedElement?.classList.find(c => c.startsWith('object-')) || 'object-cover'}
+              onImageUrlChange={(value) => handlePropertyChange('imageUrl', value)}
+              onImageAltChange={(value) => handlePropertyChange('imageAlt', value)}
+              onImageFitChange={(value) => handlePropertyChange('imageFit', value)}
+            />
           )}
 
           {/* Link Section - Only show for link elements */}

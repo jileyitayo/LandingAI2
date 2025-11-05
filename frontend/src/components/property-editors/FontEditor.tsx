@@ -60,6 +60,13 @@ export default function FontEditor({
 
   return (
     <div className="space-y-4">
+      {/* Info banner */}
+      <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-2">
+        <div className="text-xs text-blue-300">
+          ✨ All changes apply instantly to the preview
+        </div>
+      </div>
+
       {/* Font Family */}
       {onFontFamilyChange && (
         <div className="space-y-2">
@@ -69,10 +76,10 @@ export default function FontEditor({
               <button
                 key={font.value}
                 onClick={() => onFontFamilyChange(font.value)}
-                className={`px-3 py-2 text-xs rounded border transition-colors ${
+                className={`px-3 py-2 text-xs rounded border transition-all ${
                   fontFamily === font.value
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600'
+                    ? 'bg-blue-600 border-blue-500 text-white shadow-lg scale-105'
+                    : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-blue-400 hover:bg-gray-750 hover:scale-105'
                 }`}
                 style={{ fontFamily: font.family }}
               >
@@ -98,20 +105,32 @@ export default function FontEditor({
             
             {showSizeDropdown && (
               <div className="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                {TAILWIND_FONT_SIZES.map((size) => (
+                <div className="p-2 space-y-1">
+                  {TAILWIND_FONT_SIZES.map((size) => (
+                    <button
+                      key={size}
+                      onClick={() => {
+                        // Apply instantly but keep dropdown open for more changes
+                        onFontSizeChange(size);
+                        // Don't close dropdown
+                      }}
+                      className={`w-full px-3 py-2 text-left rounded transition-colors ${
+                        fontSize === size ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'
+                      }`}
+                    >
+                      <span className={`${size}`}>{size}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="p-2 border-t border-gray-700 flex justify-between items-center">
+                  <span className="text-xs text-gray-400">Click to apply instantly</span>
                   <button
-                    key={size}
-                    onClick={() => {
-                      onFontSizeChange(size);
-                      setShowSizeDropdown(false);
-                    }}
-                    className={`w-full px-3 py-2 text-left hover:bg-gray-700 transition-colors ${
-                      fontSize === size ? 'bg-blue-600 text-white' : 'text-gray-300'
-                    }`}
+                    onClick={() => setShowSizeDropdown(false)}
+                    className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
                   >
-                    <span className={`${size}`}>{size}</span>
+                    Done
                   </button>
-                ))}
+                </div>
               </div>
             )}
           </div>
@@ -135,22 +154,34 @@ export default function FontEditor({
             
             {showWeightDropdown && (
               <div className="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg">
-                {TAILWIND_FONT_WEIGHTS.map((weight) => (
+                <div className="p-2 space-y-1">
+                  {TAILWIND_FONT_WEIGHTS.map((weight) => (
+                    <button
+                      key={weight.value}
+                      onClick={() => {
+                        // Apply instantly but keep dropdown open for more changes
+                        onFontWeightChange(weight.value);
+                        // Don't close dropdown
+                      }}
+                      className={`w-full px-3 py-2 text-left rounded transition-colors ${
+                        fontWeight === weight.value ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'
+                      }`}
+                    >
+                      <span className={`${weight.value}`}>
+                        {weight.label} ({weight.weight})
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="p-2 border-t border-gray-700 flex justify-between items-center">
+                  <span className="text-xs text-gray-400">Click to apply instantly</span>
                   <button
-                    key={weight.value}
-                    onClick={() => {
-                      onFontWeightChange(weight.value);
-                      setShowWeightDropdown(false);
-                    }}
-                    className={`w-full px-3 py-2 text-left hover:bg-gray-700 transition-colors ${
-                      fontWeight === weight.value ? 'bg-blue-600 text-white' : 'text-gray-300'
-                    }`}
+                    onClick={() => setShowWeightDropdown(false)}
+                    className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
                   >
-                    <span className={`${weight.value}`}>
-                      {weight.label} ({weight.weight})
-                    </span>
+                    Done
                   </button>
-                ))}
+                </div>
               </div>
             )}
           </div>
@@ -166,10 +197,10 @@ export default function FontEditor({
               <button
                 key={lh.value}
                 onClick={() => onLineHeightChange(lh.value)}
-                className={`px-3 py-2 text-xs rounded border transition-colors ${
+                className={`px-3 py-2 text-xs rounded border transition-all ${
                   lineHeight === lh.value
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600'
+                    ? 'bg-blue-600 border-blue-500 text-white shadow-lg scale-105'
+                    : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-blue-400 hover:bg-gray-750 hover:scale-105'
                 }`}
               >
                 {lh.label}
@@ -195,10 +226,10 @@ export default function FontEditor({
                 <button
                   key={align}
                   onClick={() => onTextAlignChange(align)}
-                  className={`px-3 py-2 text-xs rounded border transition-colors ${
+                  className={`px-3 py-2 text-xs rounded border transition-all ${
                     textAlign === align
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600'
+                      ? 'bg-blue-600 border-blue-500 text-white shadow-lg scale-105'
+                      : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-blue-400 hover:bg-gray-750 hover:scale-105'
                   }`}
                 >
                   {labels[align as keyof typeof labels]}
@@ -218,10 +249,10 @@ export default function FontEditor({
               <button
                 key={transform.value}
                 onClick={() => onTextTransformChange(transform.value)}
-                className={`px-3 py-2 text-xs rounded border transition-colors ${
+                className={`px-3 py-2 text-xs rounded border transition-all ${
                   textTransform === transform.value
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600'
+                    ? 'bg-blue-600 border-blue-500 text-white shadow-lg scale-105'
+                    : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-blue-400 hover:bg-gray-750 hover:scale-105'
                 }`}
               >
                 {transform.label}

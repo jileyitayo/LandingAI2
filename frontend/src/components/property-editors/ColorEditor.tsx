@@ -68,9 +68,11 @@ export default function ColorEditor({
     const newClass = `${prefix}-${color}-${shade}`;
     
     if (autoSave) {
+      // Apply instantly and keep picker open for more changes
       onChange(newClass);
       onAddToRecent?.(newClass);
-      setShowPicker(false);
+      // Don't close picker - let user make multiple changes
+      // setShowPicker(false);
     } else {
       setSelectedColor(color);
       setSelectedShade(shade);
@@ -93,10 +95,10 @@ export default function ColorEditor({
   const handleCustomHex = () => {
     if (customHex.match(/^#[0-9A-Fa-f]{6}$/)) {
       // In a real implementation, we'd convert hex to closest Tailwind color
-      // For now, just close the picker
+      // Apply instantly and keep picker open
       onChange(customHex);
       onAddToRecent?.(customHex);
-      setShowPicker(false);
+      // Keep picker open for more changes
       setCustomHex('');
     }
   };
@@ -148,7 +150,8 @@ export default function ColorEditor({
                     key={index}
                     onClick={() => {
                       onChange(color);
-                      setShowPicker(false);
+                      onAddToRecent?.(color);
+                      // Keep picker open for more changes
                     }}
                     className={`w-8 h-8 rounded border-2 hover:scale-110 transition-transform ${color}`}
                     title={color}
@@ -167,6 +170,11 @@ export default function ColorEditor({
                 type="text"
                 value={customHex}
                 onChange={(e) => setCustomHex(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleCustomHex();
+                  }
+                }}
                 placeholder="#000000"
                 className="flex-1 px-3 py-2 bg-gray-900 text-gray-100 text-sm rounded border border-gray-700 focus:outline-none focus:border-blue-500"
                 maxLength={7}
@@ -210,12 +218,15 @@ export default function ColorEditor({
           </div>
 
           {/* Footer */}
-          <div className="mt-3 pt-3 border-t border-gray-700 flex justify-end gap-2">
+          <div className="mt-3 pt-3 border-t border-gray-700 flex justify-between items-center gap-2">
+            <div className="text-xs text-gray-400">
+              Click colors to apply instantly
+            </div>
             <button
               onClick={() => setShowPicker(false)}
-              className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+              className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
             >
-              Cancel
+              Done
             </button>
           </div>
         </div>

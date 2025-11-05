@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Type, Check } from 'lucide-react';
 
 interface TextEditorProps {
@@ -25,6 +25,7 @@ export default function TextEditor({
   const [localValue, setLocalValue] = useState(value);
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update local value when prop changes
   useEffect(() => {
@@ -39,9 +40,38 @@ export default function TextEditor({
     }
   }, [localValue]);
 
+  // Debounced onChange for instant updates while typing
+  const debouncedOnChange = useCallback((newValue: string) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    
+    debounceTimerRef.current = setTimeout(() => {
+      if (autoSave && newValue !== value) {
+        onChange(newValue);
+        onSave?.();
+      }
+    }, 800); // Wait 800ms after last keystroke
+  }, [autoSave, value, onChange, onSave]);
+
+  // Cleanup debounce timer
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
   // Auto-save on blur if enabled
   const handleBlur = () => {
     setIsFocused(false);
+    // Clear any pending debounce timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    // Save immediately on blur
     if (autoSave && localValue !== value) {
       onChange(localValue);
       onSave?.();
@@ -63,6 +93,8 @@ export default function TextEditor({
       return; // Don't allow exceeding max length
     }
     setLocalValue(newValue);
+    // Trigger debounced save for real-time updates
+    debouncedOnChange(newValue);
   };
 
   const characterCount = localValue.length;
@@ -117,7 +149,7 @@ export default function TextEditor({
           {minLength > 0 && characterCount < minLength && ` (min: ${minLength})`}
         </div>
         {autoSave && hasChanges && (
-          <div className="text-yellow-400">Press Ctrl+Enter or click outside to save</div>
+          <div className="text-blue-400">Saving as you type...</div>
         )}
       </div>
 
