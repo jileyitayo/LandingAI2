@@ -807,10 +807,10 @@ class ReactWebsiteGenerator:
 
     def _add_footer_attribution(self, files: Dict[str, str]) -> Dict[str, str]:
         """
-        Post-process Footer components to add brand attribution after "All rights reserved"
+        Post-process Footer components to add brand attribution at the bottom of the footer
         
-        This function finds all Footer.tsx files and adds "Made with ❤️ from {brand_name}"
-        after any occurrence of "All rights reserved" text.
+        This function finds all Footer.tsx files and adds "Made with 💜 from {brand_name}"
+        at the bottom of the footer component, just before the closing tag.
         
         Args:
             files: Dictionary of file paths to file contents
@@ -836,35 +836,122 @@ class ReactWebsiteGenerator:
         for footer_path in footer_files:
             footer_content = files[footer_path]
             
-            # Pattern to match "All rights reserved" (case-insensitive, with optional punctuation)
-            # This handles variations like:
-            # - "All rights reserved."
-            # - "All rights reserved"
-            # - "all rights reserved"
-            # - "All Rights Reserved"
-            # The pattern matches "All rights reserved" followed by optional period and any whitespace
-            pattern = r'(All\s+rights\s+reserved\.?\s*)'
-            
             # Check if attribution already exists to avoid duplicates
             if attribution_text in footer_content:
                 logger.info(f"[FOOTER ATTRIBUTION] Attribution already exists in {footer_path}, skipping")
                 continue
             
-            # Find and replace "All rights reserved" with "All rights reserved. Made with ❤️ from {brand_name}"
-            # Using re.IGNORECASE to handle case variations
-            # Using MULTILINE flag to handle text that might span multiple lines
-            def add_attribution(match):
-                original_text = match.group(1).rstrip()  # Remove trailing whitespace
-                # Add attribution after the matched text with proper spacing
-                return f"{original_text} {attribution_text}"
+            # Find the closing tag of the root element in the return statement
+            # Look for common footer root elements: </footer>, </div>, </section>
+            # Pattern matches closing tags that appear before the closing parenthesis of return statement
+            # We want to insert before the last closing tag in the return statement
             
-            updated_content = re.sub(pattern, add_attribution, footer_content, flags=re.IGNORECASE | re.MULTILINE)
+            # Strategy: Find the last occurrence of </footer>, </div>, or </section> 
+            # that appears before the closing ) of the return statement
+            # We'll look for the pattern: </tagName> followed by whitespace and then )
             
-            if updated_content != footer_content:
+            # Try to find the root element closing tag
+            # Common patterns: </footer>, </div>, </section>
+            root_closing_patterns = [
+                r'(</footer>)',  # </footer> tag
+                r'(</div>)',     # </div> tag  
+                r'(</section>)', # </section> tag
+            ]
+            
+            updated_content = footer_content
+            insertion_made = False
+            
+            # Try each pattern to find the root closing tag
+            for pattern in root_closing_patterns:
+                # Find all matches
+                matches = list(re.finditer(pattern, footer_content, re.IGNORECASE | re.MULTILINE))
+                
+                if matches:
+                    # Get the last match (should be the root element closing tag)
+                    last_match = matches[-1]
+                    
+                    # Verify this is likely the root element by checking if it's followed by 
+                    # whitespace and closing parenthesis (end of return statement)
+                    after_match = footer_content[last_match.end():last_match.end() + 20]
+                    
+                    # Check if this looks like the end of a return statement
+                    if re.search(r'^\s*\)\s*;?\s*$', after_match, re.MULTILINE) or \
+                       re.search(r'^\s*\)\s*$', after_match.split('\n')[0]):
+                        # Get the indentation of the closing tag by finding the start of the line
+                        line_start = footer_content.rfind('\n', 0, last_match.start()) + 1
+                        line_before_tag = footer_content[line_start:last_match.start()]
+                        # Extract indentation (whitespace before the tag)
+                        indentation = ''
+                        for char in line_before_tag:
+                            if char in [' ', '\t']:
+                                indentation += char
+                            else:
+                                break
+                        
+                        # Wrap attribution text in a JSX span with data-locked="true" to make it uneditable
+                        # Match the indentation of the closing tag
+                        locked_attribution = f'{indentation}<p className="text-center text-xs text-gray-500" data-locked="true" data-editable-text="false">{attribution_text}</p>\n'
+                        
+                        # Insert attribution before the closing tag
+                        insertion_point = last_match.start()
+                        updated_content = (
+                            footer_content[:insertion_point] +
+                            locked_attribution +
+                            footer_content[insertion_point:]
+                        )
+                        insertion_made = True
+                        logger.info(f"[FOOTER ATTRIBUTION] ✓ Added attribution to bottom of {footer_path}")
+                        break
+            
+            # If no pattern matched, try a fallback: find the last </tag> before the return closes
+            if not insertion_made:
+                # Fallback: Find any closing tag that appears before the final closing parenthesis
+                # Look for the pattern: </...> followed by whitespace and )
+                fallback_pattern = r'(</\w+>)'
+                matches = list(re.finditer(fallback_pattern, footer_content))
+                
+                if matches:
+                    # Find the match that's closest to the end but before the return closes
+                    # Look for the last </tag> that has a closing ) after it
+                    for match in reversed(matches):
+                        after_text = footer_content[match.end():match.end() + 50]
+                        # Check if this is followed by closing parenthesis (end of return)
+                        if ')' in after_text:
+                            # Count how many closing tags are between this and the )
+                            text_between = footer_content[match.end():match.end() + after_text.find(')')]
+                            open_tags = text_between.count('<')
+                            close_tags = text_between.count('</')
+                            
+                            # If this appears to be the root closing tag
+                            if open_tags == 0 or (close_tags == 1 and open_tags <= 1):
+                                # Get the indentation of the closing tag
+                                line_start = footer_content.rfind('\n', 0, match.start()) + 1
+                                line_before_tag = footer_content[line_start:match.start()]
+                                # Extract indentation (whitespace before the tag)
+                                indentation = ''
+                                for char in line_before_tag:
+                                    if char in [' ', '\t']:
+                                        indentation += char
+                                    else:
+                                        break
+                                
+                                # Wrap attribution text with matching indentation
+                                locked_attribution = f'{indentation}<span data-locked="true" data-editable-text="false">{attribution_text}</span>\n'
+                                
+                                insertion_point = match.start()
+                                updated_content = (
+                                    footer_content[:insertion_point] +
+                                    locked_attribution +
+                                    footer_content[insertion_point:]
+                                )
+                                insertion_made = True
+                                logger.info(f"[FOOTER ATTRIBUTION] ✓ Added attribution to bottom of {footer_path} (fallback)")
+                                break
+            
+            if insertion_made:
                 files[footer_path] = updated_content
-                logger.info(f"[FOOTER ATTRIBUTION] ✓ Added attribution to {footer_path}")
             else:
-                logger.warning(f"[FOOTER ATTRIBUTION] ⚠ Could not find 'All rights reserved' text in {footer_path}")
+                logger.warning(f"[FOOTER ATTRIBUTION] ⚠ Could not find root closing tag in {footer_path}")
         
         return files
 

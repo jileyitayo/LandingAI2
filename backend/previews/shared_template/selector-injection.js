@@ -352,8 +352,23 @@
         let element = event.target;
         if (element === overlay || element === tooltip || element === document.body) return;
 
+        // Skip locked elements - don't show overlay or tooltip
+        if (isElementLocked(element)) {
+            hideOverlay();
+            hideTooltip();
+            return;
+        }
+
         // Find the best selectable element (prioritize images)
         element = findBestSelectableElement(element);
+        
+        // If element is locked or null, don't show overlay
+        if (!element || isElementLocked(element)) {
+            hideOverlay();
+            hideTooltip();
+            return;
+        }
+        
         hoveredElement = element;
 
         createOverlay();
@@ -376,9 +391,42 @@
         hideTooltip();
     }
     
+    // Check if an element or any of its parents are locked (uneditable)
+    function isElementLocked(element) {
+        let current = element;
+        while (current && current !== document.body && current !== document.documentElement) {
+            // Check if element has data-locked="true" or data-editable-text="false"
+            if (current.hasAttribute('data-locked') && current.getAttribute('data-locked') === 'true') {
+                return true;
+            }
+            if (current.hasAttribute('data-editable-text') && current.getAttribute('data-editable-text') === 'false') {
+                return true;
+            }
+            current = current.parentElement;
+        }
+        return false;
+    }
+
     // Find the best element to select when clicking
     // Prioritizes image elements when there are overlapping elements
+    // Skips locked (uneditable) elements
     function findBestSelectableElement(clickedElement) {
+        // Check if clicked element or any parent is locked - if so, find parent that's not locked
+        if (isElementLocked(clickedElement)) {
+            let current = clickedElement.parentElement;
+            while (current && current !== document.body) {
+                if (!isElementLocked(current)) {
+                    clickedElement = current;
+                    break;
+                }
+                current = current.parentElement;
+            }
+            // If all parents are locked, return null to prevent selection
+            if (isElementLocked(clickedElement)) {
+                return null;
+            }
+        }
+
         // If clicked element is already an image with data-element, use it
         if (clickedElement.tagName.toLowerCase() === 'img' &&
             clickedElement.hasAttribute('data-element') &&
@@ -453,8 +501,18 @@
         let element = event.target;
         if (element === overlay || element === document.body) return;
 
+        // Skip locked elements - prevent selection
+        if (isElementLocked(element)) {
+            return;
+        }
+
         // Find the best selectable element (prioritize images)
         element = findBestSelectableElement(element);
+
+        // If element is locked or null, don't select it
+        if (!element || isElementLocked(element)) {
+            return;
+        }
 
         const elementData = extractElementData(element);
 

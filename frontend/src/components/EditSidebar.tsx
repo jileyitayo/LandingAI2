@@ -282,6 +282,10 @@ export default function EditSidebar({
     const elementType = selectedElement.component?.elementName || selectedElement.tagName;
     const componentName = selectedElement.component?.componentName;
     const visibleSections = getVisibleSections(selectedElement);
+    
+    // Check if element is locked (uneditable)
+    const isLocked = selectedElement.attributes?.['data-locked'] === 'true' || 
+                     selectedElement.attributes?.['data-editable-text'] === 'false';
 
     return (
       <div className="flex-1 overflow-y-auto">
@@ -316,10 +320,24 @@ export default function EditSidebar({
               <div className="truncate">{selectedElement.textContent}</div>
             </div>
           )}
+          
+          {/* Locked element warning */}
+          {isLocked && (
+            <div className="mt-3 p-3 bg-yellow-900/20 border border-yellow-700/50 rounded-lg">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-yellow-200">
+                  <div className="font-medium mb-1">🔒 This element is locked</div>
+                  <div className="text-yellow-300/80">This element cannot be edited.</div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Property Sections */}
-        <div className="divide-y divide-gray-700">
+        {/* Property Sections - Hide if locked */}
+        {!isLocked && (
+          <div className="divide-y divide-gray-700">
           {/* Image Section - Show first for image elements */}
           {visibleSections.image && renderPropertySection(
             'image',
@@ -437,6 +455,7 @@ export default function EditSidebar({
             />
           )}
         </div>
+        )}
       </div>
     );
   };

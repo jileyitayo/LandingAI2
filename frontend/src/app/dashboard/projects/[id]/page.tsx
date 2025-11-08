@@ -32,7 +32,7 @@ export default function ProjectEditorPage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   // React project state
-  const [reactActiveTab, setReactActiveTab] = useState<'code' | 'preview'>('code');
+  const [reactActiveTab, setReactActiveTab] = useState<'code' | 'preview'>('preview');
   const [reactFiles, setReactFiles] = useState<Record<string, string>>({});
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -283,6 +283,19 @@ export default function ProjectEditorPage() {
     }
   }, [project, loadReactFiles]);
 
+  // Auto-build preview when project loads and preview tab is active
+  useEffect(() => {
+    // Only build if it's a React project, preview tab is active, no preview exists yet, and not already building
+    if (
+      (project as any)?.project_type === 'react' &&
+      reactActiveTab === 'preview' &&
+      !previewUrl &&
+      !isBuilding
+    ) {
+      buildPreview();
+    }
+  }, [project, reactActiveTab, previewUrl, isBuilding, buildPreview]);
+
   // Auto-build preview when switching to preview tab
   // Also refresh preview to pick up any background rebuilds
   useEffect(() => {
@@ -308,7 +321,7 @@ export default function ProjectEditorPage() {
   const pendingSaveRef = useRef<NodeJS.Timeout | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // Ref to track previous tab to prevent infinite loop
-  const previousTabRef = useRef<'code' | 'preview'>('code');
+  const previousTabRef = useRef<'code' | 'preview'>('preview');
 
   // Apply optimistic update to preview iframe (instant feedback)
   const applyOptimisticUpdate = useCallback((selector: string, property: PropertyType | 'src' | 'href' | 'target' | 'rel', value: string | number | boolean) => {
@@ -653,7 +666,7 @@ export default function ProjectEditorPage() {
     if (!selectedElement.componentFile || !selectedElement.elementSelector) {
       // console.error('❌ Missing component file or element selector', selectedElement);
       toast.error("Update Failed", {
-        description: "Cannot update: missing component information",
+        description: "Unable to update this block: Try selecting a specific element within the block",
         duration: 3000,
       });
       return;
@@ -1107,17 +1120,6 @@ export default function ProjectEditorPage() {
             {/* Tabs */}
             <div className="flex items-center bg-gray-800 border-b border-gray-700">
               <button
-                onClick={() => setReactActiveTab('code')}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                  reactActiveTab === 'code'
-                    ? 'border-blue-500 text-white bg-gray-900'
-                    : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                <Code className="w-4 h-4" />
-                <span className="font-medium">React Code</span>
-              </button>
-              <button
                 onClick={() => setReactActiveTab('preview')}
                 className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
                   reactActiveTab === 'preview'
@@ -1127,6 +1129,17 @@ export default function ProjectEditorPage() {
               >
                 <Eye className="w-4 h-4" />
                 <span className="font-medium">Preview</span>
+              </button>
+              <button
+                onClick={() => setReactActiveTab('code')}
+                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                  reactActiveTab === 'code'
+                    ? 'border-blue-500 text-white bg-gray-900'
+                    : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                <Code className="w-4 h-4" />
+                <span className="font-medium">Code Files</span>
               </button>
             </div>
 
