@@ -350,14 +350,11 @@ MIT
         # Path to the UI components template directory
         # more permanent is to read from Database
         template_ui_path = Path("templates/src/components/ui")
-
-        allowed_components = {"button", "card", "input", "textarea", "label", "select", "dialog", "badge", "alert", "avatar", "separator", "switch", "progress", "skeleton", "accordion", "tabs", "tooltip", "popover", "dropdown-menu", "toggle", "radio-group", "table", "sonner"}
         
         # Read all UI component files from the template directory
         if template_ui_path.exists():
             for component_file in template_ui_path.glob("*.tsx"):
                 try:
-                  if component_file.name.split(".")[0].lower() in allowed_components:
                     with open(component_file, 'r', encoding='utf-8') as f:
                         content = f.read()
                         # Store with the correct path structure for the generated project
