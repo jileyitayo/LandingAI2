@@ -311,7 +311,7 @@ export default function ProjectEditorPage() {
   const previousTabRef = useRef<'code' | 'preview'>('code');
 
   // Apply optimistic update to preview iframe (instant feedback)
-  const applyOptimisticUpdate = useCallback((selector: string, property: PropertyType | 'src', value: string | number | boolean) => {
+  const applyOptimisticUpdate = useCallback((selector: string, property: PropertyType | 'src' | 'href' | 'target' | 'rel', value: string | number | boolean) => {
     // console.log('🚀 Applying optimistic update:', { selector, property, value });
     
     // Find the iframe (it's in the ReactPreview component)
@@ -467,9 +467,15 @@ export default function ProjectEditorPage() {
             delete pendingImagePropertiesRef.current.imageAlt;
           }
         } else {
-          // Non-image property - save as single property
+          // Non-image property - map frontend property names to backend property names
+          // linkHref -> href, linkTarget -> target, linkRel -> rel for backend
+          const backendProperty = property === 'linkHref' ? 'href'
+            : property === 'linkTarget' ? 'target'
+            : property === 'linkRel' ? 'rel'
+            : property;
+          
           propertiesToSave = [{
-            property: property,
+            property: backendProperty,
             value,
             oldValue: undefined,
           }];
@@ -655,8 +661,17 @@ export default function ProjectEditorPage() {
 
     // Map frontend property names to backend/dom property names
     // imageUrl -> src for backend and DOM updates
-    const backendProperty = property === 'imageUrl' ? 'src' : property;
-    const previewProperty = property === 'imageUrl' ? 'src' : property;
+    // linkHref -> href, linkTarget -> target, linkRel -> rel for backend and DOM updates
+    const backendProperty = property === 'imageUrl' ? 'src' 
+      : property === 'linkHref' ? 'href'
+      : property === 'linkTarget' ? 'target'
+      : property === 'linkRel' ? 'rel'
+      : property;
+    const previewProperty = property === 'imageUrl' ? 'src' 
+      : property === 'linkHref' ? 'href'
+      : property === 'linkTarget' ? 'target'
+      : property === 'linkRel' ? 'rel'
+      : property;
 
     // console.log('✅ Valid element, proceeding with update:', { 
     //   property, 
@@ -697,6 +712,22 @@ export default function ProjectEditorPage() {
       // Handle imageAlt property - update alt attribute
       if (property === 'imageAlt') {
         newAttributes.alt = valueStr;
+        return { ...prev, attributes: newAttributes };
+      }
+      
+      // Handle link properties - update href and target attributes
+      if (property === 'linkHref') {
+        newAttributes.href = valueStr;
+        return { ...prev, attributes: newAttributes };
+      }
+      
+      if (property === 'linkTarget') {
+        newAttributes.target = valueStr;
+        return { ...prev, attributes: newAttributes };
+      }
+      
+      if (property === 'linkRel') {
+        newAttributes.rel = valueStr;
         return { ...prev, attributes: newAttributes };
       }
       
@@ -1067,6 +1098,7 @@ export default function ProjectEditorPage() {
               }}
               onPropertyChange={handlePropertyChange}
               isAutoSaving={isAutoSaving}
+              projectFiles={reactFiles}
             />
           </div>
 

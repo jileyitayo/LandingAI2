@@ -16,6 +16,8 @@ interface EditSidebarProps {
   onClearSelection: () => void;
   onPropertyChange: (property: PropertyType, value: string | number | boolean) => void;
   isAutoSaving: boolean;
+  // Optional: Project files for route suggestions in LinkEditor
+  projectFiles?: Record<string, string>;
 }
 
 type PropertySection = 'content' | 'colors' | 'typography' | 'link' | 'image';
@@ -26,6 +28,7 @@ export default function EditSidebar({
   onClearSelection,
   onPropertyChange,
   isAutoSaving,
+  projectFiles,
 }: EditSidebarProps) {
   const [expandedSections, setExpandedSections] = useState<Set<PropertySection>>(
     new Set(['content', 'colors', 'typography'])
@@ -337,10 +340,15 @@ export default function EditSidebar({
             'link',
             <LinkIcon className="w-4 h-4 text-blue-400" />,
             'Link',
-            <div className="text-sm text-gray-400">
-              <p className="mb-2">Link properties (href, target)</p>
-              <p className="text-xs text-gray-500">Property editors are being finalized...</p>
-            </div>
+            <LinkEditor
+              href={selectedElement?.attributes?.href || ''}
+              target={selectedElement?.attributes?.target || '_self'}
+              rel={selectedElement?.attributes?.rel || ''}
+              onHrefChange={(value) => handlePropertyChange('linkHref', value)}
+              onTargetChange={(value) => handlePropertyChange('linkTarget', value)}
+              onRelChange={(value) => handlePropertyChange('linkRel', value)}
+              projectFiles={projectFiles}
+            />
           )}
 
           {/* Content Section */}

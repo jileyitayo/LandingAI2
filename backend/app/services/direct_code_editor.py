@@ -179,6 +179,10 @@ class DirectCodeEditor:
                             return (False, None, None, result)
                     elif property_name == 'href':
                         result = self._edit_attribute(new_code, element_selector, 'href', str(property_value), files, component_tracker)
+                    elif property_name == 'target':
+                        result = self._edit_attribute(new_code, element_selector, 'target', str(property_value), files, component_tracker)
+                    elif property_name == 'rel':
+                        result = self._edit_attribute(new_code, element_selector, 'rel', str(property_value), files, component_tracker)
                     elif property_name == 'alt':
                         result = self._edit_attribute(new_code, element_selector, 'alt', str(property_value), files, component_tracker)
                         # Check if result is array prop edit metadata

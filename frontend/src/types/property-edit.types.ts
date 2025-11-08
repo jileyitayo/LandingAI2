@@ -18,6 +18,7 @@ export type PropertyType =
   | 'imageAlt'
   | 'linkHref'
   | 'linkTarget'
+  | 'linkRel'
   | 'visibility'
   | 'customClass';
 
