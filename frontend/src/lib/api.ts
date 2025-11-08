@@ -20,6 +20,25 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+
+  /**
+   * Extract user-friendly error message from validation errors
+   * Handles FastAPI validation error format
+   */
+  getValidationMessage(): string {
+    // Check if detail.detail is an array (FastAPI validation errors)
+    const validationErrors = this.detail?.detail || this.detail;
+
+    if (Array.isArray(validationErrors)) {
+      // Extract the first validation error message
+      const firstError = validationErrors[0];
+      if (firstError && firstError.msg) {
+        return firstError.msg;
+      }
+    }
+
+    return this.message;
+  }
 }
 
 /**

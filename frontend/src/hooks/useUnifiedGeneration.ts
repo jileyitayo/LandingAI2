@@ -67,11 +67,13 @@ export const useUnifiedGeneration = () => {
           });
           setError(message);
         } else {
+          // Extract validation error message if available
+          const errorMessage = err.getValidationMessage();
           toast.error("Generation Failed", {
-            description: err.message,
+            description: errorMessage,
             duration: 5000,
           });
-          setError(err.message);
+          setError(errorMessage);
         }
       } else {
         const errorMessage = err instanceof Error ? err.message : 'Generation failed';

@@ -84,7 +84,7 @@ export default function DashboardPage() {
 
   const handleGenerate = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!prompt.trim()) return;
+    if (prompt.trim().length < 20) return;
 
     const result = await generateWebsite(
       prompt.trim(),
@@ -102,7 +102,7 @@ export default function DashboardPage() {
       // if (result.status === 'completed') {
       //   router.push(`/dashboard/projects/${result.project_id}`);
       // }
-      
+
     }
   };
 
@@ -173,7 +173,7 @@ export default function DashboardPage() {
               />
               <button
                 onClick={handleGenerate}
-                disabled={!prompt.trim() || isGenerating}
+                disabled={prompt.trim().length < 20 || isGenerating}
                 className="mr-3 px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200 whitespace-nowrap"
               >
                 {isGenerating ? (
@@ -205,8 +205,10 @@ export default function DashboardPage() {
                 )}
               </button>
             </div>
-            <div className="absolute -bottom-6 right-0 text-xs text-gray-400">
-              {prompt.length}/500
+            <div className="absolute -bottom-6 right-0 text-xs">
+              <span className={prompt.trim().length < 20 ? "text-gray-500" : "text-gray-400"}>
+                {prompt.length}/500 {prompt.trim().length < 20 && `(min. 20 characters)`}
+              </span>
             </div>
           </div>
         </div>
