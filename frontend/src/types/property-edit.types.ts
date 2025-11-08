@@ -63,6 +63,11 @@ export interface PropertyEditResponse {
   preview_url?: string;
   new_code?: string;
   old_code?: string;
+  prop_edit_info?: {
+    prop_name: string;
+    source_file: string;
+    new_value: string | number | boolean;
+  };
 }
 
 export interface DesignTokens {

@@ -176,6 +176,7 @@ class PropertyEditResponse(BaseModel):
     preview_url: Optional[str] = None
     new_code: Optional[str] = None
     old_code: Optional[str] = None
+    prop_edit_info: Optional[Dict[str, Any]] = None  # Info about prop edits (prop_name, source_file)
 
 
 class ChatMessageRequest(BaseModel):
@@ -1822,6 +1823,7 @@ async def _handle_property_edit(
         )
 
         # Check if this is a prop edit that needs parent component update
+        prop_edit_info_response = None  # Initialize here so it's accessible later
         if prop_edit_metadata and prop_edit_metadata.get('type') == 'prop_edit':
             logger.info(f"[PROPERTY EDIT] Prop edit detected - updating prop '{prop_edit_metadata['prop_name']}' at source")
 
@@ -1843,6 +1845,7 @@ async def _handle_property_edit(
 
                 # Save all updated files
                 files_updated = []
+                prop_source_file = None
                 for file_path, file_content in updated_files.items():
                     if file_content != project_files.get(file_path):
                         logger.info(f"[PROPERTY EDIT] Saving updated file: {file_path}")
@@ -1853,12 +1856,22 @@ async def _handle_property_edit(
                             overwrite=False
                         )
                         files_updated.append(file_path)
+                        # The parent file (where prop is defined) is the one that's not the component file
+                        if file_path != request.component_file:
+                            prop_source_file = file_path
 
                 # Use updated files for preview
                 project_files = updated_files
                 modified_code = project_files[request.component_file]
 
                 logger.info(f"[PROPERTY EDIT] Updated {len(files_updated)} files: {files_updated}")
+                
+                # Store prop edit info for response
+                prop_edit_info_response = {
+                    'prop_name': prop_edit_metadata['prop_name'],
+                    'source_file': prop_source_file or request.component_file,
+                    'new_value': prop_edit_metadata['new_value']
+                }
             else:
                 # Fallback: Couldn't update at source, hardcode the value
                 logger.warning(f"[PROPERTY EDIT] Could not update prop at source: {prop_error}")
@@ -1989,6 +2002,9 @@ async def _handle_property_edit(
         
         logger.info(f"[PROPERTY EDIT] Property edit completed successfully")
         
+        # Prepare prop_edit_info if this was a prop edit
+        # prop_edit_info_response is already set above if it was a prop edit
+        
         return PropertyEditResponse(
             success=True,
             message=f"Successfully updated {len(request.properties)} properties",
@@ -1996,7 +2012,8 @@ async def _handle_property_edit(
             changes_applied=request.properties,
             preview_url=preview_url,
             new_code=modified_code,
-            old_code=original_code
+            old_code=original_code,
+            prop_edit_info=prop_edit_info_response
         )
         
     except HTTPException as e:

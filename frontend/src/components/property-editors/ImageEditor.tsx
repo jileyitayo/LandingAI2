@@ -57,6 +57,7 @@ export default function ImageEditor({
   };
 
   // Debounced URL change for real-time updates
+  // Reduced debounce delay for faster real-time preview updates
   const debouncedUrlChange = useCallback((newUrl: string) => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -67,11 +68,14 @@ export default function ImageEditor({
     
     if (!isValid) return;
     
-    debounceTimerRef.current = setTimeout(() => {
-      if (onImageUrlChange && newUrl !== imageUrl) {
-        onImageUrlChange(newUrl);
-      }
-    }, 1000); // Wait 1 second after last keystroke
+    // Apply immediately for real-time preview updates (optimistic update handles instant feedback)
+    // Still debounce the backend save, but trigger the change callback immediately
+    if (onImageUrlChange && newUrl !== imageUrl) {
+      onImageUrlChange(newUrl);
+    }
+    
+    // No need for debounce here since optimistic updates provide instant feedback
+    // The backend save is already debounced in handlePropertyChange
   }, [imageUrl, onImageUrlChange]);
 
   // Debounced alt text change

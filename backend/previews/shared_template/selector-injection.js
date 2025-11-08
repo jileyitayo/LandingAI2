@@ -598,8 +598,8 @@
             if (property === 'text') {
                 // Update text content
                 element.textContent = value;
-            } else if (property === 'src') {
-                // Update image source
+            } else if (property === 'src' || property === 'imageUrl') {
+                // Update image source (support both 'src' and 'imageUrl' property names)
                 if (element.tagName === 'IMG') {
                     element.src = value;
                 }

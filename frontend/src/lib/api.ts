@@ -704,6 +704,11 @@ export const api = {
         preview_url?: string;
         new_code?: string;
         old_code?: string;
+        prop_edit_info?: {
+          prop_name: string;
+          source_file: string;
+          new_value: string | number | boolean;
+        };
       }>(`/api/v1/edit/project/${projectId}/properties`, {
         method: "POST",
         body: JSON.stringify(data),
