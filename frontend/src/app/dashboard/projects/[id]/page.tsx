@@ -11,6 +11,7 @@ import FileTree from '@/components/FileTree';
 import CodeViewer from '@/components/CodeViewer';
 import ReactPreview from '@/components/ReactPreview';
 import EditSidebar from '@/components/EditSidebar';
+import FeedbackModal from '@/components/FeedbackModal';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { Project } from '@/types/project.types';
 import { api, ApiError } from '@/lib/api';
@@ -30,6 +31,7 @@ export default function ProjectEditorPage() {
   const [deploymentUrl, setDeploymentUrl] = useState<string | null>(null);
   const [isPublished, setIsPublished] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
 
   // React project state
   const [reactActiveTab, setReactActiveTab] = useState<'code' | 'preview'>('preview');
@@ -1071,6 +1073,26 @@ export default function ProjectEditorPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setFeedbackModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              title="Share Feedback"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
+                />
+              </svg>
+              <span className="hidden sm:inline">Feedback</span>
+            </button>
             <Link
               href={`/dashboard/projects/${projectId}/settings`}
               className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
@@ -1097,6 +1119,13 @@ export default function ProjectEditorPage() {
             />
           </div>
         </header>
+
+        {/* Feedback Modal */}
+        <FeedbackModal
+          isOpen={feedbackModalOpen}
+          onClose={() => setFeedbackModalOpen(false)}
+          projectId={projectId}
+        />
 
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
@@ -1214,6 +1243,26 @@ export default function ProjectEditorPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setFeedbackModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+            title="Share Feedback"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth="1.5"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
+              />
+            </svg>
+            <span className="hidden sm:inline">Feedback</span>
+          </button>
           <Link
             href={`/dashboard/projects/${projectId}/settings`}
             className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
@@ -1255,6 +1304,13 @@ export default function ProjectEditorPage() {
           />
         </div>
       </header>
+
+      {/* Feedback Modal */}
+      <FeedbackModal
+        isOpen={feedbackModalOpen}
+        onClose={() => setFeedbackModalOpen(false)}
+        projectId={projectId}
+      />
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">

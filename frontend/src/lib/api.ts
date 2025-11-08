@@ -808,6 +808,82 @@ export const api = {
         last_deployed_at: string | null;
       }>(`/api/v1/projects/${projectId}/deployment-status`),
   },
+
+  /**
+   * Feedback endpoints
+   */
+  feedback: {
+    /**
+     * Submit user feedback or feature request
+     * Requires: Authorization header with valid access token
+     */
+    submit: (data: {
+      rating?: number;
+      message: string;
+      category?: 'general' | 'bug' | 'feature' | 'ui/ux' | 'other';
+      action?: 'create_project' | 'edit_project' | 'generate_website' | 'edit_component' |
+               'edit_properties' | 'publish_deploy' | 'download_project' | 'manage_settings' |
+               'upload_avatar' | 'view_analytics' | 'duplicate_project' | 'delete_project' |
+               'code_editing' | 'preview_project' | 'other';
+      project_id?: string;
+    }) =>
+      apiRequest<{
+        id: string;
+        message: string;
+      }>("/api/v1/feedback", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    /**
+     * Get current user's feedback history
+     * Requires: Authorization header with valid access token
+     */
+    list: (params?: { limit?: number; offset?: number }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.limit) queryParams.append("limit", params.limit.toString());
+      if (params?.offset) queryParams.append("offset", params.offset.toString());
+
+      const queryString = queryParams.toString();
+      const endpoint = `/api/v1/feedback${queryString ? `?${queryString}` : ''}`;
+
+      return apiRequest<{
+        feedback: Array<{
+          id: string;
+          user_id: string;
+          rating: number | null;
+          message: string;
+          category: string;
+          action: string | null;
+          project_id: string | null;
+          is_resolved: boolean;
+          created_at: string;
+          updated_at: string;
+        }>;
+        total: number;
+        limit: number;
+        offset: number;
+      }>(endpoint);
+    },
+
+    /**
+     * Get a specific feedback by ID
+     * Requires: Authorization header with valid access token
+     */
+    get: (feedbackId: string) =>
+      apiRequest<{
+        id: string;
+        user_id: string;
+        rating: number | null;
+        message: string;
+        category: string;
+        action: string | null;
+        project_id: string | null;
+        is_resolved: boolean;
+        created_at: string;
+        updated_at: string;
+      }>(`/api/v1/feedback/${feedbackId}`),
+  },
 };
 
 /**
