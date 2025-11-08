@@ -70,7 +70,7 @@ function ReactPreview({
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'SELECTOR_READY') {
         setSelectorReady(true);
-        console.log('Selector script loaded in iframe');
+        // console.log('Selector script loaded in iframe');
         // Auto-enable selector when it's ready
         if (onSelectorEnabledChange && !selectorEnabled) {
           onSelectorEnabledChange(true);
@@ -79,7 +79,7 @@ function ReactPreview({
         if (onElementSelect) {
           onElementSelect(event.data.data);
         }
-        console.log('Element selected:', event.data.data);
+        // console.log('Element selected:', event.data.data);
       } else if (event.data.type === 'ELEMENT_RIGHT_CLICKED') {
         if (onElementSelect) {
           onElementSelect(event.data.data);
@@ -113,7 +113,7 @@ function ReactPreview({
 
     const reEnableSelector = () => {
       if (selectorEnabled && selectorReady && iframe.contentWindow) {
-        console.log('Re-enabling selector');
+        // console.log('Re-enabling selector');
         iframe.contentWindow.postMessage({
           type: 'ENABLE_SELECTOR',
         }, '*');
@@ -121,12 +121,12 @@ function ReactPreview({
     };
 
     const handleIframeFocus = () => {
-      console.log('Iframe focused');
+      // console.log('Iframe focused');
       reEnableSelector();
     };
 
     const handleMouseEnter = () => {
-      console.log('Mouse entered preview area');
+      // console.log('Mouse entered preview area');
       reEnableSelector();
     };
 
@@ -138,7 +138,7 @@ function ReactPreview({
     
     // Also handle when the window regains focus (user comes back to tab)
     const handleWindowFocus = () => {
-      console.log('Window focused');
+      // console.log('Window focused');
       reEnableSelector();
     };
     window.addEventListener('focus', handleWindowFocus);

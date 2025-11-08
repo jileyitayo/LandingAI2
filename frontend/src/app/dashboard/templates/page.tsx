@@ -102,10 +102,10 @@ export default function BrowseTemplatesPage() {
 
   const handleTemplateSelect = (templateId: string) => {
     if (templateId === "blank") {
-      console.log("Start blank template");
+      // console.log("Start blank template");
       return;
     }
-    console.log("Selected template:", templateId);
+    // console.log("Selected template:", templateId);
   };
 
   const getInitials = () => {

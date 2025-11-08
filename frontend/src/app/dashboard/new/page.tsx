@@ -116,11 +116,11 @@ export default function DashboardPage() {
   const handleTemplateSelect = (templateId: string) => {
     if (templateId === "blank") {
       // Handle blank template
-      console.log("Start blank template");
+      // console.log("Start blank template");
       return;
     }
     // Navigate to template editor or preview
-    console.log("Selected template:", templateId);
+    // console.log("Selected template:", templateId);
   };
 
   if (loading) {

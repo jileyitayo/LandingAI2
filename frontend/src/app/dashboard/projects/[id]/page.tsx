@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Save, Download, Eye, Code, FileText, Settings } from 'lucide-react';
+import { ArrowLeft, Save, Download, Eye, Code, FileText, Settings, AlertCircle, RefreshCw, Home } from 'lucide-react';
 import WebsitePreview from '@/components/WebsitePreview';
 import PublishButton from '@/components/PublishButton';
 import PublishModal from '@/components/PublishModal';
@@ -16,17 +16,20 @@ import { Project } from '@/types/project.types';
 import { api, ApiError } from '@/lib/api';
 import { SelectedElement } from '@/types/chat.types';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import { PropertyType, PageInfo } from '@/types/property-edit.types';
+import { PropertyType, PageInfo, PropertyEditResponse } from '@/types/property-edit.types';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
 
 export default function ProjectEditorPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
+  const supabase = createClient();
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [deploymentUrl, setDeploymentUrl] = useState<string | null>(null);
   const [isPublished, setIsPublished] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   // React project state
   const [reactActiveTab, setReactActiveTab] = useState<'code' | 'preview'>('code');
@@ -48,6 +51,38 @@ export default function ProjectEditorPage() {
     componentCount: 0,
     elementCount: 0,
   });
+
+  // Check authentication on mount - redirect to login if not authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error('Auth check error:', error);
+          router.push('/auth/login');
+          return;
+        }
+
+        if (!session) {
+          // No session found, redirect to login
+          router.push('/auth/login');
+          return;
+        }
+
+        // User is authenticated, continue loading
+        setIsCheckingAuth(false);
+      } catch (error) {
+        console.error('Failed to check authentication:', error);
+        router.push('/auth/login');
+      }
+    };
+
+    checkAuth();
+  }, [supabase, router]);
 
   useKeyboardShortcuts({
     onToggleSelector: () => {
@@ -85,8 +120,56 @@ export default function ProjectEditorPage() {
         published: response.published ?? undefined,
       };
     } catch (error) {
-      // console.error('Failed to load project:', error);
-      throw error;
+      // Handle ApiError with status codes for better error messages
+      if (error instanceof ApiError) {
+        // Extract error detail for more context
+        const errorDetail = error.detail?.detail || error.detail?.message || error.message || '';
+        const detailLower = typeof errorDetail === 'string' ? errorDetail.toLowerCase() : '';
+        
+        // Check if 500 error is related to project access issues
+        if (error.status === 500) {
+          // Check if the error detail suggests project access issues
+          if (
+            detailLower.includes('project') ||
+            detailLower.includes('not found') ||
+            detailLower.includes('doesn\'t exist') ||
+            detailLower.includes('access') ||
+            detailLower.includes('permission')
+          ) {
+            // Likely a project access issue, treat as project not found or access denied
+            if (detailLower.includes('permission') || detailLower.includes('access') || detailLower.includes('forbidden')) {
+              throw new Error(`403: You don't have permission to access this project`);
+            } else {
+              throw new Error(`404: Project not found`);
+            }
+          }
+        }
+        
+        // Preserve status code in error message for getErrorMessage to detect
+        const errorMessage = error.status === 404 
+          ? `404: Project not found`
+          : error.status === 403
+          ? `403: You don't have permission to access this project`
+          : error.status === 401
+          ? `401: Authentication required`
+          : error.status === 500
+          ? `500: ${errorDetail || error.message || 'Internal server error'}`
+          : `HTTP ${error.status}: ${error.message || 'Failed to load project'}`;
+        throw new Error(errorMessage);
+      }
+      
+      // For network errors or other errors, preserve the original error message
+      // but check if it might contain status information
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // If it's a generic "Failed to fetch" or network error, we'll let getErrorMessage handle it
+      // But if it contains status codes, preserve them
+      if (errorMessage.includes('404') || errorMessage.includes('403') || errorMessage.includes('401')) {
+        throw new Error(errorMessage);
+      }
+      
+      // Re-throw with original message
+      throw new Error(errorMessage || 'Failed to load project');
     }
   }, []);
 
@@ -228,7 +311,7 @@ export default function ProjectEditorPage() {
   const previousTabRef = useRef<'code' | 'preview'>('code');
 
   // Apply optimistic update to preview iframe (instant feedback)
-  const applyOptimisticUpdate = useCallback((selector: string, property: PropertyType, value: string | number | boolean) => {
+  const applyOptimisticUpdate = useCallback((selector: string, property: PropertyType | 'src', value: string | number | boolean) => {
     // console.log('🚀 Applying optimistic update:', { selector, property, value });
     
     // Find the iframe (it's in the ReactPreview component)
@@ -279,11 +362,14 @@ export default function ProjectEditorPage() {
       setIsAutoSaving(true);
 
       try {
+        // Map imageUrl to src for backend
+        const backendProperty = property === 'imageUrl' ? 'src' : property;
+        
         const response = await api.generation.editProperties(projectId, {
           element_selector: element.elementSelector || '',
           component_file: element.componentFile || '',
           properties: [{
-            property,
+            property: backendProperty,
             value,
             oldValue: undefined,
           }],
@@ -310,6 +396,45 @@ export default function ProjectEditorPage() {
               [element.componentFile!]: response.new_code!
             }));
             // console.log('Code view updated instantly');
+          }
+          
+          // Update selectedElement state to reflect the new attribute value
+          // This ensures the input field shows the current value after save
+          if (property === 'imageUrl') {
+            setSelectedElement(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                attributes: {
+                  ...prev.attributes,
+                  src: String(value)
+                }
+              };
+            });
+          } else if (property === 'imageAlt') {
+            setSelectedElement(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                attributes: {
+                  ...prev.attributes,
+                  alt: String(value)
+                }
+              };
+            });
+          }
+          
+          // Check if this was a prop edit - if so, navigate to the prop definition
+          if (response.prop_edit_info && response.prop_edit_info.prop_name) {
+            const propFile = response.prop_edit_info.source_file;
+            if (propFile && propFile !== element.componentFile) {
+              // Navigate to the file where the prop is defined
+              setSelectedFile(propFile);
+              toast.info("Prop Updated", {
+                description: `Updated ${response.prop_edit_info.prop_name} in ${propFile}`,
+                duration: 3000,
+              });
+            }
           }
           
           // DON'T reload the preview! The optimistic update already applied the changes.
@@ -379,16 +504,23 @@ export default function ProjectEditorPage() {
       return;
     }
 
+    // Map frontend property names to backend/dom property names
+    // imageUrl -> src for backend and DOM updates
+    const backendProperty = property === 'imageUrl' ? 'src' : property;
+    const previewProperty = property === 'imageUrl' ? 'src' : property;
+
     // console.log('✅ Valid element, proceeding with update:', { 
     //   property, 
+    //   backendProperty,
     //   value,
     //   selector: selectedElement.elementSelector 
     // });
     
     // Step 1: Apply optimistic update to preview IMMEDIATELY (< 50ms)
+    // Use previewProperty (which maps imageUrl -> src) for the iframe update
     const optimisticSuccess = applyOptimisticUpdate(
       selectedElement.elementSelector,
-      property,
+      previewProperty,
       value
     );
     
@@ -404,7 +536,20 @@ export default function ProjectEditorPage() {
       
       const newClassList = [...prev.classList];
       const newInlineStyles = { ...prev.inlineStyles };
+      const newAttributes = { ...prev.attributes };
       const valueStr = String(value);
+      
+      // Handle imageUrl property - update src attribute
+      if (property === 'imageUrl') {
+        newAttributes.src = valueStr;
+        return { ...prev, attributes: newAttributes };
+      }
+      
+      // Handle imageAlt property - update alt attribute
+      if (property === 'imageAlt') {
+        newAttributes.alt = valueStr;
+        return { ...prev, attributes: newAttributes };
+      }
       
       // Handle color properties
       if (property === 'color' || property === 'textColor') {
@@ -489,6 +634,155 @@ export default function ProjectEditorPage() {
     
   }, [selectedElement, applyOptimisticUpdate, debouncedBackendSave]);
 
+  // Helper function to get user-friendly error message
+  // Note: This is a regular function, not a hook, so it can be defined here
+  const getErrorMessage = (error: string | null): { title: string; message: string; canRetry: boolean } => {
+    if (!error) {
+      return {
+        title: 'Something went wrong',
+        message: 'An unexpected error occurred. Please try again.',
+        canRetry: true,
+      };
+    }
+
+    const errorLower = error.toLowerCase();
+
+    // 404 errors - Project not found (check FIRST before generic errors)
+    // Check for explicit status codes and common 404 messages
+    if (
+      errorLower.includes('404') || 
+      errorLower.includes('project not found') || 
+      (errorLower.includes('not found') && !errorLower.includes('failed to fetch')) ||
+      errorLower.includes('doesn\'t exist') ||
+      errorLower.includes('does not exist') ||
+      errorLower.match(/\b404\b/) // Exact word match for 404
+    ) {
+      return {
+        title: 'Project Not Found',
+        message: 'The project you\'re looking for doesn\'t exist or may have been deleted. Please check the project ID or return to your dashboard.',
+        canRetry: false,
+      };
+    }
+
+    // 403 errors - Access denied / Permission denied (check BEFORE network errors)
+    if (
+      errorLower.includes('403') || 
+      errorLower.includes('forbidden') || 
+      errorLower.includes('permission') ||
+      errorLower.includes('don\'t have permission') ||
+      errorLower.includes('access this project') ||
+      errorLower.includes('access denied') ||
+      errorLower.match(/\b403\b/) // Exact word match for 403
+    ) {
+      return {
+        title: 'Access Denied',
+        message: 'You don\'t have permission to access this project. This project may belong to another user, or you may need to sign in with a different account.',
+        canRetry: false,
+      };
+    }
+
+    // 401 errors - Authentication required
+    if (
+      errorLower.includes('401') || 
+      errorLower.includes('authentication required') || 
+      errorLower.includes('unauthorized') ||
+      errorLower.match(/\b401\b/) // Exact word match for 401
+    ) {
+      return {
+        title: 'Authentication Required',
+        message: 'Please sign in to access this project.',
+        canRetry: false,
+      };
+    }
+
+    // Network errors (only if NOT a status code error)
+    // Check for network-related errors that aren't HTTP status codes
+    if (
+      (errorLower.includes('failed to fetch') || 
+       errorLower.includes('network') || 
+       errorLower.includes('fetch')) &&
+      !errorLower.match(/\b(404|403|401|500)\b/) // Exclude if contains status codes
+    ) {
+      return {
+        title: 'Connection Problem',
+        message: 'Unable to connect to the server. Please check your internet connection and try again.',
+        canRetry: true,
+      };
+    }
+
+    // 500 errors - Check if it's related to project access issues
+    if (errorLower.includes('500') || errorLower.includes('server error') || errorLower.includes('internal error')) {
+      // Check if the error message suggests project access issues
+      const isProjectAccessError = 
+        errorLower.includes('project') ||
+        errorLower.includes('not found') ||
+        errorLower.includes('doesn\'t exist') ||
+        errorLower.includes('access') ||
+        errorLower.includes('permission') ||
+        errorLower.includes('can\'t access') ||
+        errorLower.includes('cannot access');
+      
+      if (isProjectAccessError) {
+        // Determine if it's a permission issue or not found issue
+        if (errorLower.includes('permission') || errorLower.includes('access') || errorLower.includes('forbidden')) {
+          return {
+            title: 'Access Denied',
+            message: 'You don\'t have permission to access this project. This project may belong to another user, or you may need to sign in with a different account.',
+            canRetry: false,
+          };
+        } else {
+          return {
+            title: 'Project Not Found',
+            message: 'The project you\'re looking for doesn\'t exist or may have been deleted. Please check the project ID or return to your dashboard.',
+            canRetry: false,
+          };
+        }
+      }
+      
+      // Generic 500 error
+      return {
+        title: 'Server Error',
+        message: 'Our servers encountered an issue. We\'re working on it. Please try again in a moment.',
+        canRetry: true,
+      };
+    }
+
+    // Timeout errors
+    if (errorLower.includes('timeout') || errorLower.includes('timed out')) {
+      return {
+        title: 'Request Timeout',
+        message: 'The request took too long to complete. Please try again.',
+        canRetry: true,
+      };
+    }
+
+    // Default - show original error but with better formatting
+    return {
+      title: 'Error Loading Project',
+      message: error,
+      canRetry: true,
+    };
+  };
+
+  // Retry loading the project
+  // IMPORTANT: This hook must be called before any conditional returns
+  const handleRetry = useCallback(() => {
+    window.location.reload();
+  }, []);
+
+  // Conditional returns must come AFTER all hooks
+  // Show loading while checking authentication
+  if (isCheckingAuth) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="inline-block w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -501,16 +795,57 @@ export default function ProjectEditorPage() {
   }
 
   if (error) {
+    const errorInfo = getErrorMessage(error);
+    
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <p className="text-red-600 text-lg mb-4">{error}</p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Back to Dashboard
-          </button>
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="max-w-md w-full mx-4">
+          <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+            {/* Error Icon */}
+            <div className="flex justify-center mb-6">
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                errorInfo.title === 'Project Not Found' || errorInfo.title === 'Access Denied' || errorInfo.title === 'Authentication Required'
+                  ? 'bg-orange-100'
+                  : 'bg-red-100'
+              }`}>
+                <AlertCircle className={`w-8 h-8 ${
+                  errorInfo.title === 'Project Not Found' || errorInfo.title === 'Access Denied' || errorInfo.title === 'Authentication Required'
+                    ? 'text-orange-600'
+                    : 'text-red-600'
+                }`} />
+              </div>
+            </div>
+
+            {/* Error Title */}
+            <h2 className="text-2xl font-semibold text-gray-900 mb-3">
+              {errorInfo.title}
+            </h2>
+
+            {/* Error Message */}
+            <p className="text-gray-600 mb-8 leading-relaxed">
+              {errorInfo.message}
+            </p>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              {errorInfo.canRetry && (
+                <button
+                  onClick={handleRetry}
+                  className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  <RefreshCw className="w-5 h-5" />
+                  Try Again
+                </button>
+              )}
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+              >
+                <Home className="w-5 h-5" />
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
