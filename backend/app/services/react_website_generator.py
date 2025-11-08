@@ -436,6 +436,9 @@ class ReactWebsiteGenerator:
         if not errors and not warnings:
             logger.info("[REACT GEN] ✓ All validation checks passed!")
         
+        # Post-process Footer components to add brand attribution
+        files = self._add_footer_attribution(files)
+        
         return files
     
     def _validate_and_fix_files(
@@ -801,6 +804,69 @@ class ReactWebsiteGenerator:
         except Exception as e:
             logger.error(f"[UI COMPONENT] Error loading UI components reference: {str(e)}")
             return "⚠️ Error loading UI components reference"
+
+    def _add_footer_attribution(self, files: Dict[str, str]) -> Dict[str, str]:
+        """
+        Post-process Footer components to add brand attribution after "All rights reserved"
+        
+        This function finds all Footer.tsx files and adds "Made with ❤️ from {brand_name}"
+        after any occurrence of "All rights reserved" text.
+        
+        Args:
+            files: Dictionary of file paths to file contents
+            
+        Returns:
+            Updated files dictionary with attribution added to Footer components
+        """
+        brand_name = settings.app_brand_name
+        attribution_text = f"Made with 💜 from {brand_name}"
+        
+        # Find all Footer component files
+        footer_files = [
+            path for path in files.keys() 
+            if path.endswith("Footer.tsx") or path.endswith("footer.tsx")
+        ]
+        
+        if not footer_files:
+            logger.info("[FOOTER ATTRIBUTION] No Footer components found to process")
+            return files
+        
+        logger.info(f"[FOOTER ATTRIBUTION] Processing {len(footer_files)} Footer component(s)...")
+        
+        for footer_path in footer_files:
+            footer_content = files[footer_path]
+            
+            # Pattern to match "All rights reserved" (case-insensitive, with optional punctuation)
+            # This handles variations like:
+            # - "All rights reserved."
+            # - "All rights reserved"
+            # - "all rights reserved"
+            # - "All Rights Reserved"
+            # The pattern matches "All rights reserved" followed by optional period and any whitespace
+            pattern = r'(All\s+rights\s+reserved\.?\s*)'
+            
+            # Check if attribution already exists to avoid duplicates
+            if attribution_text in footer_content:
+                logger.info(f"[FOOTER ATTRIBUTION] Attribution already exists in {footer_path}, skipping")
+                continue
+            
+            # Find and replace "All rights reserved" with "All rights reserved. Made with ❤️ from {brand_name}"
+            # Using re.IGNORECASE to handle case variations
+            # Using MULTILINE flag to handle text that might span multiple lines
+            def add_attribution(match):
+                original_text = match.group(1).rstrip()  # Remove trailing whitespace
+                # Add attribution after the matched text with proper spacing
+                return f"{original_text} {attribution_text}"
+            
+            updated_content = re.sub(pattern, add_attribution, footer_content, flags=re.IGNORECASE | re.MULTILINE)
+            
+            if updated_content != footer_content:
+                files[footer_path] = updated_content
+                logger.info(f"[FOOTER ATTRIBUTION] ✓ Added attribution to {footer_path}")
+            else:
+                logger.warning(f"[FOOTER ATTRIBUTION] ⚠ Could not find 'All rights reserved' text in {footer_path}")
+        
+        return files
 
     def _create_page_generation_system_prompt(self) -> str:
         """Create system prompt for page generation"""
@@ -1551,7 +1617,7 @@ Hard Build Gates (Zero Tolerance):
 - Only import and use icons from the verified list ({safe_icons_list}). Every icon import must be rendered in JSX.
 - No undefined/invalid types (e.g. no 'LucideIcon'), and no 'any' usage. Use standard types: string, number, boolean, React.ReactNode, JSX.Element.
 - Each variable/constant must appear in JSX (no unused data).
-- Ensure the year is the current year at the footer.
+- Ensure the year is the current year and All rights reserved text is at the footer.
 
 Component Conventions:
 - Section components in src/components/<Name>.tsx, use named exports.

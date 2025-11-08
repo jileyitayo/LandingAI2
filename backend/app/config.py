@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "SiteSmith API"
     app_version: str = "0.1.0"
+    app_brand_name: str = "SiteSmith"  # Brand name displayed in generated websites (e.g., footer attribution)
     debug: bool = False
 
     # Supabase (optional for initial setup)
