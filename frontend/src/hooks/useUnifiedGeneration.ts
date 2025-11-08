@@ -33,9 +33,19 @@ export const useUnifiedGeneration = () => {
         style_preferences: stylePreferences
       });
 
-      setGeneratedProject(result);
+      console.log('[Generation] Initial response:', result);
 
-      // Start polling for status
+      // Set initial state with default progress values
+      setGeneratedProject({
+        ...result,
+        progress: 0,
+        stage: 'analyzing',
+        stage_message: null,
+        message: result.message || 'Starting generation...',
+      });
+
+      // Start polling for status immediately
+      console.log('[Generation] Starting polling for project:', result.project_id);
       pollStatus(result.project_id);
 
       return result;
@@ -79,18 +89,42 @@ export const useUnifiedGeneration = () => {
   };
 
   const pollStatus = async (projectId: string) => {
-    const maxAttempts = 30; // 5 minutes with 10-second intervals
+    const maxAttempts = 120; // 6 minutes with 3-second intervals (increased from 30 attempts)
     let attempts = 0;
 
     const poll = async () => {
       try {
+        // console.log(`[Polling] Attempt ${attempts + 1}/${maxAttempts} for project ${projectId}`);
         const status = await api.generation.getStatus(projectId);
-        
+
+        // console.log('[Polling] Received status:', {
+        //   status: status.status,
+        //   progress: status.progress,
+        //   stage: status.stage,
+        //   stage_message: status.stage_message,
+        // });
+
+        // Update generatedProject with full status including progress and stage
+        setGeneratedProject((prev: any) => {
+          const updated = {
+            ...prev,
+            status: status.status,
+            progress: status.progress ?? prev.progress ?? 0,
+            stage: status.stage ?? prev.stage,
+            stage_message: status.stage_message ?? prev.stage_message,
+            message: status.message ?? prev.message,
+            error: status.error,
+          };
+          // console.log('[Polling] Updated state:', updated);
+          return updated;
+        });
+
         if (status.status === 'completed') {
-          setGeneratedProject((prev: any) => prev ? { ...prev, status: 'completed' } : { status: 'completed' });
+          // console.log('[Polling] Generation completed!');
           setIsGenerating(false);
           return;
         } else if (status.status === 'failed') {
+          // console.log('[Polling] Generation failed:', status.error);
           setError(status.error || 'Generation failed');
           setIsGenerating(false);
           return;
@@ -98,12 +132,14 @@ export const useUnifiedGeneration = () => {
 
         attempts++;
         if (attempts < maxAttempts) {
-          setTimeout(poll, 15000); // Poll every 10 seconds
+          setTimeout(poll, 3000); // Poll every 3 seconds for real-time feel
         } else {
+          // console.log('[Polling] Timed out after max attempts');
           setError('Generation timed out');
           setIsGenerating(false);
         }
       } catch (err) {
+        // console.error('[Polling] Error:', err);
         if (err instanceof ApiError) {
           setError(err.message);
         } else {
@@ -113,6 +149,7 @@ export const useUnifiedGeneration = () => {
       }
     };
 
+    // Start polling immediately
     poll();
   };
 

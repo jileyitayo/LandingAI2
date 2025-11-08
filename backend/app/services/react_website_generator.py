@@ -116,7 +116,8 @@ class ReactWebsiteGenerator:
         prompt: str, 
         enable_build_validation: Optional[bool] = None,
         enable_animations: Optional[bool] = None,
-        cost_tracker=None
+        cost_tracker=None,
+        progress_callback=None
     ) -> Dict[str, Any]:
         """
         Main entry point: Generate complete React website from prompt with validation
@@ -126,6 +127,7 @@ class ReactWebsiteGenerator:
             enable_build_validation: Whether to run actual build tests (None = use config default)
             enable_animations: Whether to include animations (None = use config default)
             cost_tracker: Optional CostTracker instance to track AI costs
+            progress_callback: Optional async callback function(progress: int, stage: str, stage_message: str) to update progress
         
         Returns a dictionary containing:
         - website_structure: Complete website structure
@@ -168,6 +170,17 @@ class ReactWebsiteGenerator:
             logger.info("[REACT GEN] Validating structure consistency...")
             self._validate_structure_consistency(website_structure)
         
+        # Update progress: Structure generated, now creating components
+        if progress_callback:
+            try:
+                progress_callback(
+                    progress=50,
+                    stage="creating_components",
+                    stage_message="Building React components and bringing your design to life..."
+                )
+            except Exception as e:
+                logger.warning(f"[REACT GEN] Failed to update progress: {str(e)}")
+        
         # Debug: Write schema and structure to files
         # with open('/tmp/website_structure_schema.json', 'w') as f:
         #     json.dump(website_structure.model_json_schema(), f, indent=2)
@@ -183,6 +196,17 @@ class ReactWebsiteGenerator:
 
         files = self._generate_all_files(website_structure, business_analysis, enable_animations, cost_tracker=cost_tracker)
         
+        # Update progress: Components created, now building pages
+        if progress_callback:
+            try:
+                progress_callback(
+                    progress=70,
+                    stage="building_pages",
+                    stage_message="Assembling pages and layouts for your website..."
+                )
+            except Exception as e:
+                logger.warning(f"[REACT GEN] Failed to update progress: {str(e)}")
+        
         # Step 4: Validation and error fixing loop
         logger.info("[REACT GEN] Starting validation and error fixing...")
         files, validation_result, retry_count, fixed_errors = self._validate_and_fix_files(
@@ -196,11 +220,11 @@ class ReactWebsiteGenerator:
         logger.info(f"[REACT GEN] Retries: {retry_count}, Fixed errors: {len(fixed_errors)}")
 
         # Write files to disk with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         website_name = website_structure.name.lower().replace(" ", "-")
-        output_path = f"app/data/generated_sites/{website_name}_{timestamp}"
+        # output_path = f"app/data/generated_sites/{website_name}_{timestamp}"
         
-        written_files = write_files_to_disk(files, output_path)
+        # written_files = write_files_to_disk(files, output_path)
         
         result = {
             "name": website_name,

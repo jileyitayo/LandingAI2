@@ -71,6 +71,8 @@ class GenerationStatusResponse(BaseModel):
     status: str  # "idle", "generating", "completed", "failed"
     project_id: Optional[str] = None
     progress: Optional[int] = None  # 0-100
+    stage: Optional[str] = None  # "analyzing", "generating_structure", "creating_components", etc.
+    stage_message: Optional[str] = None  # Human-readable stage message
     message: Optional[str] = None
     error: Optional[str] = None
     created_at: Optional[str] = None
@@ -380,6 +382,62 @@ async def update_project_status(
         logger.error(f"Error updating project status: {str(e)}")
 
 
+async def update_generation_progress(
+    project_id: str,
+    progress: int,
+    stage: Optional[str] = None,
+    stage_message: Optional[str] = None,
+    supabase_client = None
+) -> None:
+    """
+    Update generation progress with stage information for live updates.
+    
+    Args:
+        project_id: The project ID
+        progress: Progress percentage (0-100)
+        stage: Current generation stage (e.g., "analyzing", "generating_structure")
+        stage_message: Human-readable message for the current stage
+        supabase_client: Supabase client instance (optional, will create if not provided)
+    """
+    try:
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
+        
+        # Store progress info in generation_metadata JSON field
+        # First, get existing metadata
+        response = supabase_client.table("projects")\
+            .select("generation_metadata")\
+            .eq("id", project_id)\
+            .execute()
+        
+        existing_metadata = {}
+        if response.data and response.data[0].get("generation_metadata"):
+            existing_metadata = response.data[0]["generation_metadata"]
+        
+        # Update metadata with progress info
+        existing_metadata["progress"] = progress
+        if stage:
+            existing_metadata["stage"] = stage
+        if stage_message:
+            existing_metadata["stage_message"] = stage_message
+        
+        update_data = {
+            "generation_metadata": existing_metadata,
+            "generation_status": "generating",
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        supabase_client.table("projects")\
+            .update(update_data)\
+            .eq("id", project_id)\
+            .execute()
+        
+        logger.debug(f"[PROGRESS] Updated progress for {project_id}: {progress}% - {stage}")
+            
+    except Exception as e:
+        logger.error(f"Error updating generation progress: {str(e)}")
+
+
 @log_action(action_type='UPDATE', target_resource_type='generated_content_saving')
 async def save_generated_content(
     project_id: str,
@@ -604,11 +662,11 @@ def generate_react_website_background(
 @router.post("/generate_website", response_model=GenerateWebsiteResponse, status_code=status.HTTP_202_ACCEPTED)
 async def generate_react_website_from_prompt(
     request: GenerateWebsiteRequest,
-    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user)
 ):
     """
     Generate a complete website from prompt only.
+    Uses asyncio.create_task for background generation with live progress updates.
     """
     user_id = current_user["id"]
     supabase = get_supabase_client()
@@ -653,13 +711,21 @@ async def generate_react_website_from_prompt(
             supabase_client=supabase
         )
 
-        # Step 4: Start BACKGROUND generation
+        # Step 4: Start BACKGROUND generation using asyncio.create_task for proper async handling
         logger.info(f"Starting background generation for project {project_id}")
-        background_tasks.add_task(
-            process_react_generation,  # New function below
-            project_id=project_id,
-            prompt=request.prompt,
-            user_id=user_id
+        # Use asyncio.create_task instead of background_tasks for better async control
+        # background_tasks.add_task(
+        #     process_react_generation,  # New function below
+        #     project_id=project_id,
+        #     prompt=request.prompt,
+        #     user_id=user_id
+        # )
+        asyncio.create_task(
+            process_react_generation(
+                project_id=project_id,
+                prompt=request.prompt,
+                user_id=user_id
+            )
         )
 
         logger.info(f"✓ Generation initiated for project {project_id}")
@@ -680,7 +746,7 @@ async def generate_react_website_from_prompt(
 
 
 async def process_react_generation(project_id: str, prompt: str, user_id: str):
-    """Background task that actually does the generation"""
+    """Background task that actually does the generation with live progress updates"""
     supabase = get_supabase_client()
     
     # Import CostTracker
@@ -695,6 +761,15 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str):
     try:
         logger.info(f"[BG] Starting React generation for project {project_id}")
         logger.info(f"[BG] Cost tracker initialized for project {project_id}")
+        
+        # Update initial status
+        await update_generation_progress(
+            project_id=project_id,
+            progress=5,
+            stage="analyzing",
+            stage_message="Analyzing your requirements and understanding your business needs...",
+            supabase_client=supabase
+        )
         
         # Step 0: Determine if animations should be enabled based on user tier
         enable_animations = settings.enable_animations_default  # Start with config default
@@ -720,21 +795,86 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str):
         except Exception as e:
             logger.warning(f"[BG] Failed to fetch user tier: {str(e)}, using config default: {enable_animations}")
         
-        # Step 1: Generate React website (SYNC function) with cost tracking
-        result = react_website_generator.generate_website_structure(
-            prompt, 
-            enable_animations=enable_animations,
-            cost_tracker=cost_tracker
+        # Update progress: Starting structure generation
+        await update_generation_progress(
+            project_id=project_id,
+            progress=15,
+            stage="generating_structure",
+            stage_message="Designing the blueprint and architecture of your website...",
+            supabase_client=supabase
         )
         
+        # Step 1: Generate React website (SYNC function) with cost tracking and progress callback
+        # Store the event loop reference before calling sync function
+        loop = asyncio.get_running_loop()
+        
+        # Create a progress callback that updates the database
+        async def progress_callback(progress: int, stage: str, stage_message: str):
+            """Callback to update progress during generation"""
+            await update_generation_progress(
+                project_id=project_id,
+                progress=progress,
+                stage=stage,
+                stage_message=stage_message,
+                supabase_client=supabase
+            )
+        
+        # Note: Since generate_website_structure is sync and blocks the event loop,
+        # we need a wrapper that can schedule async tasks from a sync context.
+        # We'll use run_coroutine_threadsafe to schedule from the sync thread to the async loop.
+        def sync_progress_callback(progress: int, stage: str, stage_message: str):
+            """Synchronous wrapper for async progress callback"""
+            try:
+                logger.info(f"[BG] Progress callback called: {progress}% - {stage}")
+                # Schedule the coroutine to run on the event loop
+                # This works even when called from a sync function running in a thread
+                future = asyncio.run_coroutine_threadsafe(
+                    progress_callback(progress, stage, stage_message),
+                    loop
+                )
+                # Don't wait for the result - fire and forget
+                logger.debug(f"[BG] Scheduled progress update: {progress}% - {stage}")
+            except Exception as e:
+                # Log error but don't fail the generation
+                logger.warning(f"[BG] Failed to schedule progress callback: {str(e)}", exc_info=True)
+
+        # Run the sync function in a thread pool executor so it doesn't block the event loop
+        # This allows progress callbacks to execute immediately
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(
+                executor,
+                lambda: react_website_generator.generate_website_structure(
+                    prompt, 
+                    enable_animations=enable_animations,
+                    cost_tracker=cost_tracker,
+                    progress_callback=sync_progress_callback
+                )
+            )
+        # await asyncio.sleep(10)
+        # progress_callback(progress=40, stage="creating_components", stage_message="Assembling pages and layouts for your website...")
+        # result = {"website_structure": "website_structure", "business_analysis": "business_analysis", "validation": "validation", "files": ", "cost_breakdown": "cost_breakdown"}
+        # await asyncio.sleep(10)
+        # progress_callback(progress=60, stage="building_pages", stage_message="Assembling pages and layouts for your website...")
+        # await asyncio.sleep(10)
         website_structure = result["website_structure"]
         business_analysis = result["business_analysis"]
         validation_result = result["validation"]
         files = result["files"]
         cost_breakdown = result.get("cost_breakdown")
-
+        
         # Step 2: Save files to database (ASYNC)
         logger.info(f"[BG] Saving {len(files)} files to database...")
+        
+        # Update progress: Saving files
+        await update_generation_progress(
+            project_id=project_id,
+            progress=85,
+            stage="saving_files",
+            stage_message="Saving your project files securely...",
+            supabase_client=supabase
+        )
+        
         stats = await project_file_manager.save_project_files(
             project_id=project_id,
             files=files,
@@ -742,6 +882,15 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str):
         )
         
         logger.info(f"[BG] ✓ Saved {stats['inserted']} files ({stats['total_size'] / 1024:.2f} KB)")
+        
+        # Update progress: Finalizing
+        await update_generation_progress(
+            project_id=project_id,
+            progress=95,
+            stage="finalizing",
+            stage_message="Adding finishing touches and preparing your website...",
+            supabase_client=supabase
+        )
 
         # Step 3: Update project with metadata
         logger.info(f"[BG] Updating project metadata...")
@@ -756,6 +905,11 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str):
         # Add cost breakdown to metadata if available
         if cost_breakdown:
             generation_metadata["cost_breakdown"] = cost_breakdown
+        
+        # Ensure metadata includes final progress
+        generation_metadata["progress"] = 100
+        generation_metadata["stage"] = "completed"
+        generation_metadata["stage_message"] = "Generation completed successfully!"
         
         update_data = {
             "name": result.get("name", "My Generated Website - " + datetime.utcnow().strftime("%Y-%m-%d %H:%M")),
@@ -785,46 +939,46 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str):
 
         logger.info(f"[BG] ✓ React generation completed for project {project_id}")
 
-        # Step 4: Save initial generation to chat history
-        logger.info(f"[BG] Saving initial generation to chat history...")
-        try:
-            # Create initial chat message
-            chat_message_id = str(uuid.uuid4())
-            business_type = business_analysis.get("business_type", "website")
-            pages_count = len(website_structure.get("pages", []))
+        # # Step 4: Save initial generation to chat history
+        # logger.info(f"[BG] Saving initial generation to chat history...")
+        # try:
+        #     # Create initial chat message
+        #     chat_message_id = str(uuid.uuid4())
+        #     business_type = business_analysis.get("business_type", "website")
+        #     pages_count = len(website_structure.get("pages", []))
 
-            ai_response = (
-                f"Website generated successfully! I've created a complete React website for your {business_type}. "
-                f"The project includes {pages_count} pages with responsive design and modern styling. "
-                f"Your React project is ready to view and edit."
-            )
+        #     ai_response = (
+        #         f"Website generated successfully! I've created a complete React website for your {business_type}. "
+        #         f"The project includes {pages_count} pages with responsive design and modern styling. "
+        #         f"Your React project is ready to view and edit."
+        #     )
 
-            chat_insert = supabase.table("project_chat_messages").insert({
-                "id": chat_message_id,
-                "project_id": project_id,
-                "user_id": user_id,
-                "message_type": "generation",
-                "user_prompt": prompt,
-                "ai_response": ai_response,
-                "metadata": {
-                    "business_analysis": {
-                        "business_type": business_analysis.get("business_type"),
-                        "target_audience": business_analysis.get("target_audience"),
-                        "key_features": business_analysis.get("key_features", [])[:3]  # First 3 features
-                    },
-                    "website_structure": {
-                        "pages_count": pages_count,
-                        "pages": [page.get("name") for page in website_structure.get("pages", [])]
-                    },
-                    "files_count": len(files)
-                }
-            }).execute()
+            # chat_insert = supabase.table("project_chat_messages").insert({
+            #     "id": chat_message_id,
+            #     "project_id": project_id,
+            #     "user_id": user_id,
+            #     "message_type": "generation",
+            #     "user_prompt": prompt,
+            #     "ai_response": ai_response,
+            #     "metadata": {
+            #         "business_analysis": {
+            #             "business_type": business_analysis.get("business_type"),
+            #             "target_audience": business_analysis.get("target_audience"),
+            #             "key_features": business_analysis.get("key_features", [])[:3]  # First 3 features
+            #         },
+            #         "website_structure": {
+            #             "pages_count": pages_count,
+            #             "pages": [page.get("name") for page in website_structure.get("pages", [])]
+            #         },
+            #         "files_count": len(files)
+            #     }
+            # }).execute()
 
-            logger.info(f"[BG] ✓ Saved initial chat message with ID: {chat_message_id}")
+            # logger.info(f"[BG] ✓ Saved initial chat message with ID: {chat_message_id}")
 
-        except Exception as e:
-            logger.error(f"[BG] Failed to save chat message: {str(e)}")
-            # Don't fail the generation if chat save fails
+        # except Exception as e:
+        #     logger.error(f"[BG] Failed to save chat message: {str(e)}")
+        #     # Don't fail the generation if chat save fails
 
         return GenerateReactWebsiteResponse(
             project_id=project_id,
@@ -1008,21 +1162,26 @@ async def get_generation_status(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Check the status of website generation.
+    Check the status of website generation with live progress updates.
     
     Status values:
     - "idle": Not started yet
     - "generating": In progress
     - "completed": Successfully generated
     - "failed": Generation failed
+    
+    Progress information is stored in generation_metadata and includes:
+    - progress: 0-100 percentage
+    - stage: Current generation stage
+    - stage_message: Human-readable stage message
     """
     user_id = current_user["id"]
     supabase = get_supabase_client()
     
     try:
-        # Fetch project
+        # Fetch project with generation_metadata
         response = supabase.table("projects")\
-            .select("generation_status, generation_error, created_at, last_generated_at, user_id")\
+            .select("generation_status, generation_error, generation_metadata, created_at, last_generated_at, user_id")\
             .eq("id", project_id)\
             .execute()
         
@@ -1043,19 +1202,29 @@ async def get_generation_status(
         
         status_value = project.get("generation_status", "idle")
         
-        # Calculate progress (rough estimate)
-        progress = None
-        if status_value == "generating":
-            progress = 50  # Mid-way estimate
-        elif status_value == "completed":
-            progress = 100
-        elif status_value == "failed":
-            progress = 0
+        # Extract progress info from generation_metadata
+        metadata = project.get("generation_metadata") or {}
+        progress = metadata.get("progress")
+        stage = metadata.get("stage")
+        stage_message = metadata.get("stage_message")
+        
+        # Fallback progress calculation if not in metadata
+        if progress is None:
+            if status_value == "generating":
+                progress = 50  # Mid-way estimate
+            elif status_value == "completed":
+                progress = 100
+            elif status_value == "failed":
+                progress = 0
+            else:
+                progress = 0
         
         return GenerationStatusResponse(
             status=status_value,
             project_id=project_id,
             progress=progress,
+            stage=stage,
+            stage_message=stage_message,
             message=_get_status_message(status_value),
             error=project.get("generation_error"),
             created_at=project.get("created_at"),
@@ -1099,7 +1268,7 @@ def _get_status_message(status: str) -> str:
     """Get user-friendly status message"""
     messages = {
         "idle": "Generation not started",
-        "generating": "Generating your website... This may take 30-60 seconds",
+        "generating": "Generating your website... This may take 4-6 minutes",
         "completed": "Website generated successfully",
         "failed": "Generation failed. Please try again"
     }

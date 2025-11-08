@@ -629,7 +629,14 @@ export const api = {
     getStatus: (projectId: string) =>
       apiRequest<{
         status: string;
+        project_id?: string;
+        progress?: number; // 0-100
+        stage?: string; // Current generation stage (e.g., "analyzing", "generating_structure", etc.)
+        stage_message?: string; // Human-readable stage message
+        message?: string;
         error?: string;
+        created_at?: string;
+        completed_at?: string;
       }>(`/api/v1/generation/${projectId}/status`),
 
     /**
