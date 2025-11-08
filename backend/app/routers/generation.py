@@ -1804,6 +1804,10 @@ async def _handle_property_edit(
 
         logger.info(f"[PROPERTY EDIT] Applying {len(request.properties)} property changes to {request.component_file}")
 
+        # Build component relationship map (needed for prop-based edits)
+        component_tracker = ComponentRelationshipTracker()
+        component_tracker.analyze_project_structure(project_files)
+
         # Convert PropertyChange objects to dicts for direct_code_editor
         properties_dict = [
             {
@@ -1819,17 +1823,75 @@ async def _handle_property_edit(
         success, modified_code, error_message, prop_edit_metadata = direct_code_editor.edit_properties(
             code=original_code,
             element_selector=request.element_selector,
-            properties=properties_dict
+            properties=properties_dict,
+            files=project_files,
+            component_tracker=component_tracker
         )
 
         # Check if this is a prop edit that needs parent component update
         prop_edit_info_response = None  # Initialize here so it's accessible later
-        if prop_edit_metadata and prop_edit_metadata.get('type') == 'prop_edit':
+        
+        # Handle array prop edits (array items passed as props)
+        if prop_edit_metadata and prop_edit_metadata.get('type') == 'array_prop_edit':
+            logger.info(f"[PROPERTY EDIT] Array prop edit detected - updating array '{prop_edit_metadata['prop_name']}[{prop_edit_metadata['array_index']}].{prop_edit_metadata['property_path']}' at source")
+            
+            # Update array item at source (parent component)
+            array_prop_success, updated_files, array_prop_error = direct_code_editor.update_array_prop_at_source(
+                files=project_files,
+                component_file=request.component_file,
+                prop_name=prop_edit_metadata['prop_name'],
+                array_index=prop_edit_metadata['array_index'],
+                property_path=prop_edit_metadata['property_path'],
+                new_value=prop_edit_metadata['new_value'],
+                object_name=prop_edit_metadata['object_name'],
+                component_tracker=component_tracker
+            )
+            
+            if array_prop_success and updated_files:
+                logger.info(f"[PROPERTY EDIT] Successfully updated array prop at source")
+                
+                # Save all updated files
+                files_updated = []
+                prop_source_file = None
+                for file_path, file_content in updated_files.items():
+                    if file_content != project_files.get(file_path):
+                        logger.info(f"[PROPERTY EDIT] Saving updated file: {file_path}")
+                        await project_file_manager.save_project_file(
+                            project_id=project_id,
+                            file_path=file_path,
+                            file_content=file_content,
+                            overwrite=False
+                        )
+                        files_updated.append(file_path)
+                        if file_path != request.component_file:
+                            prop_source_file = file_path
+                
+                # Use updated files for preview
+                project_files = updated_files
+                modified_code = project_files[request.component_file]
+                
+                logger.info(f"[PROPERTY EDIT] Updated {len(files_updated)} files: {files_updated}")
+                
+                # Store prop edit info for response
+                prop_edit_info_response = {
+                    'prop_name': prop_edit_metadata['prop_name'],
+                    'source_file': prop_source_file or request.component_file,
+                    'new_value': prop_edit_metadata['new_value']
+                }
+                
+                # Mark as successful since we've updated the files
+                success = True
+            else:
+                error_msg = f"Could not update array prop at source: {array_prop_error}"
+                logger.error(f"[PROPERTY EDIT] {error_msg}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=error_msg
+                )
+        
+        # Handle regular prop edits
+        elif prop_edit_metadata and prop_edit_metadata.get('type') == 'prop_edit':
             logger.info(f"[PROPERTY EDIT] Prop edit detected - updating prop '{prop_edit_metadata['prop_name']}' at source")
-
-            # Build component relationship map
-            component_tracker = ComponentRelationshipTracker()
-            component_tracker.analyze_project_structure(project_files)
 
             # Update prop at source (parent component)
             prop_success, updated_files, prop_error = direct_code_editor.update_prop_at_source(
@@ -1964,19 +2026,34 @@ async def _handle_property_edit(
                 
                 if preview_status and preview_status.get("exists"):
                     # Update existing preview in background
+                    # Include all files that were updated (component + parent files for prop edits)
                     logger.info(f"[PROPERTY EDIT] Updating preview {existing_preview} in background")
-                    changed_files = {request.component_file: modified_code}
+                    changed_files = {}
                     
-                    update_result = vite_preview_service.update_preview_files(
-                        preview_id=existing_preview,
-                        updated_files=changed_files
-                    )
+                    # Always include the component file
+                    if request.component_file in project_files:
+                        changed_files[request.component_file] = project_files[request.component_file]
                     
-                    if update_result.get("success"):
-                        build_time = update_result.get("build_time", 0)
-                        logger.info(f"[PROPERTY EDIT] Background rebuild completed in {build_time}s")
+                    # Include parent files if they were updated (for prop edits)
+                    if prop_edit_info_response and prop_edit_info_response.get('source_file'):
+                        source_file = prop_edit_info_response['source_file']
+                        if source_file != request.component_file and source_file in project_files:
+                            changed_files[source_file] = project_files[source_file]
+                            logger.info(f"[PROPERTY EDIT] Including parent file '{source_file}' in preview update")
+                    
+                    if changed_files:
+                        update_result = vite_preview_service.update_preview_files(
+                            preview_id=existing_preview,
+                            updated_files=changed_files
+                        )
+                        
+                        if update_result.get("success"):
+                            build_time = update_result.get("build_time", 0)
+                            logger.info(f"[PROPERTY EDIT] Background rebuild completed in {build_time}s")
+                        else:
+                            logger.warning(f"[PROPERTY EDIT] Background rebuild failed: {update_result.get('error')}")
                     else:
-                        logger.warning(f"[PROPERTY EDIT] Background rebuild failed: {update_result.get('error')}")
+                        logger.warning(f"[PROPERTY EDIT] No files to update in preview")
                 else:
                     logger.warning(f"[PROPERTY EDIT] Preview expired, will recreate on next view")
             else:

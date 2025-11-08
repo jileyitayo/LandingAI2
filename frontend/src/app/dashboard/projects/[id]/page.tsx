@@ -338,6 +338,13 @@ export default function ProjectEditorPage() {
   // This helps us ignore responses from stale requests when user switches elements
   const pendingRequestElementRef = useRef<string | null>(null);
 
+  // Track pending image property changes to batch them together
+  // This allows us to save both imageUrl and imageAlt in a single API call when both change
+  const pendingImagePropertiesRef = useRef<{
+    imageUrl?: { value: string | number | boolean; element: SelectedElement };
+    imageAlt?: { value: string | number | boolean; element: SelectedElement };
+  }>({});
+
   // Debounced backend save (500ms after last change)
   const debouncedBackendSave = useCallback(async (
     property: PropertyType,
@@ -353,6 +360,12 @@ export default function ProjectEditorPage() {
     const requestElementSelector = element.elementSelector || null;
     pendingRequestElementRef.current = requestElementSelector;
 
+    // If this is an image property, store it in the pending queue
+    // This allows us to batch imageUrl and imageAlt together
+    if (property === 'imageUrl' || property === 'imageAlt') {
+      pendingImagePropertiesRef.current[property] = { value, element };
+    }
+
     // Schedule new save
     pendingSaveRef.current = setTimeout(async () => {
       // console.log('🔄 Saving to backend (debounced):', { property, value });
@@ -362,21 +375,111 @@ export default function ProjectEditorPage() {
       setIsAutoSaving(true);
 
       try {
-        // Map frontend property names to backend property names
-        // imageUrl -> src, imageAlt -> alt for backend
-        const backendProperty = property === 'imageUrl' ? 'src' : 
-                                property === 'imageAlt' ? 'alt' : 
-                                property;
+        // Check if we have both imageUrl and imageAlt pending for the same element
+        // If so, batch them together in a single API call
+        const pendingImageUrl = pendingImagePropertiesRef.current.imageUrl;
+        const pendingImageAlt = pendingImagePropertiesRef.current.imageAlt;
+        const isImageProperty = property === 'imageUrl' || property === 'imageAlt';
+        
+        // Determine if we should batch image properties
+        const shouldBatchImages = isImageProperty && 
+          pendingImageUrl && 
+          pendingImageAlt &&
+          pendingImageUrl.element.elementSelector === pendingImageAlt.element.elementSelector &&
+          pendingImageUrl.element.componentFile === pendingImageAlt.element.componentFile;
+
+        // Store batched values before clearing ref (needed for response handler)
+        const batchedImageUrl = shouldBatchImages ? pendingImageUrl.value : undefined;
+        const batchedImageAlt = shouldBatchImages ? pendingImageAlt.value : undefined;
+
+        let propertiesToSave: Array<{
+          property: string;
+          value: string | number | boolean;
+          oldValue?: string | number | boolean;
+        }>;
+
+        if (shouldBatchImages) {
+          // Batch both imageUrl and imageAlt together
+          // Check if imageUrl is empty - only include it if it's being removed (was previously set)
+          const imageUrlValue = String(pendingImageUrl.value);
+          const previousSrc = pendingImageUrl.element.attributes?.src;
+          const isImageUrlRemoval = imageUrlValue === '' && previousSrc && previousSrc !== '';
+          
+          propertiesToSave = [];
+          
+          // Only include imageUrl if it's not empty OR if it's being removed
+          if (imageUrlValue !== '' || isImageUrlRemoval) {
+            propertiesToSave.push({
+              property: 'src', // imageUrl maps to src
+              value: pendingImageUrl.value,
+              oldValue: undefined,
+            });
+          }
+          
+          // Always include imageAlt (it can be empty)
+          propertiesToSave.push({
+            property: 'alt', // imageAlt maps to alt
+            value: pendingImageAlt.value,
+            oldValue: undefined,
+          });
+          
+          // Use the element from either pending property (they're the same)
+          element = pendingImageUrl.element;
+          
+          // Clear the pending image properties after batching
+          pendingImagePropertiesRef.current = {};
+          
+          // Note: We always have at least imageAlt, so propertiesToSave will never be empty
+        } else if (isImageProperty) {
+          // Single image property - use the pending value or current value
+          const pendingValue = property === 'imageUrl' ? pendingImageUrl : pendingImageAlt;
+          const actualValue = pendingValue?.value ?? value;
+          
+          // For imageUrl: skip if empty unless it's being removed
+          if (property === 'imageUrl') {
+            const imageUrlValue = String(actualValue);
+            const previousSrc = element.attributes?.src;
+            const isImageUrlRemoval = imageUrlValue === '' && previousSrc && previousSrc !== '';
+            
+            // Skip empty imageUrl unless it's being removed
+            if (imageUrlValue === '' && !isImageUrlRemoval) {
+              // Clear from pending queue and skip API call
+              delete pendingImagePropertiesRef.current.imageUrl;
+              setIsAutoSaving(false);
+              return;
+            }
+          }
+          
+          // Map frontend property names to backend property names
+          // imageUrl -> src, imageAlt -> alt for backend
+          const backendProperty = property === 'imageUrl' ? 'src' : 'alt';
+          
+          propertiesToSave = [{
+            property: backendProperty,
+            value: actualValue,
+            oldValue: undefined,
+          }];
+          
+          // Clear this specific property from pending queue
+          if (property === 'imageUrl') {
+            delete pendingImagePropertiesRef.current.imageUrl;
+          } else {
+            delete pendingImagePropertiesRef.current.imageAlt;
+          }
+        } else {
+          // Non-image property - save as single property
+          propertiesToSave = [{
+            property: property,
+            value,
+            oldValue: undefined,
+          }];
+        }
         
         const response = await api.generation.editProperties(projectId, {
           element_selector: element.elementSelector || '',
           component_file: element.componentFile || '',
-          properties: [{
-            property: backendProperty,
-            value,
-            oldValue: undefined,
-          }],
-          batch: false,
+          properties: propertiesToSave,
+          batch: shouldBatchImages, // Set batch to true when batching multiple properties
         });
 
         // Check if this response is for the currently selected element
@@ -403,7 +506,32 @@ export default function ProjectEditorPage() {
           
           // Update selectedElement state to reflect the new attribute value
           // This ensures the input field shows the current value after save
-          if (property === 'imageUrl') {
+          if (shouldBatchImages && batchedImageUrl !== undefined && batchedImageAlt !== undefined) {
+            // Update both imageUrl and imageAlt when batched
+            // Only update imageUrl if it was actually saved (not skipped)
+            const imageUrlValue = String(batchedImageUrl);
+            const previousSrc = element.attributes?.src;
+            const isImageUrlRemoval = imageUrlValue === '' && previousSrc && previousSrc !== '';
+            const shouldUpdateImageUrl = imageUrlValue !== '' || isImageUrlRemoval;
+            
+            setSelectedElement(prev => {
+              if (!prev) return prev;
+              const updatedAttributes = { ...prev.attributes };
+              
+              // Only update src if it was actually saved
+              if (shouldUpdateImageUrl) {
+                updatedAttributes.src = imageUrlValue;
+              }
+              
+              // Always update alt
+              updatedAttributes.alt = String(batchedImageAlt);
+              
+              return {
+                ...prev,
+                attributes: updatedAttributes,
+              };
+            });
+          } else if (property === 'imageUrl') {
             setSelectedElement(prev => {
               if (!prev) return prev;
               return {
@@ -485,6 +613,24 @@ export default function ProjectEditorPage() {
     if (pendingRequestElementRef.current !== null && pendingRequestElementRef.current !== currentSelector) {
       // console.log('🔄 Element changed, marking pending requests as stale');
       // The ref will be updated when debouncedBackendSave is called for the new element
+    }
+    
+    // Clear pending image properties when element changes
+    // This prevents batching properties from different elements
+    if (currentSelector !== null) {
+      const pendingImageUrl = pendingImagePropertiesRef.current.imageUrl;
+      const pendingImageAlt = pendingImagePropertiesRef.current.imageAlt;
+      
+      // Clear if pending properties are for a different element
+      if (pendingImageUrl && pendingImageUrl.element.elementSelector !== currentSelector) {
+        delete pendingImagePropertiesRef.current.imageUrl;
+      }
+      if (pendingImageAlt && pendingImageAlt.element.elementSelector !== currentSelector) {
+        delete pendingImagePropertiesRef.current.imageAlt;
+      }
+    } else {
+      // No element selected - clear all pending image properties
+      pendingImagePropertiesRef.current = {};
     }
   }, [selectedElement?.elementSelector]);
 

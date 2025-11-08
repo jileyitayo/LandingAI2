@@ -92,7 +92,9 @@ class DirectCodeEditor:
         self,
         code: str,
         element_selector: str,
-        properties: List[Dict[str, Any]]
+        properties: List[Dict[str, Any]],
+        files: Optional[Dict[str, str]] = None,
+        component_tracker = None
     ) -> Tuple[bool, Optional[str], Optional[str], Optional[Dict[str, Any]]]:
         """
         Edit component properties directly with validation and error handling.
@@ -101,6 +103,8 @@ class DirectCodeEditor:
             code: Original component code
             element_selector: data-element value to identify the element
             properties: List of property changes to apply
+            files: All project files (optional, needed for prop-based arrays)
+            component_tracker: ComponentRelationshipTracker instance (optional, needed for prop-based arrays)
 
         Returns:
             Tuple of (success, new_code, error_message, prop_edit_metadata)
@@ -167,11 +171,21 @@ class DirectCodeEditor:
                             return (False, None, None, result)
 
                     elif property_name == 'src':
-                        result = self._edit_attribute(new_code, element_selector, 'src', str(property_value))
+                        result = self._edit_attribute(new_code, element_selector, 'src', str(property_value), files, component_tracker)
+                        # Check if result is array prop edit metadata
+                        if isinstance(result, dict) and result.get('type') == 'array_prop_edit':
+                            logger.info(f"[DIRECT EDIT] Array prop edit detected for '{result['prop_name']}'")
+                            # Return early with array prop edit info for caller to handle
+                            return (False, None, None, result)
                     elif property_name == 'href':
-                        result = self._edit_attribute(new_code, element_selector, 'href', str(property_value))
+                        result = self._edit_attribute(new_code, element_selector, 'href', str(property_value), files, component_tracker)
                     elif property_name == 'alt':
-                        result = self._edit_attribute(new_code, element_selector, 'alt', str(property_value))
+                        result = self._edit_attribute(new_code, element_selector, 'alt', str(property_value), files, component_tracker)
+                        # Check if result is array prop edit metadata
+                        if isinstance(result, dict) and result.get('type') == 'array_prop_edit':
+                            logger.info(f"[DIRECT EDIT] Array prop edit detected for '{result['prop_name']}'")
+                            # Return early with array prop edit info for caller to handle
+                            return (False, None, None, result)
                     elif property_name in TAILWIND_PROPERTY_MAP:
                         # Check if it's a custom hex color
                         if property_name in ['color', 'backgroundColor', 'borderColor'] and str(property_value).startswith('#'):
@@ -325,6 +339,156 @@ class DirectCodeEditor:
         except Exception as e:
             error_msg = f"Unexpected error updating prop at source: {str(e)}"
             logger.error(f"[PROP UPDATE] {error_msg}", exc_info=True)
+            return (False, None, error_msg)
+
+    def update_array_prop_at_source(
+        self,
+        files: Dict[str, str],
+        component_file: str,
+        prop_name: str,
+        array_index: int,
+        property_path: str,
+        new_value: str,
+        object_name: str,
+        component_tracker
+    ) -> Tuple[bool, Optional[Dict[str, str]], Optional[str]]:
+        """
+        Update an array item property at its source (parent component) instead of hardcoding.
+        
+        For example, when editing images[7].src in FullPortfolioGallery component where
+        images comes from props, this updates portfolioImages[7].src in the parent page.
+
+        Args:
+            files: All project files (dict of file_path -> content)
+            component_file: Path to the component file being edited (e.g., "src/components/FullPortfolioGallery.tsx")
+            prop_name: Name of the prop that contains the array (e.g., "images")
+            array_index: Index of the array item to update (0-based)
+            property_path: Property path to update (e.g., "src", "alt")
+            new_value: New value for the property
+            object_name: Object name from child component's map call (e.g., "image" from images.map((image, index) => ...))
+            component_tracker: ComponentRelationshipTracker instance
+
+        Returns:
+            Tuple of (success, updated_files, error_message)
+            - success: True if array item updated at source, False otherwise
+            - updated_files: Dict of updated files if successful, None otherwise
+            - error_message: Error description if failed, None otherwise
+        """
+        try:
+            logger.info(f"[ARRAY PROP UPDATE] Updating array prop '{prop_name}[{array_index}].{property_path}' at source")
+            logger.info(f"[ARRAY PROP UPDATE] Component: {component_file}")
+
+            # Extract component name from file path
+            component_name = Path(component_file).stem
+            logger.info(f"[ARRAY PROP UPDATE] Component name: {component_name}")
+
+            # Find where this prop is passed from
+            prop_source = component_tracker.find_prop_source(component_file, prop_name)
+
+            if not prop_source:
+                error_msg = f"Could not find source for prop '{prop_name}' in component '{component_name}'"
+                logger.warning(f"[ARRAY PROP UPDATE] {error_msg}")
+                return (False, None, error_msg)
+
+            parent_file, prop_value, usage = prop_source
+            logger.info(f"[ARRAY PROP UPDATE] Found prop source in: {parent_file}")
+            logger.info(f"[ARRAY PROP UPDATE] Prop value: '{prop_value}'")
+
+            # Extract array variable name from prop value
+            # prop_value might be: "{portfolioImages}" or "portfolioImages"
+            # Remove JSX expression braces if present
+            array_var_name = prop_value.strip()
+            if array_var_name.startswith('{') and array_var_name.endswith('}'):
+                array_var_name = array_var_name[1:-1].strip()
+            
+            logger.info(f"[ARRAY PROP UPDATE] Array variable name: '{array_var_name}'")
+
+            # Get parent file content
+            if parent_file not in files:
+                error_msg = f"Parent file '{parent_file}' not found in project files"
+                logger.error(f"[ARRAY PROP UPDATE] {error_msg}")
+                return (False, None, error_msg)
+
+            parent_code = files[parent_file]
+
+            # Find the object name used in the map call
+            # Since the map call is in the CHILD component (not parent), we use the object_name
+            # from the metadata (extracted from child component's map call)
+            # The object_name comes from: images.map((image, index) => ...) -> "image"
+            found_object_name = None
+            
+            # Try to find map call in parent (in case parent also uses this array)
+            map_pattern = rf'{re.escape(array_var_name)}\.map\s*\(\s*\(\s*(\w+)'
+            map_match = re.search(map_pattern, parent_code)
+            
+            if map_match:
+                found_object_name = map_match.group(1)
+                logger.info(f"[ARRAY PROP UPDATE] Found object name '{found_object_name}' from map call in parent")
+            else:
+                # Use object_name from metadata (extracted from child component)
+                # This is the object name used in the child: images.map((image, index) => ...)
+                found_object_name = object_name  # Use the parameter passed in
+                if not found_object_name:
+                    # Fallback: infer from array name (remove 's' or use common patterns)
+                    found_object_name = array_var_name.rstrip('s') if array_var_name.endswith('s') else array_var_name
+                    # Handle special cases: portfolioImages -> portfolioImage -> image
+                    if 'Image' in found_object_name:
+                        found_object_name = 'image'
+                    elif 'Item' in found_object_name:
+                        found_object_name = 'item'
+                logger.info(f"[ARRAY PROP UPDATE] Using object name '{found_object_name}' (from child component or inferred)")
+
+            # Update the array item in the parent file
+            # Use array_var_name directly since we know it from the prop value
+            updated_parent_code = self._update_array_item_attribute(
+                code=parent_code,
+                object_name=found_object_name,
+                array_index=array_index,
+                property_path=property_path,
+                new_value=new_value,
+                array_name_override=array_var_name  # Use the known array name from prop
+            )
+
+            # Check if update succeeded
+            # Note: updated_parent_code could be a dict (metadata) or a string (updated code)
+            if isinstance(updated_parent_code, dict):
+                # This shouldn't happen when array_name_override is provided, but handle it
+                error_msg = f"Unexpected metadata return when updating array '{array_var_name}'"
+                logger.error(f"[ARRAY PROP UPDATE] {error_msg}")
+                return (False, None, error_msg)
+            
+            if not updated_parent_code:
+                error_msg = f"Failed to update array item '{array_var_name}[{array_index}].{property_path}' in parent component"
+                logger.error(f"[ARRAY PROP UPDATE] {error_msg}")
+                logger.error(f"[ARRAY PROP UPDATE] Array '{array_var_name}' may not exist or have different structure")
+                logger.error(f"[ARRAY PROP UPDATE] Parent file content snippet: {parent_code[:500]}...")
+                return (False, None, error_msg)
+            
+            # Log success - the update method already logged success internally
+            logger.info(f"[ARRAY PROP UPDATE] Successfully updated array item via _update_array_item_attribute")
+            
+            # Check if code actually changed (if value was already the same, code might be identical)
+            code_changed = updated_parent_code != parent_code
+            if not code_changed:
+                logger.info(f"[ARRAY PROP UPDATE] Code unchanged (value may already be '{new_value}'), but update succeeded")
+                # Still consider this a success - the value is already correct
+
+            # Verify the updated code structure
+            if not self._verify_code_structure(updated_parent_code):
+                error_msg = "Updated parent code failed structure validation"
+                logger.error(f"[ARRAY PROP UPDATE] {error_msg}")
+                return (False, None, error_msg)
+
+            # Create updated files dict
+            updated_files = files.copy()
+            updated_files[parent_file] = updated_parent_code
+
+            logger.info(f"[ARRAY PROP UPDATE] Successfully updated '{array_var_name}[{array_index}].{property_path}' in {parent_file}")
+            return (True, updated_files, None)
+
+        except Exception as e:
+            error_msg = f"Unexpected error updating array prop at source: {str(e)}"
+            logger.error(f"[ARRAY PROP UPDATE] {error_msg}", exc_info=True)
             return (False, None, error_msg)
 
     def _update_prop_in_jsx(
@@ -789,6 +953,215 @@ class DirectCodeEditor:
         logger.warning(f"[ARRAY UPDATE] Could not find array definition for '{object_name}'")
         return None
 
+    def _update_array_item_attribute(
+        self,
+        code: str,
+        object_name: str,
+        array_index: int,
+        property_path: str,
+        new_value: str,
+        files: Optional[Dict[str, str]] = None,
+        component_tracker = None,
+        array_name_override: Optional[str] = None
+    ) -> Optional[str | Dict[str, Any]]:
+        """
+        Update a property in an array item definition for attributes (src, alt, etc.).
+
+        For example, updating images[0].src in:
+        const images = [
+          { src: "old-url", alt: "..." },
+          { src: "...", alt: "..." }
+        ]
+
+        Also handles nested properties like images[0].media.url
+        If array is a prop, returns metadata dict for parent update.
+
+        Args:
+            code: Component code
+            object_name: Name of the object variable (e.g., "image")
+            array_index: Index of the item to update (0-based)
+            property_path: Property path to update (e.g., "src", "url", "media.url")
+            new_value: New value for the property
+            files: All project files (needed for prop-based arrays)
+            component_tracker: ComponentRelationshipTracker instance (needed for prop-based arrays)
+            array_name_override: Optional array name to use directly (skips map call detection)
+
+        Returns:
+            Updated code if successful, metadata dict if prop-based array, or None if failed
+        """
+        logger.info(f"[ARRAY ATTR UPDATE] Looking for array definition for object '{object_name}'")
+        logger.info(f"[ARRAY ATTR UPDATE] Updating property '{property_path}' at index {array_index}")
+
+        possible_array_names = []
+        
+        # If array_name_override is provided, use it directly
+        if array_name_override:
+            possible_array_names = [array_name_override]
+            logger.info(f"[ARRAY ATTR UPDATE] Using provided array name: '{array_name_override}'")
+        else:
+            # Strategy 1: Find the array name from the .map() call
+            # Pattern: {arrayName}.map((objectName, index) => ...)
+            map_pattern = rf'(\w+)\.map\s*\(\s*\(\s*{re.escape(object_name)}\s*,\s*\w+\s*\)\s*=>'
+            map_match = re.search(map_pattern, code)
+
+            if map_match:
+                actual_array_name = map_match.group(1)
+                logger.info(f"[ARRAY ATTR UPDATE] Found array name from .map() call: '{actual_array_name}'")
+                possible_array_names.append(actual_array_name)
+
+            # Strategy 2: Try common pluralization patterns as fallback
+            possible_array_names.extend([
+                f"{object_name}s",  # image -> images
+                f"{object_name}es",  # hero -> heroes
+                f"{object_name}ies",  # category -> categories
+                object_name,  # sometimes it's the same
+            ])
+
+        logger.info(f"[ARRAY ATTR UPDATE] Trying array names in order: {possible_array_names}")
+
+        for array_name in possible_array_names:
+            # Skip prop check if array_name_override is provided (we know it's a local array)
+            if array_name_override and array_name != array_name_override:
+                # When override is provided, only process that specific array name
+                continue
+                
+            if array_name_override:
+                is_prop = False  # When override is provided, it's always a local array
+                logger.info(f"[ARRAY ATTR UPDATE] Using array_name_override '{array_name_override}', skipping prop check")
+            else:
+                # Check if array comes from props FIRST (before looking for local definition)
+                is_prop = self._is_component_prop(code, array_name)
+                logger.info(f"[ARRAY ATTR UPDATE] Checking array '{array_name}': is_prop={is_prop}")
+            
+            # Pattern to match array definition: const arrayName = [...]
+            # Supports various declaration styles: const, let, var, export const, etc.
+            array_pattern = rf'(?:const|let|var|export\s+const)\s+{re.escape(array_name)}\s*=\s*\['
+
+            match = re.search(array_pattern, code)
+            if not match:
+                # If not found as hardcoded, and it's a prop, return metadata for parent update
+                if is_prop and not array_name_override:  # Don't return metadata if using override
+                    logger.info(f"[ARRAY ATTR UPDATE] Array '{array_name}' is a prop but not found locally")
+                    if files is not None and component_tracker is not None:
+                        logger.info(f"[ARRAY ATTR UPDATE] Returning metadata for parent update")
+                        return {
+                            'type': 'array_prop_edit',
+                            'prop_name': array_name,
+                            'array_index': array_index,
+                            'property_path': property_path,
+                            'new_value': new_value,
+                            'object_name': object_name
+                        }
+                    else:
+                        logger.warning(f"[ARRAY ATTR UPDATE] Array '{array_name}' is a prop but files/component_tracker not provided")
+                continue
+
+            # Found array definition locally - update it
+            logger.info(f"[ARRAY ATTR UPDATE] Found array definition for '{array_name}' at position {match.start()}")
+
+            # Find the complete array definition (from [ to ])
+            array_start = match.end() - 1  # Position of '['
+            array_content, _ = self._extract_balanced_brackets(code, array_start)
+
+            if array_content is None:
+                logger.warning(f"[ARRAY ATTR UPDATE] Could not extract complete array definition")
+                continue
+
+            logger.info(f"[ARRAY ATTR UPDATE] Array content length: {len(array_content)} characters")
+
+            # Parse the array to find individual items
+            array_items = self._parse_array_items(array_content)
+
+            if array_index >= len(array_items):
+                logger.warning(f"[ARRAY ATTR UPDATE] Index {array_index} out of bounds (array has {len(array_items)} items)")
+                continue
+
+            logger.info(f"[ARRAY ATTR UPDATE] Found {len(array_items)} items in array")
+            logger.info(f"[ARRAY ATTR UPDATE] Updating item at index {array_index}")
+
+            # Get the item to update
+            item_start, item_end, item_content = array_items[array_index]
+            
+            logger.info(f"[ARRAY ATTR UPDATE] Item content at index {array_index}: {item_content[:200]}...")
+
+            # Update the property in the item (handles nested properties)
+            updated_item = self._update_object_property_path(item_content, property_path, new_value)
+
+            if updated_item:
+                # Reconstruct the code with the updated item
+                # Calculate absolute positions
+                abs_item_start = array_start + 1 + item_start
+                abs_item_end = array_start + 1 + item_end
+
+                new_code = code[:abs_item_start] + updated_item + code[abs_item_end:]
+
+                logger.info(f"[ARRAY ATTR UPDATE] Successfully updated {property_path} in item {array_index}")
+                if is_prop:
+                    logger.info(f"[ARRAY ATTR UPDATE] Note: Array '{array_name}' is a prop - consider updating at parent component")
+                return new_code
+            else:
+                logger.warning(f"[ARRAY ATTR UPDATE] Failed to update property '{property_path}' in item at index {array_index}")
+                logger.warning(f"[ARRAY ATTR UPDATE] Item content: {item_content}")
+                logger.warning(f"[ARRAY ATTR UPDATE] Property path: {property_path}, New value: {new_value}")
+
+        logger.warning(f"[ARRAY ATTR UPDATE] Could not find array definition for '{object_name}'")
+        logger.warning(f"[ARRAY ATTR UPDATE] Tried array names: {possible_array_names}")
+        return None
+
+    def _update_object_property_path(self, object_content: str, property_path: str, new_value: str) -> Optional[str]:
+        """
+        Update a property in an object literal, supporting nested properties.
+
+        Examples:
+        - property_path='src' -> updates { src: "..." }
+        - property_path='media.url' -> updates { media: { url: "..." } }
+
+        Args:
+            object_content: Object literal content
+            property_path: Property path (e.g., 'src', 'media.url')
+            new_value: New value (will be properly quoted)
+
+        Returns:
+            Updated object content or None if property not found
+        """
+        # Handle nested properties
+        if '.' in property_path:
+            parts = property_path.split('.')
+            main_prop = parts[0]
+            nested_path = '.'.join(parts[1:])
+            
+            # Find the main property object
+            # Pattern: mainProp: { ... }
+            main_pattern = rf'{re.escape(main_prop)}\s*:\s*\{{'
+            main_match = re.search(main_pattern, object_content)
+            
+            if main_match:
+                # Find the nested object
+                nested_start = main_match.end() - 1  # Position of '{'
+                nested_content, nested_end_pos = self._extract_balanced_brackets(object_content, nested_start)
+                
+                if nested_content:
+                    # Recursively update nested property
+                    updated_nested = self._update_object_property_path(nested_content, nested_path, new_value)
+                    
+                    if updated_nested:
+                        # Replace the nested object in the main object
+                        abs_nested_start = nested_start + 1
+                        abs_nested_end = nested_end_pos - 1
+                        updated_object = (
+                            object_content[:abs_nested_start] + 
+                            updated_nested + 
+                            object_content[abs_nested_end:]
+                        )
+                        logger.info(f"[OBJECT UPDATE] Updated nested property '{property_path}'")
+                        return updated_object
+            
+            logger.warning(f"[OBJECT UPDATE] Could not find nested property '{property_path}'")
+            return None
+        else:
+            # Simple property update (non-nested)
+            return self._update_object_property(object_content, property_path, new_value)
+
     def _extract_balanced_brackets(self, code: str, start_pos: int) -> tuple[Optional[str], Optional[int]]:
         """
         Extract content between balanced brackets starting at start_pos.
@@ -907,10 +1280,15 @@ class DirectCodeEditor:
         Returns:
             Updated object content or None if property not found
         """
+        logger.info(f"[OBJECT UPDATE] Updating property '{property_name}' with value '{new_value}'")
+        logger.debug(f"[OBJECT UPDATE] Object content: {object_content[:200]}...")
+        
         # Pattern to match property: key followed by : and value
         # Handles various formats: title: "value", title:"value", title: 'value'
+        # Also handles: alt: 'value' or alt: "value"
 
         # Try to find the property with quoted string value
+        # Match: propertyName: "value" or propertyName: 'value'
         pattern = rf'{re.escape(property_name)}\s*:\s*(["\'])((?:[^"\'\\]|\\.)*)(["\'])'
         match = re.search(pattern, object_content)
 
@@ -928,12 +1306,80 @@ class DirectCodeEditor:
             logger.debug(f"[OBJECT UPDATE] New: {new_prop}")
             return updated_content
 
+        # Try without quotes (for numeric or boolean values, or template literals)
+        # Pattern: propertyName: value (no quotes)
+        pattern_no_quotes = rf'{re.escape(property_name)}\s*:\s*([^,}}]+)'
+        match_no_quotes = re.search(pattern_no_quotes, object_content)
+        
+        if match_no_quotes:
+            old_prop = match_no_quotes.group(0)
+            # For string values, add quotes
+            new_prop = f'{property_name}: "{new_value}"'
+            updated_content = object_content.replace(old_prop, new_prop, 1)
+            logger.info(f"[OBJECT UPDATE] Updated property '{property_name}' (was unquoted)")
+            return updated_content
+
         logger.warning(f"[OBJECT UPDATE] Property '{property_name}' not found in object")
+        logger.warning(f"[OBJECT UPDATE] Object content: {object_content}")
         return None
 
-    def _edit_attribute(self, code: str, selector: str, attr_name: str, new_value: str) -> Optional[str]:
+    def _extract_attribute_expression(self, tag_content: str, attr_name: str) -> Optional[tuple[str, str]]:
+        """
+        Extract the object name and property path from an attribute expression.
+        
+        Examples:
+        - src={image.src} -> ('image', 'src')
+        - src={image.url} -> ('image', 'url')
+        - src={image.media.url} -> ('image', 'media.url')
+        - alt={item.alt} -> ('item', 'alt')
+        
+        Args:
+            tag_content: The HTML tag content containing the attribute
+            attr_name: The attribute name (e.g., 'src', 'alt')
+            
+        Returns:
+            Tuple of (object_name, property_path) or None if not found
+        """
+        # Pattern to match JSX expression attributes: attrName={expression}
+        # Handles: src={image.src}, src={image.url}, src={image.media.url}
+        expr_pattern = rf'{re.escape(attr_name)}=\{{([^}}]+)\}}'
+        expr_match = re.search(expr_pattern, tag_content)
+        
+        if not expr_match:
+            return None
+            
+        expression = expr_match.group(1).strip()
+        
+        # Pattern to match object property access: objectName.property or objectName.nested.property
+        # Matches: image.src, image.url, image.media.url, item.alt
+        prop_pattern = r'^(\w+)(?:\.(\w+(?:\.\w+)*))?$'
+        prop_match = re.match(prop_pattern, expression)
+        
+        if prop_match:
+            object_name = prop_match.group(1)
+            property_path = prop_match.group(2) if prop_match.group(2) else attr_name  # Default to attr_name if no property specified
+            
+            # Handle fallback patterns like image.url || image.src
+            # Use the first property found
+            fallback_match = re.search(r'(\w+)\.(\w+)', expression)
+            if fallback_match and fallback_match.group(1) == object_name:
+                property_path = fallback_match.group(2)
+            
+            logger.info(f"[ATTR EXPR] Extracted: object='{object_name}', property='{property_path}' from expression '{expression}'")
+            return (object_name, property_path)
+        
+        logger.debug(f"[ATTR EXPR] Could not extract property from expression: '{expression}'")
+        return None
+
+    def _edit_attribute(self, code: str, selector: str, attr_name: str, new_value: str, files: Optional[Dict[str, str]] = None, component_tracker = None) -> Optional[str | Dict[str, Any]]:
         """
         Edit an HTML attribute (src, href, alt, etc.)
+        
+        For array items (detected via selector pattern), attempts to update
+        the array item property instead of hardcoding the attribute.
+        
+        Returns:
+            Updated code, metadata dict for prop-based arrays, or None if failed
         """
         logger.info(f"[DIRECT EDIT] Changing {attr_name} to: '{new_value}'")
         
@@ -943,6 +1389,46 @@ class DirectCodeEditor:
         
         tag_start, tag_end, tag_content = tag_match
         
+        # Check if this is an array item (selector contains index like "portfolio-image-0")
+        # Only attempt array update for src and alt attributes
+        if attr_name in ['src', 'alt']:
+            array_index = self._extract_array_index_from_selector(selector)
+            
+            if array_index is not None:
+                logger.info(f"[DIRECT EDIT] Detected array item at index {array_index} for attribute {attr_name}")
+                
+                # Extract which property is actually used in the attribute expression
+                attr_expr = self._extract_attribute_expression(tag_content, attr_name)
+                
+                if attr_expr:
+                    object_name, property_path = attr_expr
+                    logger.info(f"[DIRECT EDIT] Attempting to update array item: object='{object_name}', property='{property_path}'")
+                    
+                    # Try to update the array item property
+                    updated_code = self._update_array_item_attribute(
+                        code=code,
+                        object_name=object_name,
+                        array_index=array_index,
+                        property_path=property_path,
+                        new_value=new_value,
+                        files=files,
+                        component_tracker=component_tracker
+                    )
+                    
+                    # Check if result is metadata dict (prop-based array)
+                    if isinstance(updated_code, dict):
+                        logger.info(f"[DIRECT EDIT] Array prop edit detected, returning metadata")
+                        return updated_code
+                    
+                    if updated_code and updated_code != code:
+                        logger.info(f"[DIRECT EDIT] Successfully updated array item property '{property_path}' at index {array_index}")
+                        return updated_code
+                    else:
+                        logger.warning(f"[DIRECT EDIT] Failed to update array item, falling back to direct attribute update")
+                else:
+                    logger.debug(f"[DIRECT EDIT] Could not extract attribute expression, falling back to direct update")
+        
+        # Fallback to direct attribute update
         # Check if attribute already exists
         attr_pattern = rf'{attr_name}=["\'](.*?)["\']'
         attr_match = re.search(attr_pattern, tag_content)

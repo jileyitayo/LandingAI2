@@ -349,17 +349,17 @@
         event.preventDefault();
         event.stopPropagation();
 
-        const element = event.target;
+        let element = event.target;
         if (element === overlay || element === tooltip || element === document.body) return;
 
-        // Find the component root to highlight the entire component
-        const componentRoot = findComponentRoot(element);
-        hoveredElement = componentRoot; // Highlight component, not just element
+        // Find the best selectable element (prioritize images)
+        element = findBestSelectableElement(element);
+        hoveredElement = element;
 
         createOverlay();
         createTooltip();
-        updateOverlay(componentRoot); // Show component boundary
-        updateTooltip(componentRoot, event); // Show tooltip with element info
+        updateOverlay(element); // Show element boundary
+        updateTooltip(element, event); // Show tooltip with element info
     }
     
     // Handle mouse out
@@ -376,6 +376,73 @@
         hideTooltip();
     }
     
+    // Find the best element to select when clicking
+    // Prioritizes image elements when there are overlapping elements
+    function findBestSelectableElement(clickedElement) {
+        // If clicked element is already an image with data-element, use it
+        if (clickedElement.tagName.toLowerCase() === 'img' &&
+            clickedElement.hasAttribute('data-element') &&
+            clickedElement.getAttribute('data-element-type') === 'image') {
+            return clickedElement;
+        }
+
+        // Check if clicked element is inside an image container
+        // Traverse up to find an img element with data-element attribute
+        let current = clickedElement;
+        let imageElement = null;
+
+        while (current && current !== document.body) {
+            // Check if this is an image element with data-element
+            if (current.tagName.toLowerCase() === 'img' &&
+                current.hasAttribute('data-element') &&
+                current.getAttribute('data-element-type') === 'image') {
+                imageElement = current;
+                break;
+            }
+
+            // Also check for data-editable-src attribute (indicates editable image)
+            if (current.hasAttribute('data-editable-src') &&
+                current.tagName.toLowerCase() === 'img') {
+                imageElement = current;
+                break;
+            }
+
+            // Check sibling elements for images (handles overlay divs on top of images)
+            if (current.parentElement) {
+                const siblings = Array.from(current.parentElement.children);
+                for (let sibling of siblings) {
+                    if (sibling.tagName.toLowerCase() === 'img' &&
+                        sibling.hasAttribute('data-element') &&
+                        sibling.getAttribute('data-element-type') === 'image') {
+                        imageElement = sibling;
+                        break;
+                    }
+
+                    // Also check for data-editable-src
+                    if (sibling.tagName.toLowerCase() === 'img' &&
+                        sibling.hasAttribute('data-editable-src')) {
+                        imageElement = sibling;
+                        break;
+                    }
+                }
+
+                if (imageElement) {
+                    break;
+                }
+            }
+
+            current = current.parentElement;
+        }
+
+        // If we found an image element, use it
+        if (imageElement) {
+            return imageElement;
+        }
+
+        // Otherwise, return the clicked element
+        return clickedElement;
+    }
+    
     // Handle click
     function handleClick(event) {
         if (!selectorEnabled) return;
@@ -383,8 +450,11 @@
         event.preventDefault();
         event.stopPropagation();
 
-        const element = event.target;
+        let element = event.target;
         if (element === overlay || element === document.body) return;
+
+        // Find the best selectable element (prioritize images)
+        element = findBestSelectableElement(element);
 
         const elementData = extractElementData(element);
 
@@ -392,7 +462,8 @@
         console.log('Component selected:', {
             component: elementData.component.componentName || 'Unknown',
             file: elementData.component.componentFile || 'Unknown',
-            element: elementData.component.elementName || elementData.tagName
+            element: elementData.component.elementName || elementData.tagName,
+            elementType: elementData.elementType
         });
 
         // Send data to parent window
@@ -423,8 +494,11 @@
         event.preventDefault();
         event.stopPropagation();
         
-        const element = event.target;
+        let element = event.target;
         if (element === overlay || element === document.body) return;
+
+        // Find the best selectable element (prioritize images)
+        element = findBestSelectableElement(element);
         
         const elementData = extractElementData(element);
         
