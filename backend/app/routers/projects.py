@@ -324,10 +324,13 @@ async def update_project(
 @log_action(action_type='DELETE', target_resource_type='project')
 async def delete_project(
     project_id: str,
+    hard_delete: bool = True,  # Option 1: Hard delete (default) - removes row completely
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Soft delete a project (marks as deleted but keeps data).
+    Delete a project with two options:
+    - Option 1 (hard_delete=True, default): Completely remove the project row from the database
+    - Option 2 (hard_delete=False): Soft delete - marks as deleted but keeps data
     
     Only the project owner can delete the project.
     """
@@ -359,24 +362,34 @@ async def delete_project(
         project = response.data[0]
         verify_project_ownership(project, user_id)
         
-        # Check if already deleted
-        if project.get("deleted_at"):
+        # Check if already deleted (only for soft delete)
+        if not hard_delete and project.get("deleted_at"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Project is already deleted"
             )
         
-        # Soft delete by setting deleted_at timestamp
-        response = supabase.table("projects").update({
-            "deleted_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat()
-        }).eq("id", project_id).execute()
-
-        # TODO; Delete all project files and chat history from the database
-        
-        return {
-            "message": "Project deleted successfully"
-        }
+        if hard_delete:
+            # Option 1: Hard delete - completely remove the row from database
+            # Related tables (project_files, project_chat_messages, project_edit_history) 
+            # will be automatically deleted due to ON DELETE CASCADE constraints
+            logger.info(f"Hard deleting project {project_id} - removing row completely")
+            response = supabase.table("projects").delete().eq("id", project_id).execute()
+            
+            return {
+                "message": "Project permanently deleted successfully"
+            }
+        else:
+            # Option 2: Soft delete - mark as deleted but keep data
+            logger.info(f"Soft deleting project {project_id} - marking as deleted")
+            response = supabase.table("projects").update({
+                "deleted_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("id", project_id).execute()
+            
+            return {
+                "message": "Project deleted successfully (soft delete)"
+            }
         
     
     except HTTPException:
