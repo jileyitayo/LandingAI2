@@ -362,8 +362,11 @@ export default function ProjectEditorPage() {
       setIsAutoSaving(true);
 
       try {
-        // Map imageUrl to src for backend
-        const backendProperty = property === 'imageUrl' ? 'src' : property;
+        // Map frontend property names to backend property names
+        // imageUrl -> src, imageAlt -> alt for backend
+        const backendProperty = property === 'imageUrl' ? 'src' : 
+                                property === 'imageAlt' ? 'alt' : 
+                                property;
         
         const response = await api.generation.editProperties(projectId, {
           element_selector: element.elementSelector || '',

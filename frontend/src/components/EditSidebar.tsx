@@ -45,6 +45,48 @@ export default function EditSidebar({
     }
   }, [isAutoSaving]);
 
+  // Auto-expand/collapse sections based on selected element type
+  useEffect(() => {
+    if (!selectedElement) {
+      // Reset to default when no element is selected
+      setExpandedSections(new Set(['content', 'colors', 'typography']));
+      return;
+    }
+
+    const tagName = selectedElement.tagName?.toLowerCase();
+    const hasTextContent = Boolean(selectedElement.textContent && selectedElement.textContent.trim());
+    
+    // Text-containing elements (headings, paragraphs, spans, divs, etc.)
+    const textElementTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'div', 'li', 'td', 'th', 'label', 'button'];
+    
+    // Determine which section should be expanded based on element type
+    let sectionToExpand: PropertySection | null = null;
+
+    // Image elements - expand image section and collapse others
+    if (tagName === 'img') {
+      sectionToExpand = 'image';
+    }
+    // Text elements - expand content section and collapse others
+    // Check if it's a text element tag or has text content (excluding images, links, and self-closing tags)
+    else if (
+      (textElementTags.includes(tagName || '') || hasTextContent) &&
+      tagName !== 'img' &&
+      tagName !== 'a' &&
+      !['hr', 'br', 'video', 'iframe', 'svg', 'input', 'textarea', 'select'].includes(tagName || '')
+    ) {
+      sectionToExpand = 'content';
+    }
+    // Link elements - expand link section
+    else if (tagName === 'a') {
+      sectionToExpand = 'link';
+    }
+
+    // If we have a section to expand, expand only that section and collapse others
+    if (sectionToExpand) {
+      setExpandedSections(new Set([sectionToExpand]));
+    }
+  }, [selectedElement]);
+
   // Wrap property change handler to track what's being saved
   const handlePropertyChange = (property: PropertyType, value: string | number | boolean) => {
     setLastSavedProperty(property);

@@ -191,6 +191,35 @@
         return dataAttributes;
     }
 
+    // Extract relevant HTML attributes for editing (alt, src, href, etc.)
+    function getRelevantAttributes(element) {
+        const relevantAttrs = {};
+        const tagName = element.tagName.toLowerCase();
+        
+        // Standard attributes to extract based on element type
+        const attributesToExtract = [];
+        
+        if (tagName === 'img') {
+            attributesToExtract.push('src', 'alt', 'width', 'height');
+        } else if (tagName === 'a') {
+            attributesToExtract.push('href', 'target', 'rel');
+        } else if (tagName === 'input' || tagName === 'textarea') {
+            attributesToExtract.push('type', 'placeholder', 'value', 'name', 'id');
+        } else if (tagName === 'button') {
+            attributesToExtract.push('type', 'disabled');
+        }
+        
+        // Extract the relevant attributes
+        for (let i = 0; i < element.attributes.length; i++) {
+            const attr = element.attributes[i];
+            if (attributesToExtract.includes(attr.name)) {
+                relevantAttrs[attr.name] = attr.value;
+            }
+        }
+        
+        return relevantAttrs;
+    }
+
     // Build DOM path selector
     function buildSelectorPath(element) {
         const path = [];
@@ -223,6 +252,12 @@
         // Get data attributes from both the element and component root
         const elementDataAttrs = getDataAttributes(element);
         const componentDataAttrs = componentRoot !== element ? getDataAttributes(componentRoot) : elementDataAttrs;
+        
+        // Get relevant HTML attributes (alt, src, href, etc.) for editing
+        const relevantAttrs = getRelevantAttributes(element);
+        
+        // Merge data attributes with relevant HTML attributes
+        const allAttributes = { ...elementDataAttrs, ...relevantAttrs };
 
         // Build selector paths
         const elementPath = buildSelectorPath(element);
@@ -276,7 +311,7 @@
             classList: Array.from(element.classList),
             textContent: element.textContent?.trim() || '',
             innerHTML: element.innerHTML,
-            attributes: elementDataAttrs,
+            attributes: allAttributes,
             hasChildren: element.children.length > 0,
             childCount: element.children.length,
             outerHTML: element.outerHTML,

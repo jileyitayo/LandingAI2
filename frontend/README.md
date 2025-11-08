@@ -38,13 +38,18 @@ yarn install
 
 ### 3. Set up environment variables
 
-Copy the `.env.example` file to `.env.local`:
+Create a `.env.local` file in the frontend directory with the following variables:
 
-```bash
-cp .env.example .env.local
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+NEXT_PUBLIC_UNSPLASH_ACCESS_KEY=your-unsplash-access-key
 ```
 
-Then edit `.env.local` with your actual values. See `.env.example` for detailed instructions on where to get each API key.
+**Getting API Keys:**
+- **Supabase**: Get your URL and anon key from your Supabase project settings under **API**
+- **Unsplash**: Get your access key from [Unsplash Developers](https://unsplash.com/developers). Create a new application to get your Access Key.
 
 ### 4. Run the development server
 
