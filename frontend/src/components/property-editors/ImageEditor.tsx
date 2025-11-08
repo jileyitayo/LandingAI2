@@ -12,13 +12,13 @@ interface ImageEditorProps {
   onImageFitChange?: (value: string) => void;
 }
 
-const IMAGE_FIT_OPTIONS = [
-  { value: 'object-cover', label: 'Cover' },
-  { value: 'object-contain', label: 'Contain' },
-  { value: 'object-fill', label: 'Fill' },
-  { value: 'object-scale-down', label: 'Scale Down' },
-  { value: 'object-none', label: 'None' },
-];
+// const IMAGE_FIT_OPTIONS = [
+//   { value: 'object-cover', label: 'Cover' },
+//   { value: 'object-contain', label: 'Contain' },
+//   { value: 'object-fill', label: 'Fill' },
+//   { value: 'object-scale-down', label: 'Scale Down' },
+//   { value: 'object-none', label: 'None' },
+// ];
 
 // Unsplash API types
 interface UnsplashPhoto {
@@ -691,7 +691,7 @@ export default function ImageEditor({
       )}
 
       {/* Image Fit */}
-      {onImageFitChange && (
+      {/* {onImageFitChange && (
         <div className="space-y-2">
           <label className="flex items-center gap-2 text-xs font-medium text-gray-400">
             <ImageIcon className="w-3 h-3" />
@@ -713,7 +713,7 @@ export default function ImageEditor({
             ))}
           </div>
         </div>
-      )}
+      )} */}
     </div>
   );
 }

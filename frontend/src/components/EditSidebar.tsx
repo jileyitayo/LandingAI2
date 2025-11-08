@@ -238,11 +238,13 @@ export default function EditSidebar({
       link: false,
     };
 
-    // Image elements
+    // Image elements - only show image section, hide all others
     if (tagName === 'img') {
       sections.image = true;
       sections.content = false;
+      sections.colors = false;
       sections.typography = false;
+      sections.link = false;
     }
     
     // Link elements
