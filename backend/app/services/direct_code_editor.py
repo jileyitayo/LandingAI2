@@ -6,8 +6,18 @@ It parses React/TypeScript components and modifies specific properties like:
 - Tailwind CSS classes (className attribute)
 - Inline styles (style attribute)
 - Text content
-- Image sources
-- Link hrefs
+- Image sources (src, alt attributes)
+- Link properties (href, target, rel attributes)
+
+For prop-based values and array items, the service detects these patterns and
+updates them at their source (parent component) instead of hardcoding values.
+
+Smart link handling:
+- Automatically converts <a> tags to <Link> components for internal links
+- Automatically converts <Link> components to <a> tags for external links
+- Manages React Router imports (adds "import { Link } from 'react-router-dom'")
+- Handles attribute conversion (href ↔ to)
+- Supports asChild pattern (Radix UI/shadcn): automatically redirects edits to child elements
 
 Implementation uses regex-based code manipulation for reliable, fast edits.
 For complex AST-based operations, consider extending with @babel/parser.
@@ -55,12 +65,21 @@ class DirectCodeEditor:
             value_str = str(value)
             
             # Validate URL properties
-            if property_name in ['src', 'href']:
+            if property_name == 'src':
                 if not value_str.strip():
-                    return (False, f"{property_name} cannot be empty")
-                # Basic URL validation
+                    return (False, "src cannot be empty")
+                # Basic URL validation for src
                 if not (value_str.startswith('http') or value_str.startswith('/') or value_str.startswith('.')):
-                    return (False, f"Invalid URL format for {property_name}")
+                    return (False, "Invalid URL format for src")
+
+            # Validate href (allow empty for "no link")
+            elif property_name == 'href':
+                if value_str.strip():  # Only validate if not empty
+                    # Basic URL validation
+                    if not (value_str.startswith('http') or value_str.startswith('/') or
+                            value_str.startswith('.') or value_str.startswith('#') or
+                            value_str.startswith('mailto:') or value_str.startswith('tel:')):
+                        return (False, "Invalid URL format for href")
             
             # Validate text content
             elif property_name == 'text':
@@ -179,10 +198,23 @@ class DirectCodeEditor:
                             return (False, None, None, result)
                     elif property_name == 'href':
                         result = self._edit_attribute(new_code, element_selector, 'href', str(property_value), files, component_tracker)
+                        # Check if result is prop edit or array prop edit metadata
+                        if isinstance(result, dict) and result.get('type') in ['prop_edit', 'array_prop_edit']:
+                            logger.info(f"[DIRECT EDIT] {result.get('type')} detected for href")
+                            # Return early with prop edit info for caller to handle
+                            return (False, None, None, result)
                     elif property_name == 'target':
                         result = self._edit_attribute(new_code, element_selector, 'target', str(property_value), files, component_tracker)
+                        # Check if result is prop edit or array prop edit metadata
+                        if isinstance(result, dict) and result.get('type') in ['prop_edit', 'array_prop_edit']:
+                            logger.info(f"[DIRECT EDIT] {result.get('type')} detected for target")
+                            return (False, None, None, result)
                     elif property_name == 'rel':
                         result = self._edit_attribute(new_code, element_selector, 'rel', str(property_value), files, component_tracker)
+                        # Check if result is prop edit or array prop edit metadata
+                        if isinstance(result, dict) and result.get('type') in ['prop_edit', 'array_prop_edit']:
+                            logger.info(f"[DIRECT EDIT] {result.get('type')} detected for rel")
+                            return (False, None, None, result)
                     elif property_name == 'alt':
                         result = self._edit_attribute(new_code, element_selector, 'alt', str(property_value), files, component_tracker)
                         # Check if result is array prop edit metadata
@@ -1327,20 +1359,353 @@ class DirectCodeEditor:
         logger.warning(f"[OBJECT UPDATE] Object content: {object_content}")
         return None
 
+    def _has_import(self, code: str, module_name: str, import_name: str) -> bool:
+        """
+        Check if a specific import exists in the code.
+
+        Args:
+            code: Component code
+            module_name: Module to import from (e.g., 'react-router-dom')
+            import_name: Name to import (e.g., 'Link')
+
+        Returns:
+            True if import exists, False otherwise
+        """
+        # Pattern to match: import { Link } from 'react-router-dom';
+        # Also handles: import { Link, Route } from 'react-router-dom';
+        # And: import { Route, Link } from 'react-router-dom';
+        pattern = rf'import\s+\{{[^}}]*\b{re.escape(import_name)}\b[^}}]*\}}\s+from\s+["\'{re.escape(module_name)}"\']'
+
+        if re.search(pattern, code):
+            logger.debug(f"[IMPORT CHECK] Found import {{ {import_name} }} from '{module_name}'")
+            return True
+
+        logger.debug(f"[IMPORT CHECK] Import {{ {import_name} }} from '{module_name}' not found")
+        return False
+
+    def _add_import(self, code: str, module_name: str, import_name: str) -> str:
+        """
+        Add an import statement to the code if it doesn't already exist.
+
+        Args:
+            code: Component code
+            module_name: Module to import from (e.g., 'react-router-dom')
+            import_name: Name to import (e.g., 'Link')
+
+        Returns:
+            Updated code with import added
+        """
+        # Check if import already exists
+        if self._has_import(code, module_name, import_name):
+            logger.info(f"[IMPORT] Import {{ {import_name} }} from '{module_name}' already exists")
+            return code
+
+        logger.info(f"[IMPORT] Adding import {{ {import_name} }} from '{module_name}'")
+
+        # Check if there's an existing import from the same module
+        # Pattern: import { ... } from 'module-name';
+        existing_import_pattern = rf'(import\s+\{{)([^}}]*)\}}\s+from\s+["\'{re.escape(module_name)}"\']'
+        existing_match = re.search(existing_import_pattern, code)
+
+        if existing_match:
+            # Add to existing import
+            logger.info(f"[IMPORT] Adding to existing import from '{module_name}'")
+            existing_imports = existing_match.group(2).strip()
+            # Add the new import to the list
+            new_imports = f"{existing_imports}, {import_name}"
+            new_import_statement = f"import {{ {new_imports} }} from '{module_name}';"
+
+            # Replace the old import statement
+            old_import_statement = existing_match.group(0)
+            code = code.replace(old_import_statement, new_import_statement, 1)
+        else:
+            # Add new import statement
+            logger.info(f"[IMPORT] Adding new import statement for '{module_name}'")
+            new_import = f"import {{ {import_name} }} from '{module_name}';\n"
+
+            # Find where to insert the import (after other imports or at the beginning)
+            # Look for the last import statement
+            import_pattern = r'import\s+.*?from\s+["\'].*?["\'];?\s*\n'
+            import_matches = list(re.finditer(import_pattern, code))
+
+            if import_matches:
+                # Insert after the last import
+                last_import = import_matches[-1]
+                insert_pos = last_import.end()
+                code = code[:insert_pos] + new_import + code[insert_pos:]
+            else:
+                # No imports found, add at the beginning
+                code = new_import + code
+
+        return code
+
+    def _is_internal_link(self, url: str) -> bool:
+        """
+        Check if a URL is an internal link (should use React Router <Link>).
+
+        Args:
+            url: The URL to check
+
+        Returns:
+            True if internal (relative path or hash), False if external
+        """
+        if not url or not url.strip():
+            return False
+
+        url = url.strip()
+
+        # Internal links:
+        # - Start with / (e.g., /about, /contact)
+        # - Start with # (e.g., #section)
+        # External links:
+        # - Start with http:// or https://
+        # - mailto: or tel: links
+
+        is_internal = url.startswith('/') or url.startswith('#')
+        is_external = (url.startswith('http://') or url.startswith('https://') or
+                      url.startswith('mailto:') or url.startswith('tel:'))
+
+        # If it starts with ./ or ../ it's also internal (relative)
+        if url.startswith('./') or url.startswith('../'):
+            is_internal = True
+
+        return is_internal and not is_external
+
+    def _has_as_child_prop(self, tag_content: str) -> bool:
+        """
+        Check if a tag has the asChild prop (used in Radix UI/shadcn patterns).
+
+        Args:
+            tag_content: The tag content to check
+
+        Returns:
+            True if asChild prop is present, False otherwise
+        """
+        # Pattern to match: asChild or asChild={true}
+        # Also handles: asChild={true}, asChild={false} (though false means it's not actually asChild)
+        if re.search(r'\basChild\s*(?:=\{true\})?(?:\s|>|/)', tag_content):
+            logger.debug(f"[ASCHILD] Found asChild prop in tag")
+            return True
+        return False
+
+    def _extract_child_element_selector(self, code: str, parent_selector: str) -> Optional[str]:
+        """
+        Extract the data-element selector of the child element within an asChild parent.
+
+        For example:
+        <Button asChild data-element="parent">
+          <Link to="/contact" data-element="child">Text</Link>
+        </Button>
+
+        Given parent_selector="parent", returns "child"
+
+        Args:
+            code: Component code
+            parent_selector: The selector of the parent element
+
+        Returns:
+            Child element's selector or None if not found
+        """
+        logger.info(f"[ASCHILD] Extracting child element from parent with selector '{parent_selector}'")
+
+        # Find the parent element
+        element_data = self._find_element_content(code, parent_selector)
+        if not element_data:
+            logger.warning(f"[ASCHILD] Could not find parent element with selector '{parent_selector}'")
+            return None
+
+        tag_start, tag_end, content_end, closing_tag_end, tag_name, content = element_data
+
+        logger.debug(f"[ASCHILD] Parent content: {content[:200]}...")
+
+        # Find the first child element with data-element attribute
+        # Pattern to match: <AnyTag ... data-element="value" ... >
+        child_pattern = r'<(\w+(?:\.\w+)?)[^>]*data-element=["\']([^"\']+)["\']'
+        child_match = re.search(child_pattern, content)
+
+        if child_match:
+            child_selector = child_match.group(2)
+            child_tag = child_match.group(1)
+            logger.info(f"[ASCHILD] Found child element: <{child_tag}> with selector '{child_selector}'")
+            return child_selector
+
+        # If no child has data-element, we need to add one to the first child element
+        # Find the first opening tag in content
+        first_child_pattern = r'<(\w+(?:\.\w+)?)'
+        first_child_match = re.search(first_child_pattern, content)
+
+        if first_child_match:
+            logger.warning(f"[ASCHILD] Child element has no data-element attribute")
+            logger.info(f"[ASCHILD] Will add data-element to child automatically")
+            # Generate a child selector based on parent selector
+            child_selector_candidate = f"{parent_selector}-child"
+            return child_selector_candidate
+
+        logger.warning(f"[ASCHILD] No child element found in parent content")
+        return None
+
+    def _add_data_element_to_child(self, code: str, parent_selector: str, child_selector: str) -> Optional[str]:
+        """
+        Add data-element attribute to the child element of an asChild parent.
+
+        Args:
+            code: Component code
+            parent_selector: Parent element's selector
+            child_selector: Selector to add to child
+
+        Returns:
+            Updated code with data-element added to child, or None if failed
+        """
+        logger.info(f"[ASCHILD] Adding data-element='{child_selector}' to child of '{parent_selector}'")
+
+        # Find the parent element
+        element_data = self._find_element_content(code, parent_selector)
+        if not element_data:
+            return None
+
+        tag_start, tag_end, content_end, closing_tag_end, tag_name, content = element_data
+
+        # Find the first child element opening tag
+        first_child_pattern = r'<(\w+(?:\.\w+)?)([^>]*?)(/?>)'
+        first_child_match = re.search(first_child_pattern, content)
+
+        if not first_child_match:
+            logger.warning(f"[ASCHILD] No child element found to add data-element to")
+            return None
+
+        child_tag_name = first_child_match.group(1)
+        child_attrs = first_child_match.group(2)
+        child_closing = first_child_match.group(3)
+
+        # Add data-element attribute
+        new_child_tag = f'<{child_tag_name}{child_attrs} data-element="{child_selector}"{child_closing}'
+
+        # Replace in content
+        new_content = content.replace(first_child_match.group(0), new_child_tag, 1)
+
+        # Reconstruct code
+        new_code = (
+            code[:tag_end] +
+            new_content +
+            code[content_end:]
+        )
+
+        logger.info(f"[ASCHILD] Successfully added data-element to child")
+        return new_code
+
+    def _convert_tag_type(self, code: str, selector: str, from_tag: str, to_tag: str, attr_conversions: Dict[str, str] = None) -> Optional[str]:
+        """
+        Convert a tag from one type to another (e.g., <a> to <Link>).
+
+        Args:
+            code: Component code
+            selector: Element selector (data-element value)
+            from_tag: Source tag name (e.g., 'a')
+            to_tag: Target tag name (e.g., 'Link')
+            attr_conversions: Optional dict mapping old attribute names to new ones (e.g., {'href': 'to'})
+
+        Returns:
+            Updated code with tag converted, or None if failed
+        """
+        logger.info(f"[TAG CONVERT] Converting <{from_tag}> to <{to_tag}> for selector '{selector}'")
+
+        # Find the opening and closing tags
+        element_data = self._find_element_content(code, selector)
+        if not element_data:
+            logger.error(f"[TAG CONVERT] Could not find element with selector: {selector}")
+            return None
+
+        tag_start, tag_end, content_end, closing_tag_end, tag_name, content = element_data
+
+        if tag_name != from_tag:
+            logger.warning(f"[TAG CONVERT] Expected <{from_tag}> but found <{tag_name}>")
+            return None
+
+        # Extract the opening tag
+        opening_tag = code[tag_start:tag_end]
+
+        # Replace tag name in opening tag
+        new_opening_tag = re.sub(rf'^<{re.escape(from_tag)}\b', f'<{to_tag}', opening_tag)
+
+        # Apply attribute conversions if specified
+        if attr_conversions:
+            for old_attr, new_attr in attr_conversions.items():
+                # Pattern to match attribute: oldAttr="value" or oldAttr={value}
+                attr_pattern = rf'{re.escape(old_attr)}=(["\'{{])'
+                if re.search(attr_pattern, new_opening_tag):
+                    new_opening_tag = re.sub(
+                        rf'\b{re.escape(old_attr)}=',
+                        f'{new_attr}=',
+                        new_opening_tag
+                    )
+                    logger.info(f"[TAG CONVERT] Converted attribute '{old_attr}' to '{new_attr}'")
+
+        # Replace closing tag
+        closing_tag = code[content_end:closing_tag_end]
+        new_closing_tag = closing_tag.replace(f'</{from_tag}>', f'</{to_tag}>')
+
+        # Build new code
+        new_code = (
+            code[:tag_start] +
+            new_opening_tag +
+            content +
+            new_closing_tag +
+            code[closing_tag_end:]
+        )
+
+        logger.info(f"[TAG CONVERT] Successfully converted <{from_tag}> to <{to_tag}>")
+        return new_code
+
+    def _extract_simple_prop_expression(self, tag_content: str, attr_name: str) -> Optional[str]:
+        """
+        Extract a simple prop name from an attribute expression like {propName}.
+
+        Examples:
+        - href={link} -> 'link'
+        - target={linkTarget} -> 'linkTarget'
+        - href={url} -> 'url'
+
+        Args:
+            tag_content: The HTML tag content containing the attribute
+            attr_name: The attribute name (e.g., 'href', 'target', 'rel')
+
+        Returns:
+            Prop name or None if not a simple prop expression
+        """
+        # Pattern to match JSX expression attributes: attrName={expression}
+        expr_pattern = rf'{re.escape(attr_name)}=\{{([^}}]+)\}}'
+        expr_match = re.search(expr_pattern, tag_content)
+
+        if not expr_match:
+            return None
+
+        expression = expr_match.group(1).strip()
+
+        # Check if it's a simple identifier (no dots, no complex expressions)
+        # Matches: link, url, linkTarget, etc.
+        # Does NOT match: item.link, navItem.href, etc.
+        if re.match(r'^\w+$', expression):
+            logger.debug(f"[SIMPLE PROP] Found simple prop expression: {{{expression}}}")
+            return expression
+
+        logger.debug(f"[SIMPLE PROP] Expression '{expression}' is not a simple prop")
+        return None
+
     def _extract_attribute_expression(self, tag_content: str, attr_name: str) -> Optional[tuple[str, str]]:
         """
         Extract the object name and property path from an attribute expression.
-        
+
         Examples:
         - src={image.src} -> ('image', 'src')
         - src={image.url} -> ('image', 'url')
         - src={image.media.url} -> ('image', 'media.url')
         - alt={item.alt} -> ('item', 'alt')
-        
+        - href={navItem.href} -> ('navItem', 'href')
+
         Args:
             tag_content: The HTML tag content containing the attribute
-            attr_name: The attribute name (e.g., 'src', 'alt')
-            
+            attr_name: The attribute name (e.g., 'src', 'alt', 'href')
+
         Returns:
             Tuple of (object_name, property_path) or None if not found
         """
@@ -1348,66 +1713,203 @@ class DirectCodeEditor:
         # Handles: src={image.src}, src={image.url}, src={image.media.url}
         expr_pattern = rf'{re.escape(attr_name)}=\{{([^}}]+)\}}'
         expr_match = re.search(expr_pattern, tag_content)
-        
+
         if not expr_match:
             return None
-            
+
         expression = expr_match.group(1).strip()
-        
+
         # Pattern to match object property access: objectName.property or objectName.nested.property
-        # Matches: image.src, image.url, image.media.url, item.alt
+        # Matches: image.src, image.url, image.media.url, item.alt, navItem.href
         prop_pattern = r'^(\w+)(?:\.(\w+(?:\.\w+)*))?$'
         prop_match = re.match(prop_pattern, expression)
-        
+
         if prop_match:
             object_name = prop_match.group(1)
             property_path = prop_match.group(2) if prop_match.group(2) else attr_name  # Default to attr_name if no property specified
-            
+
             # Handle fallback patterns like image.url || image.src
             # Use the first property found
             fallback_match = re.search(r'(\w+)\.(\w+)', expression)
             if fallback_match and fallback_match.group(1) == object_name:
                 property_path = fallback_match.group(2)
-            
+
             logger.info(f"[ATTR EXPR] Extracted: object='{object_name}', property='{property_path}' from expression '{expression}'")
             return (object_name, property_path)
-        
+
         logger.debug(f"[ATTR EXPR] Could not extract property from expression: '{expression}'")
         return None
 
     def _edit_attribute(self, code: str, selector: str, attr_name: str, new_value: str, files: Optional[Dict[str, str]] = None, component_tracker = None) -> Optional[str | Dict[str, Any]]:
         """
-        Edit an HTML attribute (src, href, alt, etc.)
-        
+        Edit an HTML attribute (src, href, alt, target, rel, etc.)
+
+        For link attributes (href), intelligently handles:
+        - <Link to="/about"> for internal links
+        - <a href="https://..."> for external links
+
+        For asChild pattern (Radix UI/shadcn components):
+        - Automatically detects asChild prop on parent
+        - Redirects all operations to the child element
+        - Adds data-element to child if needed
+
         For array items (detected via selector pattern), attempts to update
         the array item property instead of hardcoding the attribute.
-        
+
+        For prop expressions, returns metadata for parent component update.
+
         Returns:
-            Updated code, metadata dict for prop-based arrays, or None if failed
+            Updated code, metadata dict for prop-based arrays/props, or None if failed
         """
         logger.info(f"[DIRECT EDIT] Changing {attr_name} to: '{new_value}'")
-        
+
         tag_match = self._find_element_tag(code, selector)
         if not tag_match:
             return None
-        
+
         tag_start, tag_end, tag_content = tag_match
-        
-        # Check if this is an array item (selector contains index like "portfolio-image-0")
-        # Only attempt array update for src and alt attributes
-        if attr_name in ['src', 'alt']:
+
+        # Extract tag name to determine if it's a Link component or a tag
+        tag_name_match = re.match(r'<(\w+(?:\.\w+)?)', tag_content)
+        tag_name = tag_name_match.group(1) if tag_name_match else None
+        logger.info(f"[DIRECT EDIT] Tag name: {tag_name}")
+
+        # Handle asChild pattern (Radix UI/shadcn components)
+        # If parent has asChild prop, redirect operations to the child element
+        if self._has_as_child_prop(tag_content):
+            logger.info(f"[DIRECT EDIT] Detected asChild prop on element '{selector}'")
+
+            # Extract or create child element selector
+            child_selector = self._extract_child_element_selector(code, selector)
+
+            if child_selector:
+                # Check if child already has data-element
+                child_has_selector = self._find_element_tag(code, child_selector) is not None
+
+                if not child_has_selector:
+                    # Add data-element to child
+                    logger.info(f"[DIRECT EDIT] Adding data-element to child: '{child_selector}'")
+                    code = self._add_data_element_to_child(code, selector, child_selector)
+                    if not code:
+                        logger.error(f"[DIRECT EDIT] Failed to add data-element to child")
+                        return None
+
+                # Redirect to child element
+                logger.info(f"[DIRECT EDIT] Redirecting edit to child element: '{child_selector}'")
+                return self._edit_attribute(code, child_selector, attr_name, new_value, files, component_tracker)
+            else:
+                logger.warning(f"[DIRECT EDIT] Could not extract child from asChild parent, continuing with parent")
+
+        # For href attribute, determine the correct attribute name based on tag and link type
+        actual_attr_name = attr_name
+        if attr_name == 'href':
+            is_internal = self._is_internal_link(new_value)
+            logger.info(f"[DIRECT EDIT] Link type: {'internal' if is_internal else 'external'}")
+
+            if tag_name == 'Link' and is_internal:
+                # Use 'to' attribute for internal links in Link component
+                actual_attr_name = 'to'
+                logger.info(f"[DIRECT EDIT] Using 'to' attribute for Link component with internal link")
+            elif tag_name == 'Link' and not is_internal:
+                # External link with Link component - warn but still use href
+                # (Link components typically shouldn't be used for external links)
+                logger.warning(f"[DIRECT EDIT] External link detected in Link component - consider using <a> tag")
+                actual_attr_name = 'href'
+            elif tag_name == 'a' and is_internal:
+                # Internal link with a tag - use href (though Link would be better)
+                actual_attr_name = 'href'
+                logger.info(f"[DIRECT EDIT] Using 'href' for <a> tag with internal link")
+            else:
+                # External link with a tag - use href (correct)
+                actual_attr_name = 'href'
+
+        logger.info(f"[DIRECT EDIT] Using attribute: {actual_attr_name}")
+
+        # Handle tag conversion when link type changes (e.g., <a> to <Link> or vice versa)
+        tag_was_converted = False
+        if attr_name == 'href':
+            is_internal = self._is_internal_link(new_value)
+
+            # Convert <a> to <Link> for internal links
+            if tag_name == 'a' and is_internal:
+                logger.info(f"[DIRECT EDIT] Converting <a> to <Link> for internal link")
+                # Add Link import
+                code = self._add_import(code, 'react-router-dom', 'Link')
+                # Convert tag (this will convert href to to)
+                converted_code = self._convert_tag_type(code, selector, 'a', 'Link', {'href': 'to'})
+                if converted_code:
+                    code = converted_code
+                    tag_was_converted = True
+                    actual_attr_name = 'to'  # Update to reflect the converted attribute
+                    # Re-find the tag after conversion to update tag_content
+                    tag_match = self._find_element_tag(code, selector)
+                    if tag_match:
+                        tag_start, tag_end, tag_content = tag_match
+                    logger.info(f"[DIRECT EDIT] Successfully converted <a> to <Link>")
+                else:
+                    logger.warning(f"[DIRECT EDIT] Failed to convert <a> to <Link>, continuing with <a> tag")
+
+            # Convert <Link> to <a> for external links
+            elif tag_name == 'Link' and not is_internal and new_value.strip():  # Only if not empty
+                logger.info(f"[DIRECT EDIT] Converting <Link> to <a> for external link")
+                # Convert tag (this will convert to to href)
+                converted_code = self._convert_tag_type(code, selector, 'Link', 'a', {'to': 'href'})
+                if converted_code:
+                    code = converted_code
+                    tag_was_converted = True
+                    actual_attr_name = 'href'  # Update to reflect the converted attribute
+                    # Re-find the tag after conversion to update tag_content
+                    tag_match = self._find_element_tag(code, selector)
+                    if tag_match:
+                        tag_start, tag_end, tag_content = tag_match
+                    logger.info(f"[DIRECT EDIT] Successfully converted <Link> to <a>")
+                else:
+                    logger.warning(f"[DIRECT EDIT] Failed to convert <Link> to <a>, continuing with <Link> tag")
+
+        # Note: After tag conversion, we still need to update the attribute value below
+        # The conversion only changes the attribute NAME (href ↔ to), not the VALUE
+
+        # First check if attribute is a simple prop expression like {propName}
+        # This is common for link hrefs: <a href={link}> or <Link to={link}>
+        # Check both the original attr_name and actual_attr_name
+        simple_prop_match = (self._extract_simple_prop_expression(tag_content, actual_attr_name) or
+                            self._extract_simple_prop_expression(tag_content, attr_name))
+        if simple_prop_match:
+            prop_name = simple_prop_match
+
+            # Verify it's actually a component prop
+            if self._is_component_prop(code, prop_name):
+                logger.info(f"[DIRECT EDIT] Attribute {actual_attr_name} is a simple prop expression: {{{prop_name}}}")
+                logger.info(f"[DIRECT EDIT] Returning prop edit metadata for parent component update")
+
+                # Return metadata indicating prop edit is needed
+                return {
+                    'type': 'prop_edit',
+                    'prop_name': prop_name,
+                    'old_value': f'{{{prop_name}}}',
+                    'new_value': new_value,
+                    'requires_parent_update': True,
+                    'element_selector': selector,
+                    'attribute_name': actual_attr_name
+                }
+
+        # Check if this is an array item (selector contains index like "nav-item-0", "portfolio-image-0")
+        # Handle for src, alt, href, to, target, rel attributes
+        if attr_name in ['src', 'alt', 'href', 'to', 'target', 'rel'] or actual_attr_name in ['src', 'alt', 'href', 'to', 'target', 'rel']:
             array_index = self._extract_array_index_from_selector(selector)
-            
+
             if array_index is not None:
-                logger.info(f"[DIRECT EDIT] Detected array item at index {array_index} for attribute {attr_name}")
-                
+                logger.info(f"[DIRECT EDIT] Detected array item at index {array_index} for attribute {actual_attr_name}")
+
                 # Extract which property is actually used in the attribute expression
-                attr_expr = self._extract_attribute_expression(tag_content, attr_name)
-                
+                # Try both actual_attr_name and attr_name
+                attr_expr = (self._extract_attribute_expression(tag_content, actual_attr_name) or
+                            self._extract_attribute_expression(tag_content, attr_name))
+
                 if attr_expr:
                     object_name, property_path = attr_expr
                     logger.info(f"[DIRECT EDIT] Attempting to update array item: object='{object_name}', property='{property_path}'")
-                    
+
                     # Try to update the array item property
                     updated_code = self._update_array_item_attribute(
                         code=code,
@@ -1418,12 +1920,12 @@ class DirectCodeEditor:
                         files=files,
                         component_tracker=component_tracker
                     )
-                    
+
                     # Check if result is metadata dict (prop-based array)
                     if isinstance(updated_code, dict):
                         logger.info(f"[DIRECT EDIT] Array prop edit detected, returning metadata")
                         return updated_code
-                    
+
                     if updated_code and updated_code != code:
                         logger.info(f"[DIRECT EDIT] Successfully updated array item property '{property_path}' at index {array_index}")
                         return updated_code
@@ -1431,30 +1933,43 @@ class DirectCodeEditor:
                         logger.warning(f"[DIRECT EDIT] Failed to update array item, falling back to direct attribute update")
                 else:
                     logger.debug(f"[DIRECT EDIT] Could not extract attribute expression, falling back to direct update")
-        
+
         # Fallback to direct attribute update
-        # Check if attribute already exists
-        attr_pattern = rf'{attr_name}=["\'](.*?)["\']'
+        # Check if attribute already exists (use actual_attr_name)
+        attr_pattern = rf'{re.escape(actual_attr_name)}=["\'](.*?)["\']'
         attr_match = re.search(attr_pattern, tag_content)
         
         if attr_match:
             # Replace existing attribute
             old_attr = attr_match.group(0)
-            new_attr = f'{attr_name}="{new_value}"'
+            new_attr = f'{actual_attr_name}="{new_value}"'
             new_tag_content = tag_content.replace(old_attr, new_attr, 1)
         else:
-            # Add new attribute (insert before closing >)
-            new_attr = f'{attr_name}="{new_value}"'
+            # Attribute doesn't exist - add new attribute (insert before closing >)
+            # But first, if we're switching from href to to (or vice versa), remove the old one
+            if attr_name == 'href' and actual_attr_name != attr_name:
+                # We're changing from href to to or vice versa
+                # Try to find and remove the old attribute
+                old_attr_pattern = rf'{re.escape(attr_name)}=["\'](.*?)["\']'
+                old_attr_match = re.search(old_attr_pattern, tag_content)
+                if old_attr_match:
+                    # Remove old attribute
+                    logger.info(f"[DIRECT EDIT] Removing old attribute '{attr_name}' before adding '{actual_attr_name}'")
+                    tag_content = tag_content.replace(old_attr_match.group(0), '', 1)
+                    # Clean up extra whitespace
+                    tag_content = re.sub(r'\s+', ' ', tag_content)
+
+            new_attr = f'{actual_attr_name}="{new_value}"'
             if tag_content.endswith('/>'):
                 # Self-closing tag
                 new_tag_content = tag_content[:-2] + f' {new_attr} />'
             else:
                 # Regular tag
                 new_tag_content = tag_content[:-1] + f' {new_attr}>'
-        
+
         # Replace in code
         new_code = code[:tag_start] + new_tag_content + code[tag_end:]
-        
+
         return new_code
     
     def _edit_inline_style(self, code: str, selector: str, style_property: str, value: str) -> Optional[str]:
