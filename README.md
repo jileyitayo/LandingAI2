@@ -80,6 +80,8 @@ docker-compose down
 - [Product Requirements](./prd.md) - Complete product specification
 - [Backend README](./backend/README.md) - Backend setup and API docs
 - [Services Documentation](./backend/app/services/README.md) - Detailed service documentation
+- [Property Edit Queue System](./docs/PROPERTY_EDIT_QUEUE_SYSTEM.md) - Queue system for sequential edit processing
+- [Click-to-Edit Implementation](./docs/CLICK_TO_EDIT_IMPLEMENTATION.md) - Direct property editing system
 
 ## 🏗️ Backend Services Architecture
 
@@ -145,6 +147,25 @@ Pydantic models for React website structure and generation.
 - `PageComponent`: Component/section structure
 - `ComponentFile`: Generated file representation
 - Type-safe generation with validation
+
+### Editing & Queue Services
+
+#### 🔄 Property Edit Queue Service (`property_edit_queue_service.py`)
+Manages sequential processing of property edits to prevent race conditions.
+- **Per-Project Queues**: Each project gets its own independent queue
+- **Sequential Processing**: Ensures changes are applied one after the other
+- **Race Condition Prevention**: No conflicting simultaneous edits
+- **Statistics & Monitoring**: Track queue performance and health
+- **Automatic Workers**: Each queue has a dedicated worker task
+- See [Property Edit Queue System](./docs/PROPERTY_EDIT_QUEUE_SYSTEM.md) for details
+
+#### ✏️ Direct Code Editor (`direct_code_editor.py`)
+Handles direct property editing in React components without natural language.
+- Click-to-edit functionality for instant updates
+- Tailwind class manipulation and inline styles
+- Prop-aware editing with component relationship tracking
+- Text content updates and JSX manipulation
+- Works seamlessly with queue system for reliability
 
 ### Component & Validation Services
 
