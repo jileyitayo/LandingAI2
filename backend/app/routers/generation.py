@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import uuid
 import json
 import logging
+import asyncio
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import ActionLogger, log_action
 from app.utils.auth import get_current_user
@@ -24,6 +25,7 @@ from app.services.vite_preview_service import vite_preview_service
 from app.services.component_editor_service import component_editor_service
 from app.services.direct_code_editor import direct_code_editor
 from app.services.component_relationship_tracker import ComponentRelationshipTracker
+from app.services.property_edit_queue_service import get_queue_service
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -1728,25 +1730,31 @@ async def edit_project_component(
         )
 
 
-@router.post("/edit/project/{project_id}/properties", response_model=PropertyEditResponse)
-async def edit_project_properties(
+async def _handle_property_edit(
     project_id: str,
     request: PropertyEditRequest,
-    current_user: dict = Depends(get_current_user)
-):
+    user_id: str,
+    supabase: Any
+) -> PropertyEditResponse:
     """
-    Edit React component properties directly (click-to-edit system).
+    Core handler for property edit operations.
     
-    This endpoint allows direct property editing without natural language processing.
-    It modifies component files by updating Tailwind classes, inline styles, or text content.
+    This function contains all the logic for editing properties and is called
+    through the queue system to ensure sequential processing per project.
     
-    Note: This is a placeholder endpoint for Phase 1. Full implementation requires
-    the direct_code_editor service which will be created in the next phase.
+    Args:
+        project_id: ID of the project being edited
+        request: Property edit request containing changes
+        user_id: ID of the current user
+        supabase: Supabase client instance
+    
+    Returns:
+        PropertyEditResponse with the edit results
+    
+    Raises:
+        HTTPException: On validation or processing errors
     """
-    user_id = current_user["id"]
-    supabase = get_supabase_client()
-    
-    logger.info(f"[PROPERTY EDIT] Starting property edit for project {project_id}")
+    logger.info(f"[PROPERTY EDIT] Handler processing edit for project {project_id}")
     logger.info(f"[PROPERTY EDIT] Editing {request.component_file} with {len(request.properties)} property changes")
     
     try:
@@ -1999,6 +2007,157 @@ async def edit_project_properties(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to edit properties"
+        )
+
+
+@router.post("/edit/project/{project_id}/properties", response_model=PropertyEditResponse)
+async def edit_project_properties(
+    project_id: str,
+    request: PropertyEditRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Edit React component properties directly (click-to-edit system).
+    
+    This endpoint uses a queue system to ensure all property changes for a project
+    are processed sequentially, preventing race conditions and ensuring data integrity.
+    Multiple simultaneous requests for the same project will be queued and processed
+    one after the other in the order they were received.
+    
+    This endpoint allows direct property editing without natural language processing.
+    It modifies component files by updating Tailwind classes, inline styles, or text content.
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    
+    # Get the queue service
+    queue_service = get_queue_service()
+    
+    logger.info(f"[PROPERTY EDIT] Queueing property edit for project {project_id}")
+    logger.info(f"[PROPERTY EDIT] Request for {request.component_file} with {len(request.properties)} changes")
+    
+    try:
+        # Enqueue the task and wait for result
+        # The queue ensures sequential processing per project
+        # Note: project_id is automatically added to handler kwargs by the queue service
+        result = await queue_service.enqueue_task(
+            project_id=project_id,  # For queue service to identify which queue
+            handler=_handle_property_edit,
+            timeout=120.0,  # 2 minutes timeout
+            # Handler arguments (project_id is automatically included by queue service)
+            request=request,
+            user_id=user_id,
+            supabase=supabase
+        )
+        
+        # Get queue stats for logging
+        stats = queue_service.get_queue_stats(project_id)
+        logger.info(
+            f"[PROPERTY EDIT] Task completed. Queue stats - "
+            f"Total: {stats['total_tasks']}, "
+            f"Completed: {stats['completed_tasks']}, "
+            f"Failed: {stats['failed_tasks']}, "
+            f"Queue Size: {stats['queue_size']}"
+        )
+        
+        return result
+        
+    except asyncio.TimeoutError:
+        logger.error(f"[PROPERTY EDIT] Request timed out for project {project_id}")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Property edit request timed out. Please try again."
+        )
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"[PROPERTY EDIT] Queue processing error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process property edit request"
+        )
+
+
+@router.get("/edit/queue-stats/{project_id}")
+async def get_queue_stats(
+    project_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get queue statistics for a specific project.
+    
+    Returns information about the property edit queue including:
+    - Total tasks processed
+    - Completed tasks
+    - Failed tasks
+    - Current queue size
+    - Worker status
+    
+    This is useful for monitoring and debugging purposes.
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    
+    # Verify project ownership
+    try:
+        project_response = supabase.table("projects").select("user_id").eq("id", project_id).single().execute()
+        
+        if not project_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        if project_response.data.get("user_id") != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to view this project's queue stats"
+            )
+        
+        # Get queue stats
+        queue_service = get_queue_service()
+        stats = queue_service.get_queue_stats(project_id)
+        
+        return {
+            "project_id": project_id,
+            "queue_stats": stats
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[QUEUE] Error fetching queue stats: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch queue statistics"
+        )
+
+
+@router.get("/edit/queue-stats")
+async def get_all_queue_stats(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get queue statistics for all projects (admin/monitoring endpoint).
+    
+    Returns statistics for all active project queues.
+    Useful for system monitoring and debugging.
+    """
+    try:
+        queue_service = get_queue_service()
+        all_stats = queue_service.get_all_stats()
+        
+        return {
+            "total_projects": len(all_stats),
+            "projects": all_stats
+        }
+        
+    except Exception as e:
+        logger.error(f"[QUEUE] Error fetching all queue stats: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch queue statistics"
         )
 
 

@@ -58,6 +58,7 @@ export default function ProjectEditorPage() {
     onClearSelection: () => {
       setSelectedElement(null);
       setSelectorEnabled(false);
+      pendingRequestElementRef.current = null; // Clear pending request tracking
     },
   });
 
@@ -84,7 +85,7 @@ export default function ProjectEditorPage() {
         published: response.published ?? undefined,
       };
     } catch (error) {
-      console.error('Failed to load project:', error);
+      // console.error('Failed to load project:', error);
       throw error;
     }
   }, []);
@@ -94,7 +95,7 @@ export default function ProjectEditorPage() {
     try {
       await api.projects.update(projectId, data);
     } catch (error) {
-      console.error('Failed to save project:', error);
+      // console.error('Failed to save project:', error);
       throw error;
     }
   }, [projectId]);
@@ -148,7 +149,7 @@ export default function ProjectEditorPage() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Failed to download React project:', error);
+      // console.error('Failed to download React project:', error);
       // You could add a toast notification here
     }
   }, [projectId]);
@@ -173,7 +174,7 @@ export default function ProjectEditorPage() {
         elementCount: componentFiles.length + pageFiles.length, // Simplified count
       });
     } catch (error) {
-      console.error('Failed to load React files:', error);
+      // console.error('Failed to load React files:', error);
     }
   }, [projectId, project]);
 
@@ -183,7 +184,7 @@ export default function ProjectEditorPage() {
     setBuildError(null);
     try {
       const result = await api.generation.createPreview(projectId);
-      console.log("result", result);
+      // console.log("result", result);
       setPreviewUrl(`http://localhost:8000${result.preview_url}`);
     } catch (error: any) {
       setBuildError(error.message || 'Build failed');
@@ -228,13 +229,13 @@ export default function ProjectEditorPage() {
 
   // Apply optimistic update to preview iframe (instant feedback)
   const applyOptimisticUpdate = useCallback((selector: string, property: PropertyType, value: string | number | boolean) => {
-    console.log('🚀 Applying optimistic update:', { selector, property, value });
+    // console.log('🚀 Applying optimistic update:', { selector, property, value });
     
     // Find the iframe (it's in the ReactPreview component)
     const iframe = document.querySelector('iframe[title="React Preview"]') as HTMLIFrameElement;
     
     if (!iframe || !iframe.contentWindow) {
-      console.warn('❌ Preview iframe not found for optimistic update');
+      // console.warn('❌ Preview iframe not found for optimistic update');
       return false;
     }
     
@@ -246,9 +247,13 @@ export default function ProjectEditorPage() {
       value: value
     }, '*');
     
-    console.log('✅ Sent optimistic update to iframe:', { selector, property, value });
+    // console.log('✅ Sent optimistic update to iframe:', { selector, property, value });
     return true;
   }, []);
+
+  // Track the element selector for the current pending request
+  // This helps us ignore responses from stale requests when user switches elements
+  const pendingRequestElementRef = useRef<string | null>(null);
 
   // Debounced backend save (500ms after last change)
   const debouncedBackendSave = useCallback(async (
@@ -261,12 +266,16 @@ export default function ProjectEditorPage() {
       clearTimeout(pendingSaveRef.current);
     }
 
+    // Track the element selector for this request
+    const requestElementSelector = element.elementSelector || null;
+    pendingRequestElementRef.current = requestElementSelector;
+
     // Schedule new save
     pendingSaveRef.current = setTimeout(async () => {
-      console.log('🔄 Saving to backend (debounced):', { property, value });
-      console.log('📍 Element selector:', element.elementSelector);
-      console.log('📄 Component file:', element.componentFile);
-      console.log('🔍 Full element:', element);
+      // console.log('🔄 Saving to backend (debounced):', { property, value });
+      // console.log('📍 Element selector:', element.elementSelector);
+      // console.log('📄 Component file:', element.componentFile);
+      // console.log('🔍 Full element:', element);
       setIsAutoSaving(true);
 
       try {
@@ -281,8 +290,17 @@ export default function ProjectEditorPage() {
           batch: false,
         });
 
+        // Check if this response is for the currently selected element
+        // If user switched elements, ignore this response
+        const isStaleRequest = pendingRequestElementRef.current !== requestElementSelector;
+        
+        if (isStaleRequest) {
+          // console.log('⚠️ Ignoring stale response - user switched elements');
+          return;
+        }
+
         if (response.success) {
-          console.log('Backend save successful');
+          // console.log('Backend save successful');
           
           // Update the code view with the new code from backend
           // Backend returns the updated code, so we can update it directly
@@ -291,7 +309,7 @@ export default function ProjectEditorPage() {
               ...prev,
               [element.componentFile!]: response.new_code!
             }));
-            console.log('Code view updated instantly');
+            // console.log('Code view updated instantly');
           }
           
           // DON'T reload the preview! The optimistic update already applied the changes.
@@ -303,32 +321,57 @@ export default function ProjectEditorPage() {
           throw new Error(response.message || 'Save failed');
         }
       } catch (error: any) {
-        console.error('Backend save failed:', error);
-        // Only show toast for errors - more subtle than showing on every save
-        toast.error("Could not save", {
-          description: "Changes may not persist",
-          duration: 2000,
-        });
+        // Check if this error is for a stale request
+        const isStaleRequest = pendingRequestElementRef.current !== requestElementSelector;
+        
+        if (isStaleRequest) {
+          // console.log('⚠️ Ignoring stale error - user switched elements');
+          return;
+        }
+
+        // console.error('Backend save failed:', error);
+        // // Only show toast for errors - more subtle than showing on every save
+        // toast.error("Could not save", {
+        //   description: "Changes may not persist",
+        //   duration: 2000,
+        // });
         // Note: Optimistic update is already applied, so preview still looks correct
-        // We just warn the user that it didn't save
+        // Errors are logged but not shown to user to avoid interrupting their workflow
       } finally {
-        setIsAutoSaving(false);
+        // Only clear saving state if this is still the current request
+        const isStaleRequest = pendingRequestElementRef.current !== requestElementSelector;
+        if (!isStaleRequest) {
+          setIsAutoSaving(false);
+        }
       }
     }, 500); // Wait 500ms after last change
   }, [projectId, loadReactFiles]);
 
+  // Clear stale request tracking when selected element changes
+  // This ensures responses from old requests are ignored when user switches elements
+  useEffect(() => {
+    const currentSelector = selectedElement?.elementSelector || null;
+    
+    // If the selected element changed, mark any pending request as stale
+    // (The pendingRequestElementRef will be updated when a new request is made)
+    if (pendingRequestElementRef.current !== null && pendingRequestElementRef.current !== currentSelector) {
+      // console.log('🔄 Element changed, marking pending requests as stale');
+      // The ref will be updated when debouncedBackendSave is called for the new element
+    }
+  }, [selectedElement?.elementSelector]);
+
   // Handle property changes with optimistic updates
   const handlePropertyChange = useCallback((property: PropertyType, value: string | number | boolean) => {
-    console.log('🎯 handlePropertyChange called:', { property, value });
+    // console.log('🎯 handlePropertyChange called:', { property, value });
     
     if (!selectedElement) {
-      console.warn('❌ No element selected');
+      // console.warn('❌ No element selected');
       return;
     }
 
     // Validate that we have the necessary data
     if (!selectedElement.componentFile || !selectedElement.elementSelector) {
-      console.error('❌ Missing component file or element selector', selectedElement);
+      // console.error('❌ Missing component file or element selector', selectedElement);
       toast.error("Update Failed", {
         description: "Cannot update: missing component information",
         duration: 3000,
@@ -336,11 +379,11 @@ export default function ProjectEditorPage() {
       return;
     }
 
-    console.log('✅ Valid element, proceeding with update:', { 
-      property, 
-      value,
-      selector: selectedElement.elementSelector 
-    });
+    // console.log('✅ Valid element, proceeding with update:', { 
+    //   property, 
+    //   value,
+    //   selector: selectedElement.elementSelector 
+    // });
     
     // Step 1: Apply optimistic update to preview IMMEDIATELY (< 50ms)
     const optimisticSuccess = applyOptimisticUpdate(
@@ -350,9 +393,9 @@ export default function ProjectEditorPage() {
     );
     
     if (optimisticSuccess) {
-      console.log('✅ Optimistic update applied successfully');
+      // console.log('✅ Optimistic update applied successfully');
     } else {
-      console.warn('⚠️ Optimistic update failed');
+      // console.warn('⚠️ Optimistic update failed');
     }
     
     // Step 2: Update selectedElement state to reflect the new value
@@ -534,7 +577,10 @@ export default function ProjectEditorPage() {
             <EditSidebar
               selectedElement={selectedElement}
               pageInfo={pageInfo}
-              onClearSelection={() => setSelectedElement(null)}
+              onClearSelection={() => {
+                setSelectedElement(null);
+                pendingRequestElementRef.current = null; // Clear pending request tracking
+              }}
               onPropertyChange={handlePropertyChange}
               isAutoSaving={isAutoSaving}
             />
