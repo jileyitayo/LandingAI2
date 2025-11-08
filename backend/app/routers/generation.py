@@ -377,7 +377,7 @@ async def update_project_status(
             .update(update_data)\
             .eq("id", project_id)\
             .execute()
-            
+           
     except Exception as e:
         logger.error(f"Error updating project status: {str(e)}")
 
@@ -790,8 +790,18 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str):
                     logger.info(f"[BG] Animations enabled for {tier_name} tier user")
                 else:
                     logger.info(f"[BG] Animations {'enabled' if enable_animations else 'disabled'} based on config (tier: {tier_name})")
+                await ActionLogger(supabase).log_action(
+                    user_id=user_id,
+                    action="animation_enabled",
+                    details={"user_id": user_id, "tier_name": tier_name, "enable_animations": enable_animations}
+                )
             else:
                 logger.warning(f"[BG] No subscription found for user {user_id}, using config default: {enable_animations}")
+                await ActionLogger(supabase).log_action(
+                    user_id=user_id,
+                    action="animation_disabled",
+                    details={"user_id": user_id, "tier_name": "free", "enable_animations": enable_animations}
+                )
         except Exception as e:
             logger.warning(f"[BG] Failed to fetch user tier: {str(e)}, using config default: {enable_animations}")
         
@@ -924,6 +934,18 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str):
 
         supabase.table("projects").update(update_data).eq("id", project_id).execute()
 
+        await ActionLogger(supabase).log_action(
+            user_id=user_id,
+            action="generation_completed_successfully",
+            details={
+                "project_id": project_id,
+                "generation_metadata": generation_metadata,
+                "generation_status": "completed",
+                "last_generated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+        )
+
         # Step 4: Save cost tracking to database
         if cost_tracker:
             cost_tracker.mark_completed()
@@ -936,6 +958,14 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str):
                 logger.info(f"[BG] ✓ Cost tracking saved: {tracking_id}")
             else:
                 logger.warning(f"[BG] ⚠ Failed to save cost tracking")
+            await ActionLogger(supabase).log_action(
+                user_id=user_id,
+                action="cost_tracking_completed_successfully",
+                details={
+                    "project_id": project_id,
+                    "tracking_id": tracking_id
+                }
+            )
 
         logger.info(f"[BG] ✓ React generation completed for project {project_id}")
 
@@ -1007,7 +1037,14 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str):
                     logger.info(f"[BG] ✓ Failed generation cost tracking saved: {tracking_id}")
             except Exception as cost_error:
                 logger.error(f"[BG] Failed to save cost tracking: {str(cost_error)}")
-        
+            await ActionLogger(supabase).log_action(
+                user_id=user_id,
+                action="cost_tracking_failed",
+                details={
+                    "project_id": project_id,
+                    "error_message": str(cost_error)
+                }
+            )
         # Update project status to failed
         await update_project_status(
             project_id=project_id,
@@ -1318,9 +1355,24 @@ async def generate_react_website(
         # Step 1: Check rate limits (dual: per-minute + daily)
         logger.info("Checking rate limits...")
         is_allowed, rate_info = await check_user_rate_limit(user_id, supabase)
+        await ActionLogger(supabase).log_action(
+            user_id=user_id,
+            action="rate_limit_check",
+            details={"user_id": user_id, "rate_info": rate_info, "is_allowed": is_allowed}
+        )
 
         if not is_allowed:
             logger.warning(f"Rate limit exceeded for user {user_id}: {rate_info.get('limit_type')}")
+            await ActionLogger(supabase).log_action(
+                user_id=user_id,
+                action="rate_limit_check_failed",
+                details={
+                    "user_id": user_id,
+                    "rate_info": rate_info,
+                    "is_allowed": is_allowed,
+                    "message": rate_info.get('message', 'Rate limit exceeded')
+                }
+            )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=rate_info.get('message', 'Rate limit exceeded'),
@@ -1975,6 +2027,17 @@ async def _handle_property_edit(
 
         # Build component relationship map (needed for prop-based edits)
         component_tracker = ComponentRelationshipTracker()
+
+        # Log the property edit started
+        await ActionLogger(supabase).log_action(
+            user_id=user_id,
+            action="property_edit_started",
+            details={
+                "project_id": project_id,
+                "component_file": request.component_file,
+                "properties": [p.property for p in request.properties]
+            }
+        )
         component_tracker.analyze_project_structure(project_files)
 
         # Convert PropertyChange objects to dicts for direct_code_editor
@@ -1995,6 +2058,18 @@ async def _handle_property_edit(
             properties=properties_dict,
             files=project_files,
             component_tracker=component_tracker
+        )
+
+        await ActionLogger(supabase).log_action(
+            user_id=user_id,
+            action="property_edit_completed",
+            details={
+                "project_id": project_id,
+                "component_file": request.component_file,
+                "success": success,
+                "error_message": error_message,
+                "prop_edit_metadata": prop_edit_metadata
+            }
         )
 
         # Check if this is a prop edit that needs parent component update
@@ -2157,12 +2232,23 @@ async def _handle_property_edit(
                             detail=f"Could not locate element for fallback edit: {prop_error}"
                         )
                 else:
+                    await ActionLogger(supabase).log_action(
+                        user_id=user_id,
+                        action="property_edit_fallback_failed",
+                        details={"project_id": project_id, "component_file": request.component_file, "error_message": "Could not find prop expression in element", "prop_name": prop_edit_metadata['prop_name']}
+                    )
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Could not update prop '{prop_edit_metadata['prop_name']}' at source: {prop_error}"
+                        detail=f"Could not update prop '{prop_edit_metadata['prop_name']}' at source and fallback failed: {prop_error}"
                     )
 
         elif not success:
+            # Log the failed file
+            await ActionLogger(supabase).log_action(
+                user_id=user_id,
+                action="property_edit_failed",
+                details={"project_id": project_id, "component_file": request.component_file, "error_message": error_message}
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to apply property changes: {error_message}"
@@ -2232,8 +2318,7 @@ async def _handle_property_edit(
             logger.error(f"[PROPERTY EDIT] Background rebuild failed: {str(preview_error)}", exc_info=True)
         
         # Log the successful action
-        action_logger = ActionLogger(supabase)
-        await action_logger.log_action(
+        await ActionLogger(supabase).log_action(
             user_id=user_id,
             action="property_edit_applied",
             details={
@@ -2274,6 +2359,7 @@ async def _handle_property_edit(
 
 
 @router.post("/edit/project/{project_id}/properties", response_model=PropertyEditResponse)
+@log_action(action_type='UPDATE', target_resource_type='project_properties_edit')
 async def edit_project_properties(
     project_id: str,
     request: PropertyEditRequest,
