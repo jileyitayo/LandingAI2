@@ -8,13 +8,11 @@ interface FontEditorProps {
   fontSize?: string;
   fontWeight?: string;
   fontFamily?: string;
-  lineHeight?: string;
   textAlign?: string;
   textTransform?: string;
   onFontSizeChange?: (value: string) => void;
   onFontWeightChange?: (value: string) => void;
   onFontFamilyChange?: (value: string) => void;
-  onLineHeightChange?: (value: string) => void;
   onTextAlignChange?: (value: string) => void;
   onTextTransformChange?: (value: string) => void;
 }
@@ -23,15 +21,6 @@ const FONT_FAMILIES = [
   { value: 'font-sans', label: 'Sans Serif', family: 'sans-serif' },
   { value: 'font-serif', label: 'Serif', family: 'serif' },
   { value: 'font-mono', label: 'Monospace', family: 'monospace' },
-];
-
-const LINE_HEIGHTS = [
-  { value: 'leading-none', label: 'None', height: '1' },
-  { value: 'leading-tight', label: 'Tight', height: '1.25' },
-  { value: 'leading-snug', label: 'Snug', height: '1.375' },
-  { value: 'leading-normal', label: 'Normal', height: '1.5' },
-  { value: 'leading-relaxed', label: 'Relaxed', height: '1.625' },
-  { value: 'leading-loose', label: 'Loose', height: '2' },
 ];
 
 const TEXT_TRANSFORMS = [
@@ -45,13 +34,11 @@ export default function FontEditor({
   fontSize = 'text-base',
   fontWeight = 'font-normal',
   fontFamily = 'font-sans',
-  lineHeight = 'leading-normal',
   textAlign = 'text-left',
   textTransform = 'normal-case',
   onFontSizeChange,
   onFontWeightChange,
   onFontFamilyChange,
-  onLineHeightChange,
   onTextAlignChange,
   onTextTransformChange,
 }: FontEditorProps) {
@@ -184,28 +171,6 @@ export default function FontEditor({
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Line Height */}
-      {onLineHeightChange && (
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-gray-400">Line Height</label>
-          <div className="grid grid-cols-3 gap-2">
-            {LINE_HEIGHTS.map((lh) => (
-              <button
-                key={lh.value}
-                onClick={() => onLineHeightChange(lh.value)}
-                className={`px-3 py-2 text-xs rounded border transition-all ${
-                  lineHeight === lh.value
-                    ? 'bg-blue-600 border-blue-500 text-white shadow-lg scale-105'
-                    : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-blue-400 hover:bg-gray-750 hover:scale-105'
-                }`}
-              >
-                {lh.label}
-              </button>
-            ))}
           </div>
         </div>
       )}

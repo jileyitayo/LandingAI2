@@ -628,8 +628,8 @@ class ReactWebsiteGenerator:
         #     PageGenerationResponse,
         #     model="o4-mini"   
         # )
-
-        self.google_client.set_max_completion_tokens(16000)
+        # TODO: regulate this base on the complexity of the page
+        self.google_client.set_max_completion_tokens(32000)
         response, usage = self.google_client.call_openai_api_structured(
             system_prompt,
             user_prompt,

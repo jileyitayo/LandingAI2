@@ -228,11 +228,13 @@ export default function ProjectEditorPage() {
 
   // Apply optimistic update to preview iframe (instant feedback)
   const applyOptimisticUpdate = useCallback((selector: string, property: PropertyType, value: string | number | boolean) => {
+    console.log('🚀 Applying optimistic update:', { selector, property, value });
+    
     // Find the iframe (it's in the ReactPreview component)
     const iframe = document.querySelector('iframe[title="React Preview"]') as HTMLIFrameElement;
     
     if (!iframe || !iframe.contentWindow) {
-      console.warn('Preview iframe not found for optimistic update');
+      console.warn('❌ Preview iframe not found for optimistic update');
       return false;
     }
     
@@ -244,7 +246,7 @@ export default function ProjectEditorPage() {
       value: value
     }, '*');
     
-    console.log('Sent optimistic update to iframe:', { selector, property, value });
+    console.log('✅ Sent optimistic update to iframe:', { selector, property, value });
     return true;
   }, []);
 
@@ -261,7 +263,10 @@ export default function ProjectEditorPage() {
 
     // Schedule new save
     pendingSaveRef.current = setTimeout(async () => {
-      console.log('Saving to backend (debounced):', { property, value });
+      console.log('🔄 Saving to backend (debounced):', { property, value });
+      console.log('📍 Element selector:', element.elementSelector);
+      console.log('📄 Component file:', element.componentFile);
+      console.log('🔍 Full element:', element);
       setIsAutoSaving(true);
 
       try {
@@ -314,14 +319,16 @@ export default function ProjectEditorPage() {
 
   // Handle property changes with optimistic updates
   const handlePropertyChange = useCallback((property: PropertyType, value: string | number | boolean) => {
+    console.log('🎯 handlePropertyChange called:', { property, value });
+    
     if (!selectedElement) {
-      console.warn('No element selected');
+      console.warn('❌ No element selected');
       return;
     }
 
     // Validate that we have the necessary data
     if (!selectedElement.componentFile || !selectedElement.elementSelector) {
-      console.error('Missing component file or element selector', selectedElement);
+      console.error('❌ Missing component file or element selector', selectedElement);
       toast.error("Update Failed", {
         description: "Cannot update: missing component information",
         duration: 3000,
@@ -329,7 +336,11 @@ export default function ProjectEditorPage() {
       return;
     }
 
-    console.log('Property change:', { property, value });
+    console.log('✅ Valid element, proceeding with update:', { 
+      property, 
+      value,
+      selector: selectedElement.elementSelector 
+    });
     
     // Step 1: Apply optimistic update to preview IMMEDIATELY (< 50ms)
     const optimisticSuccess = applyOptimisticUpdate(
@@ -338,10 +349,99 @@ export default function ProjectEditorPage() {
       value
     );
     
+    if (optimisticSuccess) {
+      console.log('✅ Optimistic update applied successfully');
+    } else {
+      console.warn('⚠️ Optimistic update failed');
+    }
+    
+    // Step 2: Update selectedElement state to reflect the new value
+    setSelectedElement(prev => {
+      if (!prev) return prev;
+      
+      const newClassList = [...prev.classList];
+      const newInlineStyles = { ...prev.inlineStyles };
+      const valueStr = String(value);
+      
+      // Handle color properties
+      if (property === 'color' || property === 'textColor') {
+        // Remove old text-color classes
+        const filtered = newClassList.filter(c => !/^text-\w+-\d+$/.test(c));
+        
+        if (valueStr.startsWith('#')) {
+          // Custom hex color - store in inline styles
+          newInlineStyles.color = valueStr;
+          return { ...prev, classList: filtered, inlineStyles: newInlineStyles };
+        } else {
+          // Tailwind class - remove inline style and add class
+          delete newInlineStyles.color;
+          filtered.push(valueStr);
+          return { ...prev, classList: filtered, inlineStyles: newInlineStyles };
+        }
+      } else if (property === 'backgroundColor') {
+        // Remove old bg-color classes
+        const filtered = newClassList.filter(c => !/^bg-(\w+-\d+|transparent|white|black)$/.test(c));
+        
+        if (valueStr.startsWith('#')) {
+          // Custom hex color - store in inline styles
+          newInlineStyles.backgroundColor = valueStr;
+          return { ...prev, classList: filtered, inlineStyles: newInlineStyles };
+        } else {
+          // Tailwind class - remove inline style and add class
+          delete newInlineStyles.backgroundColor;
+          filtered.push(valueStr);
+          return { ...prev, classList: filtered, inlineStyles: newInlineStyles };
+        }
+      } else if (property === 'borderColor') {
+        // Remove old border-color classes
+        const filtered = newClassList.filter(c => !/^border-\w+-\d+$/.test(c));
+        
+        if (valueStr.startsWith('#')) {
+          // Custom hex color - store in inline styles
+          newInlineStyles.borderColor = valueStr;
+          return { ...prev, classList: filtered, inlineStyles: newInlineStyles };
+        } else {
+          // Tailwind class - remove inline style and add class
+          delete newInlineStyles.borderColor;
+          filtered.push(valueStr);
+          return { ...prev, classList: filtered, inlineStyles: newInlineStyles };
+        }
+      }
+      // Handle typography properties
+      else if (property === 'fontSize') {
+        // Remove old font-size classes
+        const filtered = newClassList.filter(c => !/^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/.test(c));
+        filtered.push(valueStr);
+        return { ...prev, classList: filtered };
+      } else if (property === 'fontWeight') {
+        // Remove old font-weight classes
+        const filtered = newClassList.filter(c => !/^font-(thin|extralight|light|normal|medium|semibold|bold|extrabold|black)$/.test(c));
+        filtered.push(valueStr);
+        return { ...prev, classList: filtered };
+      } else if (property === 'fontFamily') {
+        // Remove old font-family classes
+        const filtered = newClassList.filter(c => !/^font-(sans|serif|mono)$/.test(c));
+        filtered.push(valueStr);
+        return { ...prev, classList: filtered };
+      } else if (property === 'textAlign') {
+        // Remove old text-align classes
+        const filtered = newClassList.filter(c => !/^text-(left|center|right|justify)$/.test(c));
+        filtered.push(valueStr);
+        return { ...prev, classList: filtered };
+      } else if (property === 'textTransform') {
+        // Remove old text-transform classes
+        const filtered = newClassList.filter(c => !/^(normal-case|uppercase|lowercase|capitalize)$/.test(c));
+        filtered.push(valueStr);
+        return { ...prev, classList: filtered };
+      }
+      
+      return prev;
+    });
+    
     // No toast for optimistic update - the visual change in preview is feedback enough!
     // Toast notifications would be distracting when typing rapidly
     
-    // Step 2: Save to backend (debounced - waits 500ms after last change)
+    // Step 3: Save to backend (debounced - waits 500ms after last change)
     debouncedBackendSave(property, value, selectedElement);
     
   }, [selectedElement, applyOptimisticUpdate, debouncedBackendSave]);

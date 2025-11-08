@@ -315,21 +315,23 @@ POST /api/v1/edit/project/{project_id}/properties
 
 ## 🎨 Property Editor Components
 
-All 13 property editor components are created and wired up:
+Simplified property editor components (focused on essential edits):
 
 1. ✅ **TextEditor** - Text content editing
-2. ✅ **ColorEditor** - Colors with picker and presets
-3. ✅ **FontEditor** - Typography controls
-4. ✅ **SpacingEditor** - Padding/margin with visual box model
-5. ✅ **BorderEditor** - Border styles and radius
-6. ✅ **LayoutEditor** - Display, position, flex/grid
-7. ✅ **SizingEditor** - Width, height, constraints
-8. ✅ **ShadowEditor** - Box shadow presets
-9. ✅ **AnimationEditor** - Transitions and effects
-10. ✅ **ImageEditor** - Image upload and URLs
-11. ✅ **LinkEditor** - Hyperlink properties
-12. ✅ **VisibilityEditor** - Show/hide, responsive
-13. ✅ **AdvancedEditor** - Custom CSS and data attributes
+2. ✅ **ColorEditor** - Colors with picker and presets (text, background, border)
+3. ✅ **FontEditor** - Typography controls (size, weight, family, alignment)
+4. ✅ **ImageEditor** - Image upload and URLs
+5. ✅ **LinkEditor** - Hyperlink properties
+6. ✅ **VisibilityEditor** - Show/hide, responsive
+7. ✅ **AdvancedEditor** - Custom CSS and data attributes
+
+**Removed for simplification:**
+- SpacingEditor (padding/margin)
+- BorderEditor (border styles and radius)
+- LayoutEditor (display, position, flex/grid)
+- SizingEditor (width, height, constraints)
+- ShadowEditor (box shadow presets)
+- AnimationEditor (transitions and effects)
 
 ---
 
