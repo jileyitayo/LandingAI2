@@ -1,18 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ChevronDown, ChevronRight, Info, Palette, Type, Box, Maximize2, Sparkles, Link as LinkIcon, Eye, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, ChevronDown, ChevronRight, Info, Palette, Type, Link as LinkIcon, Eye } from 'lucide-react';
 import { SelectedElement } from '@/types/chat.types';
 import { PageInfo, PropertyType, EditableElement } from '@/types/property-edit.types';
 import TextEditor from './property-editors/TextEditor';
 import ColorEditor from './property-editors/ColorEditor';
 import FontEditor from './property-editors/FontEditor';
-import SpacingEditor from './property-editors/SpacingEditor';
-import BorderEditor from './property-editors/BorderEditor';
-import SizingEditor from './property-editors/SizingEditor';
-import LayoutEditor from './property-editors/LayoutEditor';
-import ShadowEditor from './property-editors/ShadowEditor';
-import AnimationEditor from './property-editors/AnimationEditor';
 import ImageEditor from './property-editors/ImageEditor';
 import LinkEditor from './property-editors/LinkEditor';
 
@@ -24,7 +18,7 @@ interface EditSidebarProps {
   isAutoSaving: boolean;
 }
 
-type PropertySection = 'content' | 'colors' | 'typography' | 'spacing' | 'layout' | 'border' | 'size' | 'effects' | 'link' | 'image';
+type PropertySection = 'content' | 'colors' | 'typography' | 'link' | 'image';
 
 export default function EditSidebar({
   selectedElement,
@@ -188,11 +182,59 @@ export default function EditSidebar({
     );
   };
 
+  // Helper function to determine which sections to show based on element type
+  const getVisibleSections = (element: SelectedElement) => {
+    const tagName = element.tagName?.toLowerCase();
+    const hasTextContent = Boolean(element.textContent && element.textContent.trim());
+    
+    // Define which sections are visible for each element type
+    const sections = {
+      content: true,
+      colors: true,
+      typography: true,
+      image: false,
+      link: false,
+    };
+
+    // Image elements
+    if (tagName === 'img') {
+      sections.image = true;
+      sections.content = false;
+      sections.typography = false;
+    }
+    
+    // Link elements
+    if (tagName === 'a') {
+      sections.link = true;
+    }
+
+    // Input/textarea elements
+    if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+      sections.typography = true;
+      sections.content = false; // Use value instead
+    }
+
+    // Button elements
+    if (tagName === 'button') {
+      sections.content = hasTextContent;
+      sections.typography = hasTextContent;
+    }
+
+    // Self-closing or non-text elements
+    if (['hr', 'br', 'video', 'iframe', 'svg'].includes(tagName || '')) {
+      sections.content = false;
+      sections.typography = false;
+    }
+
+    return sections;
+  };
+
   const renderElementEditor = () => {
     if (!selectedElement) return null;
 
     const elementType = selectedElement.component?.elementName || selectedElement.tagName;
     const componentName = selectedElement.component?.componentName;
+    const visibleSections = getVisibleSections(selectedElement);
 
     return (
       <div className="flex-1 overflow-y-auto">
@@ -231,127 +273,8 @@ export default function EditSidebar({
 
         {/* Property Sections */}
         <div className="divide-y divide-gray-700">
-          {/* Content Section */}
-          {renderPropertySection(
-            'content',
-            <Type className="w-4 h-4 text-blue-400" />,
-            'Content',
-            <TextEditor
-              value={selectedElement?.textContent || ''}
-              onChange={(value) => handlePropertyChange('text', value)}
-              placeholder="Enter text content..."
-              autoSave={true}
-            />
-          )}
-
-          {/* Colors Section */}
-          {renderPropertySection(
-            'colors',
-            <Palette className="w-4 h-4 text-pink-400" />,
-            'Colors',
-            <div className="space-y-4">
-              <ColorEditor
-                label="Text Color"
-                value={selectedElement?.classList.find(c => c.startsWith('text-')) || 'text-gray-900'}
-                onChange={(value) => handlePropertyChange('textColor', value)}
-                type="text"
-                autoSave={true}
-              />
-              <ColorEditor
-                label="Background"
-                value={selectedElement?.classList.find(c => c.startsWith('bg-')) || 'bg-transparent'}
-                onChange={(value) => handlePropertyChange('backgroundColor', value)}
-                type="background"
-                autoSave={true}
-              />
-              <ColorEditor
-                label="Border Color"
-                value={selectedElement?.classList.find(c => c.startsWith('border-') && !c.includes('border-t') && !c.includes('border-b') && !c.includes('border-l') && !c.includes('border-r')) || 'border-gray-300'}
-                onChange={(value) => handlePropertyChange('borderColor', value)}
-                type="border"
-                autoSave={true}
-              />
-            </div>
-          )}
-
-          {/* Typography Section */}
-          {renderPropertySection(
-            'typography',
-            <Type className="w-4 h-4 text-purple-400" />,
-            'Typography',
-            <FontEditor
-              fontSize={selectedElement?.classList.find(c => c.startsWith('text-') && (c.includes('xl') || c.includes('lg') || c.includes('sm') || c.includes('xs') || c === 'text-base')) || 'text-base'}
-              fontWeight={selectedElement?.classList.find(c => c.startsWith('font-')) || 'font-normal'}
-              fontFamily={selectedElement?.classList.find(c => c.startsWith('font-')) || 'font-sans'}
-              lineHeight={selectedElement?.classList.find(c => c.startsWith('leading-')) || 'leading-normal'}
-              textAlign={selectedElement?.classList.find(c => ['text-left', 'text-center', 'text-right', 'text-justify'].includes(c)) || 'text-left'}
-              textTransform={selectedElement?.classList.find(c => ['uppercase', 'lowercase', 'capitalize', 'normal-case'].includes(c)) || 'normal-case'}
-              onFontSizeChange={(value) => handlePropertyChange('fontSize', value)}
-              onFontWeightChange={(value) => handlePropertyChange('fontWeight', value)}
-              onFontFamilyChange={(value) => handlePropertyChange('fontFamily', value)}
-              onLineHeightChange={(value) => handlePropertyChange('lineHeight', value)}
-              onTextAlignChange={(value) => handlePropertyChange('textAlign', value)}
-              onTextTransformChange={(value) => handlePropertyChange('textTransform', value)}
-            />
-          )}
-
-          {/* Spacing Section */}
-          {renderPropertySection(
-            'spacing',
-            <Box className="w-4 h-4 text-green-400" />,
-            'Spacing',
-            <div className="text-sm text-gray-400">
-              <p className="mb-2">Spacing controls (padding, margin, gap)</p>
-              <p className="text-xs text-gray-500">Property editors are being finalized...</p>
-            </div>
-          )}
-
-          {/* Layout Section */}
-          {renderPropertySection(
-            'layout',
-            <Box className="w-4 h-4 text-indigo-400" />,
-            'Layout',
-            <div className="text-sm text-gray-400">
-              <p className="mb-2">Layout controls (display, position, flex/grid)</p>
-              <p className="text-xs text-gray-500">Property editors are being finalized...</p>
-            </div>
-          )}
-
-          {/* Border Section */}
-          {renderPropertySection(
-            'border',
-            <Box className="w-4 h-4 text-orange-400" />,
-            'Border',
-            <div className="text-sm text-gray-400">
-              <p className="mb-2">Border controls (width, style, radius)</p>
-              <p className="text-xs text-gray-500">Property editors are being finalized...</p>
-            </div>
-          )}
-
-          {/* Size Section */}
-          {renderPropertySection(
-            'size',
-            <Box className="w-4 h-4 text-yellow-400" />,
-            'Size',
-            <div className="text-sm text-gray-400">
-              <p className="mb-2">Size controls (width, height, min/max)</p>
-              <p className="text-xs text-gray-500">Property editors are being finalized...</p>
-            </div>
-          )}
-
-          {/* Effects Section */}
-          {renderPropertySection(
-            'effects',
-            <Sparkles className="w-4 h-4 text-cyan-400" />,
-            'Effects',
-            <div className="text-sm text-gray-400">
-              <p className="mb-2">Effects (shadows, opacity, animations)</p>
-              <p className="text-xs text-gray-500">Property editors are being finalized...</p>
-            </div>
-          )}
-
-          {/* Image Section - Only show for image elements */}
-          {selectedElement?.tagName === 'img' && renderPropertySection(
+          {/* Image Section - Show first for image elements */}
+          {visibleSections.image && renderPropertySection(
             'image',
             <Eye className="w-4 h-4 text-teal-400" />,
             'Image',
@@ -365,8 +288,8 @@ export default function EditSidebar({
             />
           )}
 
-          {/* Link Section - Only show for link elements */}
-          {selectedElement?.tagName === 'a' && renderPropertySection(
+          {/* Link Section - Show first for link elements */}
+          {visibleSections.link && renderPropertySection(
             'link',
             <LinkIcon className="w-4 h-4 text-blue-400" />,
             'Link',
@@ -374,6 +297,92 @@ export default function EditSidebar({
               <p className="mb-2">Link properties (href, target)</p>
               <p className="text-xs text-gray-500">Property editors are being finalized...</p>
             </div>
+          )}
+
+          {/* Content Section */}
+          {visibleSections.content && renderPropertySection(
+            'content',
+            <Type className="w-4 h-4 text-blue-400" />,
+            'Content',
+            <TextEditor
+              value={selectedElement?.textContent || ''}
+              onChange={(value) => handlePropertyChange('text', value)}
+              placeholder="Enter text content..."
+              autoSave={true}
+            />
+          )}
+
+          {/* Colors Section */}
+          {visibleSections.colors && renderPropertySection(
+            'colors',
+            <Palette className="w-4 h-4 text-pink-400" />,
+            'Colors',
+            <div className="space-y-4">
+              <ColorEditor
+                label="Text Color"
+                value={
+                  // Check for custom hex color from inline styles first
+                  (selectedElement?.inlineStyles?.color && 
+                   selectedElement.inlineStyles.color.startsWith('#') && 
+                   selectedElement.inlineStyles.color) ||
+                  // Then check for Tailwind class
+                  selectedElement?.classList.find(c => /^text-\w+-\d+$/.test(c)) || 
+                  'text-gray-900'
+                }
+                onChange={(value) => handlePropertyChange('color', value)}
+                type="text"
+                autoSave={true}
+              />
+              <ColorEditor
+                label="Background"
+                value={
+                  // Check for custom hex color from inline styles first
+                  (selectedElement?.inlineStyles?.backgroundColor && 
+                   selectedElement.inlineStyles.backgroundColor.startsWith('#') && 
+                   selectedElement.inlineStyles.backgroundColor) ||
+                  // Then check for Tailwind class
+                  selectedElement?.classList.find(c => /^bg-(\w+-\d+|transparent|white|black)$/.test(c)) || 
+                  'bg-transparent'
+                }
+                onChange={(value) => handlePropertyChange('backgroundColor', value)}
+                type="background"
+                autoSave={true}
+              />
+              <ColorEditor
+                label="Border Color"
+                value={
+                  // Check for custom hex color from inline styles first
+                  (selectedElement?.inlineStyles?.borderColor && 
+                   selectedElement.inlineStyles.borderColor.startsWith('#') && 
+                   selectedElement.inlineStyles.borderColor) ||
+                  // Then check for Tailwind class
+                  selectedElement?.classList.find(c => /^border-\w+-\d+$/.test(c)) || 
+                  'border-gray-300'
+                }
+                onChange={(value) => handlePropertyChange('borderColor', value)}
+                type="border"
+                autoSave={true}
+              />
+            </div>
+          )}
+
+          {/* Typography Section */}
+          {visibleSections.typography && renderPropertySection(
+            'typography',
+            <Type className="w-4 h-4 text-purple-400" />,
+            'Typography',
+            <FontEditor
+              fontSize={selectedElement?.classList.find(c => c.startsWith('text-') && (c.includes('xl') || c.includes('lg') || c.includes('sm') || c.includes('xs') || c === 'text-base')) || 'text-base'}
+              fontWeight={selectedElement?.classList.find(c => c.startsWith('font-')) || 'font-normal'}
+              fontFamily={selectedElement?.classList.find(c => c.startsWith('font-')) || 'font-sans'}
+              textAlign={selectedElement?.classList.find(c => ['text-left', 'text-center', 'text-right', 'text-justify'].includes(c)) || 'text-left'}
+              textTransform={selectedElement?.classList.find(c => ['uppercase', 'lowercase', 'capitalize', 'normal-case'].includes(c)) || 'normal-case'}
+              onFontSizeChange={(value) => handlePropertyChange('fontSize', value)}
+              onFontWeightChange={(value) => handlePropertyChange('fontWeight', value)}
+              onFontFamilyChange={(value) => handlePropertyChange('fontFamily', value)}
+              onTextAlignChange={(value) => handlePropertyChange('textAlign', value)}
+              onTextTransformChange={(value) => handlePropertyChange('textTransform', value)}
+            />
           )}
         </div>
       </div>

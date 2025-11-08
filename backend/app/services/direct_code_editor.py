@@ -33,47 +33,8 @@ TAILWIND_PROPERTY_MAP = {
     'fontSize': r'text-(?:xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)',
     'fontWeight': r'font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black)',
     'fontFamily': r'font-(?:sans|serif|mono)',
-    'lineHeight': r'leading-(?:none|tight|snug|normal|relaxed|loose|\d+)',
     'textAlign': r'text-(?:left|center|right|justify)',
     'textTransform': r'(?:uppercase|lowercase|capitalize|normal-case)',
-    
-    # Spacing
-    'padding': r'p-(?:\d+(?:\.\d+)?)',
-    'paddingTop': r'pt-(?:\d+(?:\.\d+)?)',
-    'paddingRight': r'pr-(?:\d+(?:\.\d+)?)',
-    'paddingBottom': r'pb-(?:\d+(?:\.\d+)?)',
-    'paddingLeft': r'pl-(?:\d+(?:\.\d+)?)',
-    'margin': r'm-(?:\d+(?:\.\d+)?)',
-    'marginTop': r'mt-(?:\d+(?:\.\d+)?)',
-    'marginRight': r'mr-(?:\d+(?:\.\d+)?)',
-    'marginBottom': r'mb-(?:\d+(?:\.\d+)?)',
-    'marginLeft': r'ml-(?:\d+(?:\.\d+)?)',
-    'gap': r'gap-(?:\d+(?:\.\d+)?)',
-    
-    # Border
-    'borderWidth': r'border-(?:\d+)?',
-    'borderRadius': r'rounded-(?:none|sm|md|lg|xl|2xl|3xl|full)?',
-    
-    # Layout
-    'display': r'(?:block|inline-block|inline|flex|inline-flex|grid|inline-grid|hidden)',
-    'position': r'(?:static|fixed|absolute|relative|sticky)',
-    'justifyContent': r'justify-(?:start|end|center|between|around|evenly)',
-    'alignItems': r'items-(?:start|end|center|baseline|stretch)',
-    'flexDirection': r'flex-(?:row|row-reverse|col|col-reverse)',
-    'flexWrap': r'flex-(?:wrap|wrap-reverse|nowrap)',
-    
-    # Sizing
-    'width': r'w-(?:\d+(?:\.\d+)?|full|screen|min|max|fit|auto)',
-    'height': r'h-(?:\d+(?:\.\d+)?|full|screen|min|max|fit|auto)',
-    'minWidth': r'min-w-(?:\d+|full|min|max|fit)',
-    'maxWidth': r'max-w-(?:xs|sm|md|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|full|min|max|fit|prose|screen-sm|screen-md|screen-lg|screen-xl|screen-2xl)',
-    'minHeight': r'min-h-(?:\d+|full|screen|min|max|fit)',
-    'maxHeight': r'max-h-(?:\d+|full|screen|min|max|fit)',
-    
-    # Effects
-    'boxShadow': r'shadow-(?:sm|md|lg|xl|2xl|inner|none)?',
-    'opacity': r'opacity-(?:\d+)',
-    'zIndex': r'z-(?:\d+|auto)',
 }
 
 
@@ -110,9 +71,17 @@ class DirectCodeEditor:
             elif property_name in TAILWIND_PROPERTY_MAP:
                 if not value_str.strip():
                     return (False, f"{property_name} value cannot be empty")
-                # Check if it looks like a valid Tailwind class
-                if not re.match(r'^[\w-]+$', value_str):
-                    return (False, f"Invalid Tailwind class format: {value_str}")
+                # Allow hex colors for color properties
+                if property_name in ['color', 'backgroundColor', 'borderColor']:
+                    # Allow either Tailwind classes or hex colors
+                    is_hex = re.match(r'^#[0-9A-Fa-f]{6}$', value_str)
+                    is_tailwind = re.match(r'^[\w-]+$', value_str)
+                    if not (is_hex or is_tailwind):
+                        return (False, f"Invalid color format: {value_str} (must be Tailwind class or hex color)")
+                else:
+                    # Check if it looks like a valid Tailwind class
+                    if not re.match(r'^[\w-]+$', value_str):
+                        return (False, f"Invalid Tailwind class format: {value_str}")
             
             return (True, None)
             
@@ -152,9 +121,13 @@ class DirectCodeEditor:
                 return (False, None, "No properties to edit", None)
 
             logger.info(f"[DIRECT EDIT] Editing element '{element_selector}' with {len(properties)} properties")
+            logger.info(f"[DIRECT EDIT] Properties to edit: {properties}")
+            logger.info(f"[DIRECT EDIT] Code length: {len(code)} chars")
 
             # Verify element exists before attempting any changes
             if not self._find_element_tag(code, element_selector):
+                logger.error(f"[DIRECT EDIT] Element with data-element='{element_selector}' not found in code")
+                logger.error(f"[DIRECT EDIT] Code snippet (first 500 chars):\n{code[:500]}")
                 return (False, None, f"Element with data-element='{element_selector}' not found in code", None)
             
             new_code = code
@@ -200,7 +173,24 @@ class DirectCodeEditor:
                     elif property_name == 'alt':
                         result = self._edit_attribute(new_code, element_selector, 'alt', str(property_value))
                     elif property_name in TAILWIND_PROPERTY_MAP:
-                        result = self._edit_tailwind_class(new_code, element_selector, property_name, str(property_value))
+                        # Check if it's a custom hex color
+                        if property_name in ['color', 'backgroundColor', 'borderColor'] and str(property_value).startswith('#'):
+                            # Handle custom hex colors with inline styles
+                            style_prop_map = {
+                                'color': 'color',
+                                'backgroundColor': 'backgroundColor',
+                                'borderColor': 'borderColor'
+                            }
+                            logger.info(f"[DIRECT EDIT] Applying inline style for {property_name}: {property_value}")
+                            result = self._edit_inline_style(new_code, element_selector, style_prop_map[property_name], str(property_value))
+                            if not result:
+                                logger.error(f"[DIRECT EDIT] _edit_inline_style returned None for selector: {element_selector}")
+                        else:
+                            # Handle regular Tailwind classes
+                            logger.info(f"[DIRECT EDIT] Applying Tailwind class for {property_name}: {property_value}")
+                            result = self._edit_tailwind_class(new_code, element_selector, property_name, str(property_value))
+                            if not result:
+                                logger.error(f"[DIRECT EDIT] _edit_tailwind_class returned None for selector: {element_selector}")
                     else:
                         failed_changes.append((property_name, "Property type not supported"))
                         logger.warning(f"[DIRECT EDIT] Property type '{property_name}' not yet implemented")
@@ -977,9 +967,274 @@ class DirectCodeEditor:
         
         return new_code
     
+    def _edit_inline_style(self, code: str, selector: str, style_property: str, value: str) -> Optional[str]:
+        """
+        Edit an inline style property in the style attribute.
+        Used for custom hex colors and other inline styles.
+        
+        When applying a custom color via inline style, this method also removes
+        conflicting Tailwind color classes from the className to avoid redundancy.
+        
+        Args:
+            code: Component code
+            selector: Element selector (data-element value)
+            style_property: CSS property name (e.g., 'color', 'backgroundColor')
+            value: CSS value (e.g., '#FF5733')
+        """
+        logger.info(f"[DIRECT EDIT] Setting inline style {style_property} to: '{value}' for selector: '{selector}'")
+        logger.info(f"[DIRECT EDIT] Code length: {len(code)} chars")
+        
+        tag_match = self._find_element_tag(code, selector)
+        if not tag_match:
+            logger.error(f"[DIRECT EDIT] _find_element_tag returned None for selector: '{selector}'")
+            # Log first 500 chars of code to help debug
+            logger.error(f"[DIRECT EDIT] Code snippet (first 500 chars):\n{code[:500]}")
+            return None
+        
+        tag_start, tag_end, tag_content = tag_match
+        
+        logger.info(f"[DIRECT EDIT] Tag content (first 200 chars): {tag_content[:200]}")
+        
+        # Find existing style attribute
+        # React inline styles use objects: style={{ property: 'value' }}
+        style_pattern = r'style=\{\{([^}]*)\}\}'
+        style_match = re.search(style_pattern, tag_content)
+        
+        logger.info(f"[DIRECT EDIT] Style pattern match: {bool(style_match)}")
+        
+        if style_match:
+            # Has existing style attribute
+            old_style = style_match.group(1).strip()
+            
+            # Parse existing styles (React object notation)
+            style_dict = {}
+            if old_style:
+                # Split by commas that aren't inside quotes
+                parts = []
+                current = []
+                in_quotes = False
+                for char in old_style:
+                    if char in ['"', "'"]:
+                        in_quotes = not in_quotes
+                    if char == ',' and not in_quotes:
+                        parts.append(''.join(current))
+                        current = []
+                    else:
+                        current.append(char)
+                if current:
+                    parts.append(''.join(current))
+                
+                for part in parts:
+                    part = part.strip()
+                    if ':' in part:
+                        prop, val = part.split(':', 1)
+                        prop = prop.strip()
+                        val = val.strip().strip(',')
+                        style_dict[prop] = val
+            
+            # Update or add the property (use camelCase for React)
+            style_dict[style_property] = f"'{value}'"
+            
+            # Rebuild style object
+            style_entries = [f"{k}: {v}" for k, v in style_dict.items()]
+            new_style = '{{ ' + ', '.join(style_entries) + ' }}'
+            
+            # Replace in tag
+            old_attr = style_match.group(0)
+            new_attr = f'style={new_style}'
+            new_tag_content = tag_content.replace(old_attr, new_attr, 1)
+            logger.info(f"[DIRECT EDIT] Updated existing style attribute")
+            logger.info(f"[DIRECT EDIT] Old attr: {old_attr}")
+            logger.info(f"[DIRECT EDIT] New attr: {new_attr}")
+        else:
+            # No style attribute, add one (React object notation with camelCase)
+            new_attr = f"style={{{{ {style_property}: '{value}' }}}}"
+            logger.info(f"[DIRECT EDIT] Adding new style attribute: {new_attr}")
+            if tag_content.endswith('/>'):
+                new_tag_content = tag_content[:-2] + f' {new_attr} />'
+            else:
+                new_tag_content = tag_content[:-1] + f' {new_attr}>'
+        
+        # Remove conflicting Tailwind color classes from className
+        # Map style properties to their Tailwind class prefixes
+        property_to_tailwind_prefix = {
+            'color': 'text',
+            'backgroundColor': 'bg',
+            'borderColor': 'border'
+        }
+        
+        if style_property in property_to_tailwind_prefix:
+            prefix = property_to_tailwind_prefix[style_property]
+            logger.info(f"[DIRECT EDIT] Removing conflicting {prefix}-* color classes from className")
+            new_tag_content = self._remove_conflicting_color_classes(new_tag_content, prefix)
+        
+        # Replace in code
+        new_code = code[:tag_start] + new_tag_content + code[tag_end:]
+        
+        logger.info(f"[DIRECT EDIT] Code changed: {new_code != code}")
+        logger.info(f"[DIRECT EDIT] New tag content (first 200 chars): {new_tag_content[:200]}")
+        
+        return new_code
+    
+    def _remove_conflicting_color_classes(self, tag_content: str, prefix: str) -> str:
+        """
+        Remove Tailwind color classes with the given prefix from className attribute.
+        
+        This removes classes like:
+        - text-{color}-{shade} (e.g., text-slate-50, text-blue-600)
+        - text-white, text-black, text-transparent
+        - bg-{color}-{shade}, bg-white, bg-black, bg-transparent
+        - border-{color}-{shade}, border-white, border-black, border-transparent
+        
+        Args:
+            tag_content: The tag content containing className
+            prefix: The Tailwind prefix ('text', 'bg', 'border')
+            
+        Returns:
+            Updated tag content with color classes removed
+        """
+        # Find className attribute
+        class_pattern = r'className=(?:["\'](.*?)["\']|\{["\'](.*?)["\']\})'
+        class_match = re.search(class_pattern, tag_content)
+        
+        if not class_match:
+            # No className attribute found
+            return tag_content
+        
+        # Get current className value
+        old_classes = class_match.group(1) or class_match.group(2) or ''
+        
+        # Split into individual classes
+        classes = old_classes.split()
+        
+        # Filter out color classes with the given prefix
+        # Matches: text-{color}-{shade}, text-white, text-black, text-transparent, etc.
+        color_class_patterns = [
+            rf'^{prefix}-\w+-\d+$',  # e.g., text-slate-50, bg-blue-600
+            rf'^{prefix}-white$',     # e.g., text-white
+            rf'^{prefix}-black$',     # e.g., text-black
+            rf'^{prefix}-transparent$', # e.g., bg-transparent
+            rf'^{prefix}-current$',   # e.g., text-current
+        ]
+        
+        filtered_classes = []
+        removed_classes = []
+        
+        for cls in classes:
+            should_remove = False
+            for pattern in color_class_patterns:
+                if re.match(pattern, cls):
+                    should_remove = True
+                    removed_classes.append(cls)
+                    break
+            
+            if not should_remove:
+                filtered_classes.append(cls)
+        
+        if removed_classes:
+            logger.info(f"[DIRECT EDIT] Removed conflicting classes: {', '.join(removed_classes)}")
+        
+        # Build new className string
+        new_classes = ' '.join(filtered_classes)
+        
+        # Replace className in tag
+        old_class_attr = class_match.group(0)
+        new_class_attr = f'className="{new_classes}"'
+        new_tag_content = tag_content.replace(old_class_attr, new_class_attr, 1)
+        
+        return new_tag_content
+    
+    def _remove_inline_style_property(self, tag_content: str, style_property: str) -> str:
+        """
+        Remove a specific property from inline style attribute.
+        
+        For example, removes 'color' from style={{ color: '#FFFFFF', fontSize: '20px' }}
+        to become style={{ fontSize: '20px' }}
+        
+        If the style object becomes empty after removal, removes the entire style attribute.
+        
+        Args:
+            tag_content: The tag content containing style attribute
+            style_property: The CSS property to remove (e.g., 'color', 'backgroundColor')
+            
+        Returns:
+            Updated tag content with the style property removed
+        """
+        # Find existing style attribute
+        style_pattern = r'style=\{\{([^}]*)\}\}'
+        style_match = re.search(style_pattern, tag_content)
+        
+        if not style_match:
+            # No style attribute found
+            return tag_content
+        
+        old_style = style_match.group(1).strip()
+        
+        # Parse existing styles (React object notation)
+        style_dict = {}
+        if old_style:
+            # Split by commas that aren't inside quotes
+            parts = []
+            current = []
+            in_quotes = False
+            for char in old_style:
+                if char in ['"', "'"]:
+                    in_quotes = not in_quotes
+                if char == ',' and not in_quotes:
+                    parts.append(''.join(current))
+                    current = []
+                else:
+                    current.append(char)
+            if current:
+                parts.append(''.join(current))
+            
+            for part in parts:
+                part = part.strip()
+                if ':' in part:
+                    prop, val = part.split(':', 1)
+                    prop = prop.strip()
+                    val = val.strip().strip(',')
+                    style_dict[prop] = val
+        
+        # Remove the specified property
+        if style_property in style_dict:
+            del style_dict[style_property]
+            logger.info(f"[DIRECT EDIT] Removed inline style property: {style_property}")
+        else:
+            # Property not found, return unchanged
+            return tag_content
+        
+        # If no styles remain, remove the entire style attribute
+        if not style_dict:
+            logger.info(f"[DIRECT EDIT] Style object empty, removing entire style attribute")
+            old_attr = style_match.group(0)
+            # Remove the style attribute and any extra whitespace
+            new_tag_content = tag_content.replace(old_attr, '', 1)
+            # Clean up double spaces
+            new_tag_content = re.sub(r'\s+', ' ', new_tag_content)
+            return new_tag_content
+        
+        # Rebuild style object with remaining properties
+        style_entries = [f"{k}: {v}" for k, v in style_dict.items()]
+        new_style = '{{ ' + ', '.join(style_entries) + ' }}'
+        
+        # Replace in tag
+        old_attr = style_match.group(0)
+        new_attr = f'style={new_style}'
+        new_tag_content = tag_content.replace(old_attr, new_attr, 1)
+        
+        logger.info(f"[DIRECT EDIT] Updated style attribute")
+        logger.info(f"[DIRECT EDIT] Old: {old_attr}")
+        logger.info(f"[DIRECT EDIT] New: {new_attr}")
+        
+        return new_tag_content
+    
     def _edit_tailwind_class(self, code: str, selector: str, property_name: str, new_class: str) -> Optional[str]:
         """
         Edit a Tailwind CSS class in the className attribute.
+        
+        When applying a Tailwind color class, also removes any conflicting inline styles
+        to ensure clean, consistent styling (no mixing of Tailwind and inline styles).
         
         Args:
             code: Component code
@@ -987,10 +1242,14 @@ class DirectCodeEditor:
             property_name: Property name (e.g., 'color', 'fontSize', 'padding')
             new_class: New Tailwind class to apply
         """
-        logger.info(f"[DIRECT EDIT] Changing Tailwind class for {property_name} to: '{new_class}'")
+        logger.info(f"[DIRECT EDIT] Changing Tailwind class for {property_name} to: '{new_class}' for selector: '{selector}'")
+        logger.info(f"[DIRECT EDIT] Code length: {len(code)} chars")
         
         tag_match = self._find_element_tag(code, selector)
         if not tag_match:
+            logger.error(f"[DIRECT EDIT] _find_element_tag returned None for selector: '{selector}'")
+            # Log first 500 chars of code to help debug
+            logger.error(f"[DIRECT EDIT] Code snippet (first 500 chars):\n{code[:500]}")
             return None
         
         tag_start, tag_end, tag_content = tag_match
@@ -1032,6 +1291,19 @@ class DirectCodeEditor:
         old_class_attr = class_match.group(0)
         new_class_attr = f'className="{new_classes}"'
         new_tag_content = tag_content.replace(old_class_attr, new_class_attr, 1)
+        
+        # Remove conflicting inline styles for color properties
+        # Map property names to their inline style equivalents
+        property_to_style_name = {
+            'color': 'color',
+            'backgroundColor': 'backgroundColor',
+            'borderColor': 'borderColor'
+        }
+        
+        if property_name in property_to_style_name:
+            style_name = property_to_style_name[property_name]
+            logger.info(f"[DIRECT EDIT] Removing conflicting inline style '{style_name}' from style attribute")
+            new_tag_content = self._remove_inline_style_property(new_tag_content, style_name)
         
         # Replace in code
         new_code = code[:tag_start] + new_tag_content + code[tag_end:]
