@@ -33,7 +33,7 @@ export const useUnifiedGeneration = () => {
         style_preferences: stylePreferences
       });
 
-      console.log('[Generation] Initial response:', result);
+      // console.log('[Generation] Initial response:', result);
 
       // Set initial state with default progress values
       setGeneratedProject({
@@ -45,7 +45,7 @@ export const useUnifiedGeneration = () => {
       });
 
       // Start polling for status immediately
-      console.log('[Generation] Starting polling for project:', result.project_id);
+      // console.log('[Generation] Starting polling for project:', result.project_id);
       pollStatus(result.project_id);
 
       return result;
