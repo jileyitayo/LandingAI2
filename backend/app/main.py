@@ -30,8 +30,11 @@ def setup_logging():
     
     # Set specific logger levels if needed
     logging.getLogger("uvicorn").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn").setLevel(logging.INFO)
+    # Suppress uvicorn access logs (HTTP request logs)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("fastapi").setLevel(logging.INFO)
+    # Suppress httpx INFO logs (only show WARNING and above)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
