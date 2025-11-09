@@ -30,14 +30,33 @@ export function normalizeOrigin(origin: string): string {
 /**
  * Gets the normalized origin from the current window location
  * Useful for constructing redirect URLs that work consistently
- * 
+ *
  * @returns Normalized origin (localhost instead of 0.0.0.0)
  */
 export function getNormalizedOrigin(): string {
   if (typeof window === "undefined") {
-    // Server-side: return a default or throw error
-    throw new Error("getNormalizedOrigin can only be called on the client side");
+    // Server-side: use environment variable or default
+    return process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   }
   return normalizeOrigin(window.location.origin);
+}
+
+/**
+ * Gets the app origin URL, prioritizing environment variable
+ * Use this for OAuth redirects to ensure correct URL in all environments
+ *
+ * @returns App origin URL
+ */
+export function getAppOrigin(): string {
+  // Priority: ENV variable > window location (if available) > default
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL;
+  }
+
+  if (typeof window !== "undefined") {
+    return normalizeOrigin(window.location.origin);
+  }
+
+  return "http://localhost:3000";
 }
 

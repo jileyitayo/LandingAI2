@@ -2,21 +2,35 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Normalizes an origin URL by converting 0.0.0.0 to localhost
- * This ensures consistent redirect URLs regardless of how the app is accessed
+ * Gets the correct app origin for redirects
+ * Prioritizes environment variable to handle Railway/production deployments correctly
  */
-function normalizeOrigin(origin: string): string {
-  try {
-    const url = new URL(origin);
-    // Replace 0.0.0.0 with localhost
-    if (url.hostname === "0.0.0.0") {
-      url.hostname = "localhost";
-    }
-    return url.origin;
-  } catch {
-    // If URL parsing fails, try simple string replacement
-    return origin.replace(/0\.0\.0\.0/g, "localhost");
+function getAppOrigin(request: Request): string {
+  // Priority 1: Environment variable (for production/Railway)
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL;
   }
+
+  // Priority 2: X-Forwarded-Host header (for proxied environments)
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
+  if (forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+
+  // Priority 3: Host header
+  const host = request.headers.get("host");
+  if (host) {
+    const proto = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
+    return `${proto}://${host}`;
+  }
+
+  // Fallback: request URL origin (normalize 0.0.0.0 to localhost)
+  const requestUrl = new URL(request.url);
+  if (requestUrl.hostname === "0.0.0.0") {
+    requestUrl.hostname = "localhost";
+  }
+  return requestUrl.origin;
 }
 
 /**
@@ -28,8 +42,8 @@ export async function GET(request: Request) {
   const code = requestUrl.searchParams.get("code");
   const next = requestUrl.searchParams.get("next") || "/dashboard";
 
-  // Normalize origin to ensure consistent redirects (0.0.0.0 -> localhost)
-  const normalizedOrigin = normalizeOrigin(requestUrl.origin);
+  // Get the correct app origin for redirects
+  const appOrigin = getAppOrigin(request);
 
   if (code) {
     const supabase = await createClient();
@@ -39,13 +53,13 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error("Error exchanging code for session:", error);
-      // Redirect to login with error using normalized origin
+      // Redirect to login with error
       return NextResponse.redirect(
-        new URL(`/auth/login?error=${encodeURIComponent(error.message)}`, normalizedOrigin)
+        new URL(`/auth/login?error=${encodeURIComponent(error.message)}`, appOrigin)
       );
     }
   }
 
-  // Redirect to the next page or dashboard using normalized origin
-  return NextResponse.redirect(new URL(next, normalizedOrigin));
+  // Redirect to the next page or dashboard
+  return NextResponse.redirect(new URL(next, appOrigin));
 }

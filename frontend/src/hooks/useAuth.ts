@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { getNormalizedOrigin } from "@/utils/url";
+import { getAppOrigin } from "@/utils/url";
 
 interface AuthState {
   user: User | null;
@@ -107,8 +107,8 @@ export function useAuth() {
         password,
         options: {
           data: fullName ? { full_name: fullName } : {},
-          // Use normalized origin to ensure consistent redirect URLs
-          emailRedirectTo: `${getNormalizedOrigin()}/auth/callback`,
+          // Use app origin to ensure consistent redirect URLs
+          emailRedirectTo: `${getAppOrigin()}/auth/callback`,
         },
       });
 
@@ -204,8 +204,8 @@ export function useAuth() {
       setAuthState((prev) => ({ ...prev, loading: true, error: null }));
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        // Use normalized origin to ensure consistent redirect URLs
-        redirectTo: `${getNormalizedOrigin()}/auth/reset-password`,
+        // Use app origin to ensure consistent redirect URLs
+        redirectTo: `${getAppOrigin()}/auth/reset-password`,
       });
 
       if (error) throw error;
@@ -263,9 +263,9 @@ export function useAuth() {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          // Use normalized origin to ensure consistent redirect URLs
+          // Use app origin to ensure consistent redirect URLs
           // This fixes the issue where 0.0.0.0:3000 causes CORS and redirect problems
-          redirectTo: `${getNormalizedOrigin()}/auth/callback`,
+          redirectTo: `${getAppOrigin()}/auth/callback`,
           queryParams: {
             access_type: "offline",
             prompt: "consent",
