@@ -517,12 +517,12 @@
         const elementData = extractElementData(element);
 
         // Log selection for debugging
-        console.log('Component selected:', {
-            component: elementData.component.componentName || 'Unknown',
-            file: elementData.component.componentFile || 'Unknown',
-            element: elementData.component.elementName || elementData.tagName,
-            elementType: elementData.elementType
-        });
+        // console.log('Component selected:', {
+        //     component: elementData.component.componentName || 'Unknown',
+        //     file: elementData.component.componentFile || 'Unknown',
+        //     element: elementData.component.elementName || elementData.tagName,
+        //     elementType: elementData.elementType
+        // });
 
         // Send data to parent window
         window.parent.postMessage({
@@ -641,14 +641,14 @@
     // Helper: Update Tailwind class for a property
     function updateTailwindClass(element, property, newClass) {
         const classList = element.className.split(' ').filter(c => c.trim());
-        console.log('🎨 Updating Tailwind class:', { property, newClass, currentClasses: classList });
+        // console.log('🎨 Updating Tailwind class:', { property, newClass, currentClasses: classList });
         
         // For color properties, use inline styles instead of classes for guaranteed rendering
         if (property === 'color' || property === 'textColor') {
             // Check if it's a direct hex color
             if (newClass.match(/^#[0-9A-Fa-f]{6}$/)) {
                 element.style.color = newClass;
-                console.log('✅ Applied custom hex color via inline style:', newClass);
+                // console.log('✅ Applied custom hex color via inline style:', newClass);
                 // Remove any Tailwind color classes
                 const pattern = /^text-\w+-\d+$/;
                 const filtered = classList.filter(c => !pattern.test(c));
@@ -659,7 +659,7 @@
             const hexColor = getHexFromTailwindClass(newClass);
             if (hexColor) {
                 element.style.color = hexColor;
-                console.log('✅ Applied color via inline style:', hexColor);
+                // console.log('✅ Applied color via inline style:', hexColor);
                 // Also update the class for consistency
                 const pattern = /^text-\w+-\d+$/;
                 const filtered = classList.filter(c => !pattern.test(c));
@@ -671,7 +671,7 @@
             // Check if it's a direct hex color
             if (newClass.match(/^#[0-9A-Fa-f]{6}$/)) {
                 element.style.backgroundColor = newClass;
-                console.log('✅ Applied custom hex backgroundColor via inline style:', newClass);
+                // console.log('✅ Applied custom hex backgroundColor via inline style:', newClass);
                 // Remove any Tailwind color classes
                 const pattern = /^bg-\w+-\d+$/;
                 const filtered = classList.filter(c => !pattern.test(c));
@@ -682,7 +682,7 @@
             const hexColor = getHexFromTailwindClass(newClass);
             if (hexColor) {
                 element.style.backgroundColor = hexColor;
-                console.log('✅ Applied backgroundColor via inline style:', hexColor);
+                // console.log('✅ Applied backgroundColor via inline style:', hexColor);
                 // Also update the class for consistency
                 const pattern = /^bg-\w+-\d+$/;
                 const filtered = classList.filter(c => !pattern.test(c));
@@ -694,7 +694,7 @@
             // Check if it's a direct hex color
             if (newClass.match(/^#[0-9A-Fa-f]{6}$/)) {
                 element.style.borderColor = newClass;
-                console.log('✅ Applied custom hex borderColor via inline style:', newClass);
+                // console.log('✅ Applied custom hex borderColor via inline style:', newClass);
                 // Remove any Tailwind color classes
                 const pattern = /^border-\w+-\d+$/;
                 const filtered = classList.filter(c => !pattern.test(c));
@@ -705,7 +705,7 @@
             const hexColor = getHexFromTailwindClass(newClass);
             if (hexColor) {
                 element.style.borderColor = hexColor;
-                console.log('✅ Applied borderColor via inline style:', hexColor);
+                // console.log('✅ Applied borderColor via inline style:', hexColor);
                 // Also update the class for consistency
                 const pattern = /^border-\w+-\d+$/;
                 const filtered = classList.filter(c => !pattern.test(c));
@@ -734,14 +734,14 @@
             // Add new class
             filtered.push(newClass);
             element.className = filtered.join(' ');
-            console.log('✅ Class updated:', { 
-                removed: oldClasses, 
-                added: newClass, 
-                newClassName: element.className 
-            });
+            // console.log('✅ Class updated:', { 
+            //     removed: oldClasses, 
+            //     added: newClass, 
+            //     newClassName: element.className 
+            // });
             return true;
         }
-        console.warn('⚠️ No pattern found for property:', property);
+        // console.warn('⚠️ No pattern found for property:', property);
         return false;
     }
     
@@ -749,16 +749,16 @@
     function handlePropertyUpdate(data) {
         const { selector, property, value } = data;
         
-        console.log('📨 Received property update:', { selector, property, value });
+        // console.log('📨 Received property update:', { selector, property, value });
         
         // Find element by data-element attribute
         const element = document.querySelector(`[data-element="${selector}"]`);
         if (!element) {
-            console.warn('❌ Element not found for optimistic update:', selector);
+            // console.warn('❌ Element not found for optimistic update:', selector);
             return false;
         }
         
-        console.log('✅ Found element, applying update:', { selector, property, value, element });
+        // console.log('✅ Found element, applying update:', { selector, property, value, element });
         
         try {
             // Handle different property types
@@ -799,12 +799,12 @@
                 // Update Tailwind classes
                 const updateSuccess = updateTailwindClass(element, property, value);
                 if (updateSuccess) {
-                    console.log('✨ Tailwind class updated successfully');
+                    // console.log('✨ Tailwind class updated successfully');
                 } else {
-                    console.warn('⚠️ Tailwind class update failed');
+                    // console.warn('⚠️ Tailwind class update failed');
                 }
             } else {
-                console.warn('❌ Unsupported property for optimistic update:', property);
+                // console.warn('❌ Unsupported property for optimistic update:', property);
                 return false;
             }
             
@@ -818,7 +818,7 @@
                 element.style.outlineOffset = originalOutlineOffset;
             }, 400);
             
-            console.log('✅ Optimistic update completed');
+            // console.log('✅ Optimistic update completed');
             return true;
         } catch (error) {
             console.error('Error applying optimistic update:', error);
@@ -851,7 +851,7 @@
             window.parent.postMessage({
                 type: 'SELECTOR_READY'
             }, '*');
-            console.log('Visual Editor Selector: SELECTOR_READY sent');
+            // console.log('Visual Editor Selector: SELECTOR_READY sent');
         } catch (error) {
             console.error('Failed to send SELECTOR_READY:', error);
         }
@@ -870,7 +870,7 @@
 
         if (retryCount >= maxRetries) {
             clearInterval(retryInterval);
-            console.log('Visual Editor Selector: Stopped retry after', retryCount, 'attempts');
+            // console.log('Visual Editor Selector: Stopped retry after', retryCount, 'attempts');
         }
     }, 500);
 
@@ -878,7 +878,7 @@
     window.addEventListener('message', function stopRetry(event) {
         if (event.data.type === 'ENABLE_SELECTOR' || event.data.type === 'DISABLE_SELECTOR') {
             clearInterval(retryInterval);
-            console.log('Visual Editor Selector: Communication established, stopped retry');
+            // console.log('Visual Editor Selector: Communication established, stopped retry');
         }
     }, { once: false });
 
@@ -887,7 +887,7 @@
         if (document.hidden && selectorEnabled) {
             // Only disable if the document is truly hidden (user switched tabs)
             // Don't disable just because the iframe lost focus
-            console.log('Document hidden - keeping selector enabled');
+            // console.log('Document hidden - keeping selector enabled');
             // Note: We keep selector enabled so it's ready when user comes back
             // The parent component controls the selector state via messages
         }
@@ -897,13 +897,5 @@
     // It was disabling the selector whenever the iframe lost focus (e.g., clicking outside)
     // Now the parent component fully controls the selector state via postMessage
 
-    console.log('Visual Editor Selector loaded and ready');
-
-    // Expose a test function to manually trigger SELECTOR_READY (for debugging)
-    window.testSelectorReady = function() {
-        console.log('Manual test: Sending SELECTOR_READY');
-        window.parent.postMessage({ type: 'SELECTOR_READY' }, '*');
-    };
-
-    console.log('💡 Debug: Type testSelectorReady() in iframe console to manually test messaging');
+    // console.log('Visual Editor Selector loaded and ready');
 })();

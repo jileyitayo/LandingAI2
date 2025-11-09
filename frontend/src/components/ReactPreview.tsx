@@ -70,24 +70,24 @@ function ReactPreview({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       // Log ALL messages to debug what's coming through
-      console.log('[ReactPreview] Raw message received:', {
-        type: event.data?.type,
-        origin: event.origin,
-        data: event.data
-      });
+      // console.log('[ReactPreview] Raw message received:', {
+      //   type: event.data?.type,
+      //   origin: event.origin,
+      //   data: event.data
+      // });
 
       // Skip messages from browser extensions or other sources
       if (!event.data || typeof event.data !== 'object') {
-        console.log('[ReactPreview] Skipping non-object message');
+        // console.log('[ReactPreview] Skipping non-object message');
         return;
       }
 
       if (event.data.type === 'SELECTOR_READY') {
-        console.log('[ReactPreview] ✅ SELECTOR_READY received! Setting state...');
+        // console.log('[ReactPreview] ✅ SELECTOR_READY received! Setting state...');
         setSelectorReady(true);
         // Auto-enable selector when it's ready
         if (onSelectorEnabledChange && !selectorEnabled) {
-          console.log('[ReactPreview] Auto-enabling selector');
+          // console.log('[ReactPreview] Auto-enabling selector');
           onSelectorEnabledChange(true);
         }
       } else if (event.data.type === 'ELEMENT_SELECTED') {
@@ -107,24 +107,24 @@ function ReactPreview({
       }
     };
 
-    console.log('[ReactPreview] Setting up message listener');
+    // console.log('[ReactPreview] Setting up message listener');
     window.addEventListener('message', handleMessage);
     return () => {
-      console.log('[ReactPreview] Removing message listener');
+      // console.log('[ReactPreview] Removing message listener');
       window.removeEventListener('message', handleMessage);
     };
   }, [onElementSelect, onSelectorEnabledChange, selectorEnabled, selectorReady]);
 
   // Reset iframe loaded state when URL changes
   useEffect(() => {
-    console.log('[ReactPreview] Preview URL changed, resetting iframe state');
+    // console.log('[ReactPreview] Preview URL changed, resetting iframe state');
     setIframeLoaded(false);
     setSelectorReady(false);
   }, [previewUrl]);
 
   // Handle iframe load event
   const handleIframeLoad = () => {
-    console.log('[ReactPreview] Iframe loaded successfully');
+    // console.log('[ReactPreview] Iframe loaded successfully');
     setIframeLoaded(true);
   };
 
@@ -132,16 +132,16 @@ function ReactPreview({
   useEffect(() => {
     if (iframeRef.current?.contentWindow && selectorReady && iframeLoaded) {
       const message = selectorEnabled ? 'ENABLE_SELECTOR' : 'DISABLE_SELECTOR';
-      console.log('[ReactPreview] Sending message to iframe:', message);
+      // console.log('[ReactPreview] Sending message to iframe:', message);
       iframeRef.current.contentWindow.postMessage({
         type: message,
       }, '*');
     } else {
-      console.log('[ReactPreview] Cannot send message - iframe not ready:', {
-        hasContentWindow: !!iframeRef.current?.contentWindow,
-        selectorReady,
-        iframeLoaded
-      });
+      // console.log('[ReactPreview] Cannot send message - iframe not ready:', {
+      // hasContentWindow: !!iframeRef.current?.contentWindow,
+      //   selectorReady,
+      //   iframeLoaded
+      // });
     }
   }, [selectorEnabled, selectorReady, iframeLoaded]);
 
@@ -153,7 +153,7 @@ function ReactPreview({
 
     const reEnableSelector = () => {
       if (selectorEnabled && selectorReady && iframeLoaded && iframe.contentWindow) {
-        console.log('[ReactPreview] Re-enabling selector on focus/mouseenter');
+        // console.log('[ReactPreview] Re-enabling selector on focus/mouseenter');
         iframe.contentWindow.postMessage({
           type: 'ENABLE_SELECTOR',
         }, '*');
