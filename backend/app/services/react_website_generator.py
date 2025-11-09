@@ -936,7 +936,7 @@ class ReactWebsiteGenerator:
                                         break
                                 
                                 # Wrap attribution text with matching indentation
-                                locked_attribution = f'{indentation}<span data-locked="true" data-editable-text="false">{attribution_text}</span>\n'
+                                locked_attribution = f'{indentation}<p className="text-center text-xs text-gray-500" data-locked="true" data-editable-text="false">{attribution_text}</p>\n'
                                 
                                 insertion_point = match.start()
                                 updated_content = (
