@@ -270,7 +270,8 @@ export default function ProjectEditorPage() {
     try {
       const result = await api.generation.createPreview(projectId);
       // console.log("result", result);
-      setPreviewUrl(`http://localhost:8000${result.preview_url}`);
+      // Use the absolute URL returned by the backend (includes BACKEND_URL)
+      setPreviewUrl(result.preview_url);
     } catch (error: any) {
       setBuildError(error.message || 'Build failed');
     } finally {
