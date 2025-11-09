@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 class ReactFileManager:
     """Handles generation of all React project files"""
 
-    allowed_components = {"button", "card", "input", "textarea", "label", "select", "dialog", "badge", "alert", "avatar", "separator", "switch", "progress", "skeleton", "accordion", "tabs", "tooltip", "popover", "dropdown-menu", "toggle", "radio-group", "table", "sonner"}
+    allowed_components = {"button", "card", "input", "textarea", "label", "select", "sheet", "dialog", "badge", "alert", "avatar", "separator", "switch", "progress", "skeleton", "accordion", "tabs", "tooltip", "popover", "dropdown-menu", "toggle", "radio-group", "table", "sonner"}
         
     
     def generate_config_files(self, structure: WebsiteStructure) -> Dict[str, str]:
