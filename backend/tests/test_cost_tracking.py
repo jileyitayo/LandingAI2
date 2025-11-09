@@ -263,15 +263,15 @@ async def run_all_tests():
     print("  3. Verify costs appear in project details API response")
 
 
-if __name__ == "__main__":
-    print("Starting cost tracking tests...")
-    print("Make sure you have:")
-    print("  1. Run the database migration (migrations/add_cost_tracking.sql)")
-    print("  2. Set up your Supabase credentials")
-    print("\nPress Ctrl+C to cancel, or wait 3 seconds to continue...")
+# if __name__ == "__main__":
+#     print("Starting cost tracking tests...")
+#     print("Make sure you have:")
+#     print("  1. Run the database migration (migrations/add_cost_tracking.sql)")
+#     print("  2. Set up your Supabase credentials")
+#     print("\nPress Ctrl+C to cancel, or wait 3 seconds to continue...")
     
-    import time
-    time.sleep(3)
+#     import time
+#     time.sleep(3)
     
-    asyncio.run(run_all_tests())
+#     asyncio.run(run_all_tests())
 

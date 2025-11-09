@@ -1642,31 +1642,31 @@ content_generator_response_sample = """
 }
 """
 
-# TEMPLATE GENERATION
-from app.services.templates.template_generator import TemplateGenerator
-from app.services.validators.template_validator import validate_template_structure
-from app.services.content_generator import ContentGenerator
+# # TEMPLATE GENERATION
+# from app.services.templates.template_generator import TemplateGenerator
+# from app.services.validators.template_validator import validate_template_structure
+# from app.services.content_generator import ContentGenerator
 
-template_generator = TemplateGenerator()
-print("Parsing OpenAI response")
-template_data = template_generator.parse_openai_response(content_template_generator)
-print("Validating template structure")
-is_valid, error_msg = validate_template_structure(template_data)
-if not is_valid:
-    print(f"Template validation failed: {error_msg}")
-    print(f"Invalid template structure: {error_msg}")
-else:
-    print("Template validation passed")
-    # print(f"Template structure: \n{template_data}")
-
-
+# template_generator = TemplateGenerator()
+# print("Parsing OpenAI response")
+# template_data = template_generator.parse_openai_response(content_template_generator)
+# print("Validating template structure")
+# is_valid, error_msg = validate_template_structure(template_data)
+# if not is_valid:
+#     print(f"Template validation failed: {error_msg}")
+#     print(f"Invalid template structure: {error_msg}")
+# else:
+#     print("Template validation passed")
+#     # print(f"Template structure: \n{template_data}")
 
 
-# CONTENT GENERATION
-print("Generating content")
-content_generator = ContentGenerator()
-content_data = content_generator.parse_openai_response(content_generator_response_sample)
-print("Validating content")
-print(f"{content_data}")
-content_generator.validate_content(content_data, template_data['content_schema'])
-print("Content validated")
+
+
+# # CONTENT GENERATION
+# print("Generating content")
+# content_generator = ContentGenerator()
+# content_data = content_generator.parse_openai_response(content_generator_response_sample)
+# print("Validating content")
+# print(f"{content_data}")
+# content_generator.validate_content(content_data, template_data['content_schema'])
+# print("Content validated")

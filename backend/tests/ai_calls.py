@@ -50,21 +50,21 @@ def simple_anthropic_call(prompt: str, model: str = "claude-sonnet-4-5") -> str:
     reply, usage = prompt_open_ai.call_claude_api(system_prompt="You are a helpful assistant. Keep your responses concise and to the point within 100 tokens.", user_prompt=prompt, model=model,)
     return reply, usage
 
-if __name__ == "__main__":
-    user_prompt = "Explain the difference between supervised and unsupervised learning."
-    reply = "Nothing yet..."
-    usage = None
-    try:    
-        reply, usage = simple_gemini_flash_call(user_prompt, model="gemini-2.5-pro")
-        print(f"Gemini Flash Reply: {reply}")
-        print(f"Gemini Flash Usage: {usage}")
-        # reply, usage = simple_anthropic_call(user_prompt, model="claude-sonnet-4-5" )
-        # print(f"Anthropic Reply: {reply}")
-        # print(f"Anthropic Usage: {usage}")
-        # reply, usage = simple_openai_call(user_prompt, model="gpt-5-mini")
-        # print(f"OpenAI Reply: {reply}")
-        # print(f"OpenAI Usage: {usage}")
-    except Exception as e:
-        print(f"Error: {e}")
-    # print(f"Reply: {reply}")
-    # print(f"Usage: {usage}")
+# if __name__ == "__main__":
+#     user_prompt = "Explain the difference between supervised and unsupervised learning."
+#     reply = "Nothing yet..."
+#     usage = None
+#     try:    
+#         reply, usage = simple_gemini_flash_call(user_prompt, model="gemini-2.5-pro")
+#         print(f"Gemini Flash Reply: {reply}")
+#         print(f"Gemini Flash Usage: {usage}")
+#         # reply, usage = simple_anthropic_call(user_prompt, model="claude-sonnet-4-5" )
+#         # print(f"Anthropic Reply: {reply}")
+#         # print(f"Anthropic Usage: {usage}")
+#         # reply, usage = simple_openai_call(user_prompt, model="gpt-5-mini")
+#         # print(f"OpenAI Reply: {reply}")
+#         # print(f"OpenAI Usage: {usage}")
+#     except Exception as e:
+#         print(f"Error: {e}")
+#     # print(f"Reply: {reply}")
+#     # print(f"Usage: {usage}")

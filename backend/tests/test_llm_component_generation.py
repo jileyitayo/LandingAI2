@@ -172,13 +172,13 @@ def test_component_file_structure():
     print("[PASS] Component file structure validated")
 
 
-if __name__ == "__main__":
-    print("\n=== Testing LLM Component Generation System ===\n")
+# if __name__ == "__main__":
+#     print("\n=== Testing LLM Component Generation System ===\n")
     
-    test_component_file_structure()
-    test_page_generation_with_llm()
+#     test_component_file_structure()
+#     test_page_generation_with_llm()
     
-    print("\nAll tests passed!")
-    print("\nTo run full generation (requires OpenAI API key):")
-    print("  python backend/tests/example_react_generation.py")
+#     print("\nAll tests passed!")
+#     print("\nTo run full generation (requires OpenAI API key):")
+#     print("  python backend/tests/example_react_generation.py")
 

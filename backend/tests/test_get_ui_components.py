@@ -51,5 +51,5 @@ def fetch_lucide_icons():
         print(f"Error: {e}")
         return []
 
-icons = fetch_lucide_icons()
-print(icons[:10])  # Show first 10
+# icons = fetch_lucide_icons()
+# print(icons[:10])  # Show first 10
