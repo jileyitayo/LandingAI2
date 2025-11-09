@@ -62,6 +62,7 @@ function ReactPreview({
   onSelectorEnabledChange
 }: ReactPreviewProps) {
   const [selectorReady, setSelectorReady] = useState(false);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
@@ -102,9 +103,22 @@ function ReactPreview({
     return () => window.removeEventListener('message', handleMessage);
   }, [onElementSelect, onSelectorEnabledChange, selectorEnabled, selectorReady]);
 
-  // Sync selector state with iframe
+  // Reset iframe loaded state when URL changes
   useEffect(() => {
-    if (iframeRef.current?.contentWindow && selectorReady) {
+    console.log('[ReactPreview] Preview URL changed, resetting iframe state');
+    setIframeLoaded(false);
+    setSelectorReady(false);
+  }, [previewUrl]);
+
+  // Handle iframe load event
+  const handleIframeLoad = () => {
+    console.log('[ReactPreview] Iframe loaded successfully');
+    setIframeLoaded(true);
+  };
+
+  // Sync selector state with iframe (only after iframe is loaded)
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow && selectorReady && iframeLoaded) {
       const message = selectorEnabled ? 'ENABLE_SELECTOR' : 'DISABLE_SELECTOR';
       console.log('[ReactPreview] Sending message to iframe:', message);
       iframeRef.current.contentWindow.postMessage({
@@ -113,10 +127,11 @@ function ReactPreview({
     } else {
       console.log('[ReactPreview] Cannot send message - iframe not ready:', {
         hasContentWindow: !!iframeRef.current?.contentWindow,
-        selectorReady
+        selectorReady,
+        iframeLoaded
       });
     }
-  }, [selectorEnabled, selectorReady]);
+  }, [selectorEnabled, selectorReady, iframeLoaded]);
 
   // Re-enable selector when iframe gains focus or mouse enters preview area
   useEffect(() => {
@@ -125,8 +140,8 @@ function ReactPreview({
     if (!iframe || !container) return;
 
     const reEnableSelector = () => {
-      if (selectorEnabled && selectorReady && iframe.contentWindow) {
-        // console.log('Re-enabling selector');
+      if (selectorEnabled && selectorReady && iframeLoaded && iframe.contentWindow) {
+        console.log('[ReactPreview] Re-enabling selector on focus/mouseenter');
         iframe.contentWindow.postMessage({
           type: 'ENABLE_SELECTOR',
         }, '*');
@@ -161,7 +176,7 @@ function ReactPreview({
       container.removeEventListener('mouseenter', handleMouseEnter);
       window.removeEventListener('focus', handleWindowFocus);
     };
-  }, [selectorEnabled, selectorReady]);
+  }, [selectorEnabled, selectorReady, iframeLoaded]);
 
   // Toggle selector mode
   const toggleSelector = () => {
@@ -295,6 +310,7 @@ function ReactPreview({
           <iframe
             ref={iframeRef}
             src={previewUrl}
+            onLoad={handleIframeLoad}
             className={`w-full h-full border-0 ${
               selectorEnabled ? 'cursor-crosshair' : ''
             }`}
