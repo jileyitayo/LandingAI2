@@ -31,8 +31,17 @@ COPY ./app ./app
 # Create directories for previews (needed for vite_preview_service)
 RUN mkdir -p /app/previews/builds /app/previews/shared_template
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# Create non-root user and configure npm
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app/.npm-cache && \
+    chown -R appuser:appuser /app && \
+    mkdir -p /home/appuser/.npm && \
+    chown -R appuser:appuser /home/appuser
+
+# Set npm cache directory and HOME for appuser
+ENV NPM_CONFIG_CACHE=/app/.npm-cache \
+    HOME=/home/appuser
+
 USER appuser
 
 # Expose port
