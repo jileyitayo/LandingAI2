@@ -68,11 +68,17 @@ function ReactPreview({
   // Listen for messages from iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      // Log all messages for debugging cross-origin issues
+      if (event.data.type?.startsWith('SELECTOR') || event.data.type?.startsWith('ELEMENT')) {
+        console.log('[ReactPreview] Received message:', event.data.type, event.origin);
+      }
+
       if (event.data.type === 'SELECTOR_READY') {
+        console.log('[ReactPreview] Selector ready! Setting state...');
         setSelectorReady(true);
-        // console.log('Selector script loaded in iframe');
         // Auto-enable selector when it's ready
         if (onSelectorEnabledChange && !selectorEnabled) {
+          console.log('[ReactPreview] Auto-enabling selector');
           onSelectorEnabledChange(true);
         }
       } else if (event.data.type === 'ELEMENT_SELECTED') {
@@ -99,9 +105,16 @@ function ReactPreview({
   // Sync selector state with iframe
   useEffect(() => {
     if (iframeRef.current?.contentWindow && selectorReady) {
+      const message = selectorEnabled ? 'ENABLE_SELECTOR' : 'DISABLE_SELECTOR';
+      console.log('[ReactPreview] Sending message to iframe:', message);
       iframeRef.current.contentWindow.postMessage({
-        type: selectorEnabled ? 'ENABLE_SELECTOR' : 'DISABLE_SELECTOR',
+        type: message,
       }, '*');
+    } else {
+      console.log('[ReactPreview] Cannot send message - iframe not ready:', {
+        hasContentWindow: !!iframeRef.current?.contentWindow,
+        selectorReady
+      });
     }
   }, [selectorEnabled, selectorReady]);
 

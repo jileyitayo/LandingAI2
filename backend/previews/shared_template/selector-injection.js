@@ -845,11 +845,43 @@
         }
     });
     
-    // Send ready signal
-    window.parent.postMessage({
-        type: 'SELECTOR_READY'
-    }, '*');
-    
+    // Send ready signal with retry mechanism for cross-origin iframes
+    function sendReadySignal() {
+        try {
+            window.parent.postMessage({
+                type: 'SELECTOR_READY'
+            }, '*');
+            console.log('Visual Editor Selector: SELECTOR_READY sent');
+        } catch (error) {
+            console.error('Failed to send SELECTOR_READY:', error);
+        }
+    }
+
+    // Send immediately
+    sendReadySignal();
+
+    // Retry sending ready signal every 500ms for up to 5 seconds
+    // This ensures the parent receives it even if the listener isn't ready yet
+    let retryCount = 0;
+    const maxRetries = 10; // 10 retries * 500ms = 5 seconds
+    const retryInterval = setInterval(function() {
+        retryCount++;
+        sendReadySignal();
+
+        if (retryCount >= maxRetries) {
+            clearInterval(retryInterval);
+            console.log('Visual Editor Selector: Stopped retry after', retryCount, 'attempts');
+        }
+    }, 500);
+
+    // Stop retrying if we receive a message from parent (confirms communication works)
+    window.addEventListener('message', function stopRetry(event) {
+        if (event.data.type === 'ENABLE_SELECTOR' || event.data.type === 'DISABLE_SELECTOR') {
+            clearInterval(retryInterval);
+            console.log('Visual Editor Selector: Communication established, stopped retry');
+        }
+    }, { once: false });
+
     // Handle page visibility changes (only disable when user switches browser tabs)
     document.addEventListener('visibilitychange', function() {
         if (document.hidden && selectorEnabled) {
@@ -860,10 +892,10 @@
             // The parent component controls the selector state via messages
         }
     });
-    
+
     // Note: We removed the blur event handler because it was too aggressive
     // It was disabling the selector whenever the iframe lost focus (e.g., clicking outside)
     // Now the parent component fully controls the selector state via postMessage
-    
+
     console.log('Visual Editor Selector loaded and ready');
 })();
