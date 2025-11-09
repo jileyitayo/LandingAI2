@@ -91,7 +91,7 @@ export const useUnifiedGeneration = () => {
   };
 
   const pollStatus = async (projectId: string) => {
-    const maxAttempts = 120; // 6 minutes with 3-second intervals (increased from 30 attempts)
+    const maxAttempts = 300; // 6 minutes with 3-second intervals (increased from 30 attempts)
     let attempts = 0;
 
     const poll = async () => {
@@ -134,7 +134,7 @@ export const useUnifiedGeneration = () => {
 
         attempts++;
         if (attempts < maxAttempts) {
-          setTimeout(poll, 3000); // Poll every 3 seconds for real-time feel
+          setTimeout(poll, 6000); // Poll every 3 seconds for real-time feel
         } else {
           // console.log('[Polling] Timed out after max attempts');
           setError('Generation timed out');

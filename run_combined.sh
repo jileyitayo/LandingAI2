@@ -42,3 +42,19 @@ echo "✅ Container started!"
 echo "Frontend: http://localhost:3000"
 echo "Backend: http://localhost:8000"
 echo "View logs: docker logs -f sitesmith-combined"
+
+# # Frontend
+# docker build --no-cache \
+#   --build-arg NEXT_PUBLIC_SUPABASE_URL=https://gshukbgzjrerdwexnmjd.supabase.co \
+#   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzaHVrYmd6anJlcmR3ZXhubWpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0NTQzMjksImV4cCI6MjA3NTAzMDMyOX0.3woNYTOCPNDE3RTZ5Hbjtce3TdJkVidP6EbGMm0NXTk \
+#   --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000 \
+#   --build-arg NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY} \
+#   -t sitesmith-frontend .
+
+#   # Run the container
+# docker run -p 3000:3000 sitesmith-frontend
+
+
+# # Backend
+# docker build -t sitesmith-backend .
+# docker run -p 8000:8000 --env-file .env sitesmith-backend
