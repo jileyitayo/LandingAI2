@@ -28,8 +28,8 @@ RUN pip install --upgrade pip && \
 # Copy application code
 COPY ./app ./app
 
-# Copy preview template files (needed for vite_preview_service)
-COPY ./previews/shared_template ./previews/shared_template
+# Copy preview template files (excluding node_modules - will install in container)
+COPY ./previews/shared_template/selector-injection.js ./previews/shared_template/selector-injection.js
 
 # Create directories for preview builds
 RUN mkdir -p /app/previews/builds
