@@ -409,6 +409,9 @@ class ReactWebsiteGenerator:
             if enable_animations:
                 logger.info("[PARALLEL GEN] Including animation utilities...")
                 return ('animation', react_file_manager.generate_animation_files())
+            else:
+                # Return empty dict when animations are disabled to avoid unpacking errors
+                return ('animation', {})
 
         def generate_theme():
             logger.info("[PARALLEL GEN] Generating custom theme...")
@@ -440,23 +443,38 @@ class ReactWebsiteGenerator:
             for future in as_completed(futures):
                 task_name = futures[future]
                 try:
-                    result_type, result_data = future.result()
+                    result = future.result()
+
+                    # Handle None results (shouldn't happen with our current code, but defensive)
+                    if result is None:
+                        logger.warning(f"[PARALLEL GEN] ⚠ {task_name} returned None, skipping")
+                        continue
+
+                    result_type, result_data = result
 
                     if result_type == 'theme':
                         theme = result_data
                         logger.info("[PARALLEL GEN] ✓ Theme generation completed")
                     else:
-                        files.update(result_data)
-                        logger.info(f"[PARALLEL GEN] ✓ {task_name} files generated ({len(result_data)} files)")
+                        if result_data:  # Only update if there's actual data
+                            files.update(result_data)
+                            logger.info(f"[PARALLEL GEN] ✓ {task_name} files generated ({len(result_data)} files)")
+                        else:
+                            logger.info(f"[PARALLEL GEN] ✓ {task_name} completed (no files)")
 
                 except Exception as e:
                     error_msg = f"{task_name} generation failed: {str(e)}"
                     errors.append(error_msg)
                     logger.error(f"[PARALLEL GEN] ✗ {error_msg}")
 
+                    # Only fail for critical tasks
+                    if task_name in ['config', 'ui', 'app']:
+                        raise Exception(f"Critical task {task_name} failed: {str(e)}")
+
         if errors:
+            # Log errors but don't fail if they're only from optional tasks (animation, theme)
             error_summary = "\n".join(errors)
-            raise Exception(f"Parallel initial file generation failed:\n{error_summary}")
+            logger.warning(f"[PARALLEL GEN] ⚠ Some optional tasks had errors:\n{error_summary}")
 
         logger.info(f"[PARALLEL GEN] ✓ Initial files generated in parallel ({len(files)} files total)")
         return files, theme

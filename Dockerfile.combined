@@ -30,6 +30,12 @@ RUN pip install --upgrade pip && \
 
 COPY backend/app ./backend/app
 
+# Copy templates directory (needed for React component generation)
+COPY backend/templates ./backend/templates
+
+# Copy preview template files
+COPY backend/previews/shared_template/selector-injection.js ./backend/previews/shared_template/selector-injection.js
+
 # Create preview directories (will be owned by appuser later)
 RUN mkdir -p /app/backend/previews/builds /app/backend/previews/shared_template
 

@@ -4,10 +4,13 @@ Manages all file generation for React projects including configs, UI components,
 """
 
 import json
+import logging
 from typing import Dict, TYPE_CHECKING
 from app.services.react_models import WebsiteStructure
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.services.default_theme import ThemeColors
@@ -526,20 +529,32 @@ createRoot(document.getElementById('root')!).render(
     
     def generate_animation_files(self) -> Dict[str, str]:
         """Generate animation utility files (animations.ts and useScrollAnimation.ts)"""
-        
+
         files = {}
-        
+
         # Read animation template files
         template_dir = Path(__file__).parent.parent.parent / "templates" / "src"
-        
+
+        logger.info(f"[ANIMATION FILES] Template directory: {template_dir.absolute()}")
+        logger.info(f"[ANIMATION FILES] Directory exists: {template_dir.exists()}")
+
+        if not template_dir.exists():
+            logger.error(f"[ANIMATION FILES] Template directory does not exist: {template_dir.absolute()}")
+            return files
+
         # animations.ts
         animations_path = template_dir / "utils" / "animations.ts"
+        logger.info(f"[ANIMATION FILES] Checking animations.ts at: {animations_path.absolute()}")
         if animations_path.exists():
-          try:
-              with open(animations_path, 'r', encoding='utf-8') as f:
-                  files["src/utils/animations.ts"] = f.read()
-          except Exception as e:
-              print(f"Warning: Could not read animations.ts: {e}")
+            try:
+                with open(animations_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    files["src/utils/animations.ts"] = content
+                    logger.info(f"[ANIMATION FILES] ✓ Loaded animations.ts ({len(content)} bytes)")
+            except Exception as e:
+                logger.error(f"[ANIMATION FILES] ✗ Could not read animations.ts: {e}")
+        else:
+            logger.warning(f"[ANIMATION FILES] ⚠ animations.ts not found at: {animations_path.absolute()}")
 
         # Read the smooth scroll utility file
         smooth_scroll_path = template_dir / "utils" / "smoothScroll.ts"

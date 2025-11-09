@@ -28,6 +28,9 @@ RUN pip install --upgrade pip && \
 # Copy application code
 COPY ./app ./app
 
+# Copy templates directory (needed for React component generation)
+COPY ./templates ./templates
+
 # Copy preview template files (excluding node_modules - will install in container)
 COPY ./previews/shared_template/selector-injection.js ./previews/shared_template/selector-injection.js
 

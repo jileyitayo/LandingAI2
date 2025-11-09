@@ -107,7 +107,7 @@ Value Propositions:
 
 Create a website structure with appropriate pages and components for each page."""
         
-        self.google_client.set_max_completion_tokens(7000)
+        self.google_client.set_max_completion_tokens(8000)
         response, usage = self.google_client.call_openai_api_structured(
             system_prompt,
             user_prompt,
