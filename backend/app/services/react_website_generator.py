@@ -369,6 +369,98 @@ class ReactWebsiteGenerator:
         logger.info(f"[STRUCTURE VALIDATION] Pages: {', '.join(page_list)}")
         logger.info(f"[STRUCTURE VALIDATION] Navigation: {', '.join(nav_list)}")
     
+    def _generate_initial_files_parallel(self, structure: WebsiteStructure, analysis: BusinessAnalysis, enable_animations: bool = False, cost_tracker=None) -> tuple[Dict[str, str], Any]:
+        """Generate initial project files in parallel (config, UI components, app files, theme)
+
+        This runs independent file generation operations concurrently for faster initial setup.
+
+        Args:
+            structure: Website structure
+            analysis: Business analysis
+            enable_animations: Whether to include animation files
+            cost_tracker: Optional CostTracker instance to track AI costs
+
+        Returns:
+            Tuple of (files_dict, theme_object)
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        logger.info("[PARALLEL GEN] Starting parallel initial file generation...")
+
+        files = {}
+        theme = None
+        errors = []
+
+        # Define worker functions for each independent operation
+        def generate_config():
+            logger.info("[PARALLEL GEN] Generating config files...")
+            return ('config', react_file_manager.generate_config_files(structure))
+
+        def generate_ui_components():
+            logger.info("[PARALLEL GEN] Generating UI components...")
+            return ('ui', react_file_manager.generate_ui_components())
+
+        def generate_app_files():
+            logger.info("[PARALLEL GEN] Generating app files...")
+            return ('app', react_file_manager.generate_app_files(structure, enable_animations))
+
+        # Animation files (if enabled)
+        def generate_animation_files():
+            if enable_animations:
+                logger.info("[PARALLEL GEN] Including animation utilities...")
+                return ('animation', react_file_manager.generate_animation_files())
+
+        def generate_theme():
+            logger.info("[PARALLEL GEN] Generating custom theme...")
+            try:
+                from app.services.theme_generator import theme_generator
+                theme_obj = theme_generator.generate_theme_with_fallback(
+                    business_analysis=analysis,
+                    color_scheme=structure.color_scheme,
+                    cost_tracker=cost_tracker
+                )
+                logger.info(f"[PARALLEL GEN] ✓ Theme generated: primary={theme_obj.primary}")
+                return ('theme', theme_obj)
+            except Exception as e:
+                logger.warning(f"[PARALLEL GEN] ⚠ Theme generation warning: {str(e)}, using fallback")
+                return ('theme', None)
+
+        # Run all operations in parallel
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            # Submit all tasks
+            futures = {
+                executor.submit(generate_config): 'config',
+                executor.submit(generate_ui_components): 'ui',
+                executor.submit(generate_app_files): 'app',
+                executor.submit(generate_animation_files): 'animation',
+                executor.submit(generate_theme): 'theme'
+            }
+
+            # Collect results as they complete
+            for future in as_completed(futures):
+                task_name = futures[future]
+                try:
+                    result_type, result_data = future.result()
+
+                    if result_type == 'theme':
+                        theme = result_data
+                        logger.info("[PARALLEL GEN] ✓ Theme generation completed")
+                    else:
+                        files.update(result_data)
+                        logger.info(f"[PARALLEL GEN] ✓ {task_name} files generated ({len(result_data)} files)")
+
+                except Exception as e:
+                    error_msg = f"{task_name} generation failed: {str(e)}"
+                    errors.append(error_msg)
+                    logger.error(f"[PARALLEL GEN] ✗ {error_msg}")
+
+        if errors:
+            error_summary = "\n".join(errors)
+            raise Exception(f"Parallel initial file generation failed:\n{error_summary}")
+
+        logger.info(f"[PARALLEL GEN] ✓ Initial files generated in parallel ({len(files)} files total)")
+        return files, theme
+
     def _generate_all_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, enable_animations: bool = False, cost_tracker=None) -> Dict[str, str]:
         """Generate all React project files
 
@@ -381,37 +473,44 @@ class ReactWebsiteGenerator:
 
         files = {}
 
-        # Core config files (package.json, vite.config, etc.)
-        files.update(react_file_manager.generate_config_files(structure))
+        # Generate initial files (config, UI components, app files, theme)
+        # Use parallel generation if enabled
+        if settings.enable_parallel_generation:
+            logger.info("[REACT GEN] Using parallel generation for initial files...")
+            files, theme = self._generate_initial_files_parallel(structure, analysis, enable_animations, cost_tracker)
+        else:
+            # Sequential generation (original approach)
+            # Core config files (package.json, vite.config, etc.)
+            files.update(react_file_manager.generate_config_files(structure))
 
-        # UI components (shadcn/ui primitives - base set)
-        files.update(react_file_manager.generate_ui_components())
+            # UI components (shadcn/ui primitives - base set)
+            files.update(react_file_manager.generate_ui_components())
 
-        # App setup files (App.tsx, main.tsx)
-        files.update(react_file_manager.generate_app_files(structure, enable_animations))
+            # App setup files (App.tsx, main.tsx)
+            files.update(react_file_manager.generate_app_files(structure, enable_animations))
 
-        # Generate custom theme based on business analysis
-        logger.info("[REACT GEN] Generating custom theme...")
-        theme = None
-        try:
-            from app.services.theme_generator import theme_generator
-            theme = theme_generator.generate_theme_with_fallback(
-                business_analysis=analysis,
-                color_scheme=structure.color_scheme,
-                cost_tracker=cost_tracker
-            )
-            logger.info(f"[REACT GEN] ✓ Theme generated: primary={theme.primary}")
-        except Exception as e:
-            logger.warning(f"[REACT GEN] ⚠ Theme generation warning: {str(e)}, using fallback")
-            # theme will remain None, generate_style_files will handle fallback
+            # Generate custom theme based on business analysis
+            logger.info("[REACT GEN] Generating custom theme...")
+            theme = None
+            try:
+                from app.services.theme_generator import theme_generator
+                theme = theme_generator.generate_theme_with_fallback(
+                    business_analysis=analysis,
+                    color_scheme=structure.color_scheme,
+                    cost_tracker=cost_tracker
+                )
+                logger.info(f"[REACT GEN] ✓ Theme generated: primary={theme.primary}")
+            except Exception as e:
+                logger.warning(f"[REACT GEN] ⚠ Theme generation warning: {str(e)}, using fallback")
+                # theme will remain None, generate_style_files will handle fallback
 
-        # Style files (index.css) with custom theme
+        # Style files (index.css) with custom theme (depends on theme, so runs after)
         files.update(react_file_manager.generate_style_files(structure, theme))
         
         # Animation files (if enabled)
-        if enable_animations:
-            logger.info("[REACT GEN] Including animation utilities...")
-            files.update(react_file_manager.generate_animation_files())
+        # if enable_animations:
+        #     logger.info("[REACT GEN] Including animation utilities...")
+        #     files.update(react_file_manager.generate_animation_files())
 
         # Page components (will auto-generate any missing section/UI components)
         # Use parallel generation if enabled and we have multiple pages
@@ -626,6 +725,7 @@ class ReactWebsiteGenerator:
             - Uses ThreadPoolExecutor for parallel execution
             - Thread-safe file dictionary updates using a lock
             - Respects max_parallel_pages configuration setting
+            - Captures all new components generated during page creation
         """
 
         # Thread-safe lock for updating the shared files dictionary
@@ -636,22 +736,27 @@ class ReactWebsiteGenerator:
 
         logger.info(f"[PARALLEL GEN] Starting parallel page generation with {max_workers} workers for {len(structure.pages)} pages")
 
-        def generate_single_page(page: PageStructure) -> tuple[str, str, str]:
+        def generate_single_page(page: PageStructure) -> tuple[str, str, str, Dict[str, str]]:
             """
             Generate a single page component (thread worker function)
 
             Returns:
-                Tuple of (page_filename, page_path, page_content)
+                Tuple of (page_filename, page_path, page_content, new_files_dict)
+                where new_files_dict contains the page and any new components generated
             """
             try:
                 logger.info(f"[PARALLEL GEN] Generating page: {page.name}")
                 print(f"Generating page: {page.name}")
 
                 # Generate the page component
-                # Note: We pass a copy of files to avoid race conditions during reads
+                # Create a working copy that includes existing files for context
                 with files_lock:
                     files_snapshot = files.copy()
 
+                # Track the number of files before generation
+                files_before_count = len(files_snapshot)
+
+                # Generate the page - this modifies files_snapshot by adding new components
                 page_content = self._generate_page_component(
                     page,
                     structure,
@@ -664,15 +769,23 @@ class ReactWebsiteGenerator:
                 page_filename = page.name.lower().replace(" ", "-")
                 page_path = f"src/pages/{page_filename}.tsx"
 
-                logger.info(f"[PARALLEL GEN] ✓ Completed page: {page.name}")
-                return (page_filename, page_path, page_content)
+                # Add the page content to the snapshot
+                files_snapshot[page_path] = page_content
+
+                # Calculate how many new files were generated (components + page)
+                new_files_count = len(files_snapshot) - files_before_count
+
+                logger.info(f"[PARALLEL GEN] ✓ Completed page: {page.name} (generated {new_files_count} files)")
+
+                # Return the complete files snapshot which includes all new components
+                return (page_filename, page_path, page_content, files_snapshot)
 
             except Exception as e:
                 logger.error(f"[PARALLEL GEN] ✗ Failed to generate page {page.name}: {str(e)}")
                 raise
 
         # Use ThreadPoolExecutor to generate pages in parallel
-        generated_pages = []
+        all_generated_files = {}
         errors = []
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -686,8 +799,16 @@ class ReactWebsiteGenerator:
             for future in as_completed(future_to_page):
                 page = future_to_page[future]
                 try:
-                    page_filename, page_path, page_content = future.result()
-                    generated_pages.append((page_path, page_content))
+                    page_filename, page_path, _, page_files = future.result()
+
+                    # Merge all files from this page generation into our collection
+                    # This includes the page itself and any new components created
+                    with files_lock:
+                        for file_path, file_content in page_files.items():
+                            # Only add if it's a new file (page or component from this generation)
+                            if file_path not in files or file_path == page_path:
+                                all_generated_files[file_path] = file_content
+
                     logger.info(f"[PARALLEL GEN] ✓ Successfully generated: {page_filename}")
                 except Exception as e:
                     error_msg = f"Page {page.name} generation failed: {str(e)}"
@@ -700,12 +821,14 @@ class ReactWebsiteGenerator:
             logger.error(f"[PARALLEL GEN] ✗ Failed to generate {len(errors)} page(s):\n{error_summary}")
             raise Exception(f"Parallel page generation failed for {len(errors)} page(s): {error_summary}")
 
-        # Update files dictionary with all generated pages (thread-safe, though not strictly necessary at this point)
-        with files_lock:
-            for page_path, page_content in generated_pages:
-                files[page_path] = page_content
+        # Update main files dictionary with all generated content
+        files.update(all_generated_files)
 
-        logger.info(f"[PARALLEL GEN] ✓ Successfully generated all {len(generated_pages)} pages in parallel")
+        # Count pages vs components
+        pages_count = sum(1 for path in all_generated_files.keys() if path.startswith('src/pages/'))
+        components_count = len(all_generated_files) - pages_count
+
+        logger.info(f"[PARALLEL GEN] ✓ Successfully generated {pages_count} pages and {components_count} components in parallel")
 
         return files
     

@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # Parallel Generation Configuration
     enable_parallel_generation: bool = False  # Enable parallel page and component generation (faster but uses more resources)
-    max_parallel_pages: int = 3  # Maximum number of pages to generate in parallel
+    max_parallel_pages: int = 5  # Maximum number of pages to generate in parallel
 
     # LangGraph settings
     enable_langgraph_checkpoints: bool = True
