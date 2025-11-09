@@ -126,12 +126,17 @@ class VitePreviewService:
         # Run npm install
         logger.info("[VITE PREVIEW] Installing shared dependencies...")
         try:
+            # Create environment with NODE_ENV unset to install devDependencies
+            npm_env = os.environ.copy()
+            npm_env.pop('NODE_ENV', None)  # Remove NODE_ENV to ensure devDependencies are installed
+
             result = subprocess.run(
                 ["npm", "install"],
                 cwd=self.shared_template_dir,
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minutes timeout
+                timeout=300,  # 5 minutes timeout
+                env=npm_env
             )
             
             if result.returncode != 0:
@@ -219,13 +224,18 @@ export default defineConfig({{
             # Run npm run build
             logger.info("[VITE PREVIEW] Building preview " + str(preview_id) + "...")
             start_time = time.time()
-            
+
+            # Use environment without NODE_ENV to ensure build tools are available
+            npm_env = os.environ.copy()
+            npm_env.pop('NODE_ENV', None)
+
             result = subprocess.run(
                 ["npm", "run", "build:dev"],
                 cwd=preview_dir,
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minutes timeout
+                timeout=300,  # 5 minutes timeout
+                env=npm_env
             )
             
             build_time = time.time() - start_time
@@ -493,13 +503,18 @@ export default defineConfig({{
             # For now, we'll do a fast rebuild
             logger.info(f"[VITE PREVIEW] Rebuilding preview {preview_id} after file updates...")
             start_time = time.time()
-            
+
+            # Use environment without NODE_ENV to ensure build tools are available
+            npm_env = os.environ.copy()
+            npm_env.pop('NODE_ENV', None)
+
             result = subprocess.run(
                 ["npm", "run", "build:dev"],
                 cwd=preview_dir,
                 capture_output=True,
                 text=True,
-                timeout=300
+                timeout=300,
+                env=npm_env
             )
             
             build_time = time.time() - start_time

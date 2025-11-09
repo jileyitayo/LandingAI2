@@ -39,9 +39,9 @@ RUN mkdir -p /app/backend/previews/builds /app/backend/previews/shared_template
 # Copy frontend package files
 COPY frontend/package.json frontend/package-lock.json* ./frontend/
 
-# Install frontend dependencies
+# Install frontend dependencies (with devDependencies for build tools)
 WORKDIR /app/frontend
-RUN npm ci
+RUN NODE_ENV=development npm ci
 
 # Copy frontend source code
 COPY frontend/ ./

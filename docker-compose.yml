@@ -44,7 +44,7 @@ services:
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
       - VERCEL_API_TOKEN=${VERCEL_API_TOKEN}
       - VERCEL_TEAM_ID=${VERCEL_TEAM_ID}
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - CORS_ORIGINS=http://localhost:3000,http://0.0.0.0:3000,http://frontend:3000
     restart: unless-stopped
     networks:
       - sitesmith-network

@@ -113,13 +113,13 @@ export default function GenerationStatus({
 
   // Debug logging
   useEffect(() => {
-    console.log('[GenerationStatus] Props updated:', {
-      status,
-      progress,
-      stage,
-      stageMessage,
-      message,
-    });
+    // console.log('[GenerationStatus] Props updated:', {
+    //   status,
+    //   progress,
+    //   stage,
+    //   stageMessage,
+    //   message,
+    // });
   }, [status, progress, stage, stageMessage, message]);
 
   // Get current stage config and randomly select a message

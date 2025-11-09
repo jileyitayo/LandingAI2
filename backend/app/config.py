@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     vercel_team_id: str = ""
 
     # CORS
-    cors_origins: Union[list[str], str] = ["http://localhost:3000"]
+    # Allow both localhost and 0.0.0.0 for development flexibility
+    cors_origins: Union[list[str], str] = ["http://localhost:3000", "http://0.0.0.0:3000"]
 
     # Set's open ai calls to use already existing data instead of generating new data
     training_wheels: bool = False

@@ -7,4 +7,4 @@ const icons = Object.keys(LucideReact).filter(key => {
 });
 
 fs.writeFileSync('valid_lucide_icons.json', JSON.stringify(icons, null, 2));
-console.log(`Extracted ${icons.length} icons`);
+// console.log(`Extracted ${icons.length} icons`);
