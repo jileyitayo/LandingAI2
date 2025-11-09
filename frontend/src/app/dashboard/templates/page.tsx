@@ -6,7 +6,6 @@
  * This file contains the BrowseTemplatesPage component, which is used to display all available templates in the dashboard.
  */
 
-
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";

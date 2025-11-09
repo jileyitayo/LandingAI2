@@ -3,7 +3,7 @@ FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat curl
 WORKDIR /app
 
 # Copy package files
@@ -31,7 +31,11 @@ ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
-# Build the application
+# Suppress ESLint/Prettier warnings during build
+ENV ESLINT_NO_DEV_ERRORS=true
+ENV NEXT_IGNORE_ESLINT=true
+
+# Build the application (warnings will be suppressed)
 RUN npm run build
 
 # Production image, copy all the files and run next

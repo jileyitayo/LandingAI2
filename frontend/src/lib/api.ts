@@ -611,12 +611,12 @@ export const api = {
      * Check subdomain availability
      * Requires: Authorization header with valid access token
      */
-    // checkSubdomain: (subdomain: string) =>
-    //   apiRequest<{
-    //     available: boolean;
-    //     subdomain: string;
-    //     suggestions: string[];
-    //   }>(`/api/v1/projects/subdomain/check/${subdomain}`),
+    checkSubdomain: (subdomain: string) =>
+      apiRequest<{
+        available: boolean;
+        subdomain: string;
+        suggestions: string[];
+      }>(`/api/v1/projects/subdomain/check/${subdomain}`),
   },
 
   /**

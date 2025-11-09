@@ -208,7 +208,7 @@ export default function SubscriptionDetailsCard({
       )}
 
       {/* Cancellation Notice */}
-      {cancelAtPeriodEnd && (
+      {cancelAtPeriodEnd && subscription?.current_period_end && (
         <div className="mb-6 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
           <div className="flex items-start gap-2">
             <svg
