@@ -24,7 +24,7 @@ docker build \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY} \
   --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000 \
   --build-arg NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY} \
-  -f Dockerfile.combined \
+  -f Dockerfile \
   -t sitesmith-combined .
 
 # Stop and remove old container if exists
