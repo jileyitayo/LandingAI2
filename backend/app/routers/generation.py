@@ -4,7 +4,7 @@ API endpoints for AI website content generation and rendering.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, Tuple
 from datetime import datetime, timedelta
 import uuid
 import json
@@ -150,6 +150,72 @@ async def log_ai_call(
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
+async def check_project_limit(user_id: str, supabase_client) -> Tuple[bool, dict]:
+    """
+    Check if user has reached their project limit based on subscription tier.
+    Free users are limited to 5 projects maximum.
+
+    Returns:
+        tuple: (is_allowed: bool, info: dict)
+    """
+    try:
+        # Get user's subscription tier
+        user_response = supabase_client.table("users")\
+            .select("*, user_subscriptions(id, status, subscription_tiers(tier_name))")\
+            .eq("id", user_id)\
+            .single()\
+            .execute()
+
+        if not user_response.data:
+            logger.error(f"User {user_id} not found")
+            return True, {"error": "user_not_found"}
+
+        user = user_response.data
+
+        # Get tier information
+        subscription = user.get("user_subscriptions")
+        if not subscription or not subscription.get("subscription_tiers"):
+            # Default to free tier if no subscription
+            tier_name = "free"
+        else:
+            tier_name = subscription["subscription_tiers"]["tier_name"]
+
+        # Only check project limit for free tier users
+        if tier_name != "free":
+            return True, {"tier": tier_name}
+
+        # Count user's existing projects (excluding soft-deleted ones)
+        projects_response = supabase_client.table("projects")\
+            .select("id", count="exact")\
+            .eq("user_id", user_id)\
+            .is_("deleted_at", "null")\
+            .execute()
+
+        project_count = projects_response.count or 0
+
+        # Free users are limited to 5 projects
+        if project_count >= 5:
+            return False, {
+                "tier": tier_name,
+                "project_count": project_count,
+                "project_limit": 5,
+                "message": f"Free tier users are limited to 5 projects. You currently have {project_count} projects. Please delete some projects or upgrade to Pro for unlimited projects.",
+                "upgrade_suggestion": "Upgrade to Pro for unlimited projects and higher generation limits"
+            }
+
+        return True, {
+            "tier": tier_name,
+            "project_count": project_count,
+            "project_limit": 5
+        }
+
+    except Exception as e:
+        logger.error(f"Error checking project limit: {str(e)}")
+        # Allow request on error to avoid blocking users
+        return True, {"error": str(e)}
+
+
 @log_action(action_type='CREATE', target_resource_type='project_creation')
 async def create_project(
     user_id: str,
@@ -529,9 +595,26 @@ async def generate_react_website_from_prompt(
                     "X-RateLimit-Tier": rate_info.get('tier', 'unknown')
                 }
             )
-        
 
-        # Step 2: Create project
+        # Step 2: Check project limit for free users
+        logger.info("Checking project limit...")
+        is_allowed, project_limit_info = await check_project_limit(user_id, supabase)
+
+        if not is_allowed:
+            logger.warning(f"Project limit exceeded for user {user_id}: {project_limit_info.get('project_count')}/{project_limit_info.get('project_limit')}")
+            error_message = project_limit_info.get('message', 'Project limit exceeded')
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "message": project_limit_info.get('message', 'Project limit exceeded'),
+                    "project_count": project_limit_info.get('project_count'),
+                    "project_limit": project_limit_info.get('project_limit'),
+                    "tier": project_limit_info.get('tier'),
+                    "upgrade_suggestion": project_limit_info.get('upgrade_suggestion')
+                }
+            )
+
+        # Step 3: Create project
         logger.info("Creating project...")
         project_id = await create_project(
             user_id=user_id,
@@ -541,7 +624,7 @@ async def generate_react_website_from_prompt(
             supabase_client=supabase
         )
 
-        # Step 3: Log AI call for rate limiting (counts as 1 generation)
+        # Step 4: Log AI call for rate limiting (counts as 1 generation)
         await log_ai_call(
             user_id=user_id,
             call_type="generation",
@@ -550,7 +633,7 @@ async def generate_react_website_from_prompt(
             supabase_client=supabase
         )
 
-        # Step 4: Start BACKGROUND generation using asyncio.create_task for proper async handling
+        # Step 5: Start BACKGROUND generation using asyncio.create_task for proper async handling
         logger.info(f"Starting background generation for project {project_id}")
         # Use asyncio.create_task instead of background_tasks for better async control
         # background_tasks.add_task(

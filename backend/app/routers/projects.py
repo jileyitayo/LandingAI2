@@ -16,6 +16,7 @@ from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import log_action
 from app.utils.auth import get_current_user
 from app.services.project_file_manager import project_file_manager
+from app.routers.generation import check_project_limit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -486,7 +487,22 @@ async def duplicate_project(
         
         original_project = response.data[0]
         verify_project_ownership(original_project, user_id)
-        
+
+        # Check project limit for free users
+        is_allowed, project_limit_info = await check_project_limit(user_id, supabase)
+
+        if not is_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "message": project_limit_info.get('message', 'Project limit exceeded'),
+                    "project_count": project_limit_info.get('project_count'),
+                    "project_limit": project_limit_info.get('project_limit'),
+                    "tier": project_limit_info.get('tier'),
+                    "upgrade_suggestion": project_limit_info.get('upgrade_suggestion')
+                }
+            )
+
         # Create new project data
         new_project_id = str(uuid.uuid4())
         new_name = request.new_name or f"{original_project['name']} (Copy)"
