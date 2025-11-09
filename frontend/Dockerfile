@@ -27,7 +27,7 @@ WORKDIR /app/frontend
 RUN NODE_ENV=development npm ci
 
 # Copy frontend source code
-COPY frontend/ ./
+# COPY frontend/ ./
 
 # Accept build arguments for frontend
 ARG NEXT_PUBLIC_SUPABASE_URL
