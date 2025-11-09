@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthForm, InputField, SubmitButton } from "@/components/AuthForm";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 // Validation schema
 const loginSchema = z.object({
@@ -23,7 +24,8 @@ type LoginFormData = z.infer<typeof loginSchema>;
  */
 export default function LoginPage() {
   const router = useRouter();
-  const { user, loading: authLoading, signIn } = useAuth();
+  const searchParams = useSearchParams();
+  const { user, loading: authLoading, signIn, signInWithGoogle } = useAuth();
 
   const {
     register,
@@ -33,6 +35,17 @@ export default function LoginPage() {
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
   });
+
+  // Check for error in URL params (from OAuth callback)
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (error) {
+      setError("root", {
+        type: "manual",
+        message: decodeURIComponent(error),
+      });
+    }
+  }, [searchParams, setError]);
 
   // Redirect authenticated users to dashboard
   useEffect(() => {
@@ -57,6 +70,17 @@ export default function LoginPage() {
       // Successful login - redirect handled by useAuth hook
       router.push("/dashboard");
     }
+  };
+
+  const handleGoogleSignIn = async () => {
+    const { error } = await signInWithGoogle();
+    if (error) {
+      setError("root", {
+        type: "manual",
+        message: error,
+      });
+    }
+    return { error };
   };
 
   // Show loading state while checking auth
@@ -96,6 +120,21 @@ export default function LoginPage() {
         </div>
       }
     >
+      <GoogleSignInButton
+        onSignIn={handleGoogleSignIn}
+        mode="signin"
+        disabled={isSubmitting}
+      />
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-300"></div>
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="px-2 bg-white text-gray-500">Or continue with email</span>
+        </div>
+      </div>
+
       <InputField
         label="Email address"
         type="email"

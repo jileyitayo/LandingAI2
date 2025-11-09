@@ -9,6 +9,7 @@ import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthForm, InputField, SubmitButton } from "@/components/AuthForm";
 import { api } from "@/lib/api";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 // Validation schema
 const signupSchema = z
@@ -44,7 +45,7 @@ type SignupFormData = z.infer<typeof signupSchema>;
  */
 export default function SignupPage() {
   const router = useRouter();
-  const { user, loading: authLoading, signUp } = useAuth();
+  const { user, loading: authLoading, signUp, signInWithGoogle } = useAuth();
   const [showVerificationMessage, setShowVerificationMessage] = useState(false);
 
   const {
@@ -108,6 +109,17 @@ export default function SignupPage() {
       // Show verification message
       setShowVerificationMessage(true);
     }
+  };
+
+  const handleGoogleSignIn = async () => {
+    const { error } = await signInWithGoogle();
+    if (error) {
+      setError("root", {
+        type: "manual",
+        message: error,
+      });
+    }
+    return { error };
   };
 
   // Show loading state while checking auth
@@ -198,6 +210,21 @@ export default function SignupPage() {
         </div>
       }
     >
+      <GoogleSignInButton
+        onSignIn={handleGoogleSignIn}
+        mode="signup"
+        disabled={isSubmitting}
+      />
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-300"></div>
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="px-2 bg-white text-gray-500">Or continue with email</span>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <InputField
           label="First name"

@@ -250,6 +250,40 @@ export function useAuth() {
     }
   };
 
+  /**
+   * Sign in with Google OAuth
+   */
+  const signInWithGoogle = async () => {
+    try {
+      setAuthState((prev) => ({ ...prev, loading: true, error: null }));
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      // The redirect happens automatically, so we don't need to set state here
+      return { data, error: null };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to sign in with Google";
+      setAuthState((prev) => ({
+        ...prev,
+        loading: false,
+        error: errorMessage,
+      }));
+      return { data: null, error: errorMessage };
+    }
+  };
+
   return {
     user: authState.user,
     loading: authState.loading,
@@ -259,5 +293,6 @@ export function useAuth() {
     signOut,
     resetPassword,
     updatePassword,
+    signInWithGoogle,
   };
 }
