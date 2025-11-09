@@ -2,10 +2,11 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from app.config import settings
 from app.routers import health, auth, users, templates, generation, projects, deployment, feedback
@@ -15,6 +16,7 @@ from app.services.vite_preview_service import vite_preview_service
 import logging
 import os
 import asyncio
+from pathlib import Path
 
 def setup_logging():
     """Configure logging based on environment."""
@@ -88,11 +90,60 @@ app.add_middleware(
 # Configure Authentication Middleware
 app.add_middleware(AuthenticationMiddleware)
 
-# Mount static files for previews
+
+# Custom StaticFiles class with proper headers for iframe embedding
+class PreviewStaticFiles(StaticFiles):
+    """Custom static files handler that adds security headers for iframe embedding."""
+
+    async def __call__(self, scope: Scope, receive, send):
+        """Handle the request and add custom headers."""
+        async def send_wrapper(message):
+            if message['type'] == 'http.response.start':
+                headers = list(message.get('headers', []))
+
+                # Remove any existing restrictive headers
+                headers = [
+                    (k, v) for k, v in headers
+                    if k.lower() not in [
+                        b'x-frame-options',
+                        b'content-security-policy',
+                        b'x-content-type-options'
+                    ]
+                ]
+
+                # Add permissive headers for iframe embedding
+                # Allow embedding from any origin (Railway, localhost, etc.)
+                headers.append((b'access-control-allow-origin', b'*'))
+                headers.append((b'access-control-allow-methods', b'GET, OPTIONS'))
+                headers.append((b'access-control-allow-headers', b'*'))
+                headers.append((b'cross-origin-resource-policy', b'cross-origin'))
+                headers.append((b'cross-origin-embedder-policy', b'unsafe-none'))
+
+                # Don't add X-Frame-Options to allow iframe embedding from anywhere
+                # Add a permissive CSP that allows the preview to run scripts
+                if scope['path'].endswith('.html'):
+                    csp = (
+                        b"default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; "
+                        b"script-src * 'unsafe-inline' 'unsafe-eval'; "
+                        b"style-src * 'unsafe-inline'; "
+                        b"img-src * data: blob:; "
+                        b"font-src * data:; "
+                        b"connect-src *; "
+                        b"frame-ancestors *;"
+                    )
+                    headers.append((b'content-security-policy', csp))
+
+                message['headers'] = headers
+
+            await send(message)
+
+        await super().__call__(scope, receive, send_wrapper)
+
+
+# Mount static files for previews with custom headers
 previews_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "previews")
 if os.path.exists(previews_path):
-    app.mount("/previews", StaticFiles(directory=previews_path, html=True, check_dir=True), name="previews")
-    # app.mount("/previews/builds", StaticFiles(directory=previews_path + "/builds"), name="previews")
+    app.mount("/previews", PreviewStaticFiles(directory=previews_path, html=True, check_dir=True), name="previews")
 else:
     print(f"Warning: Previews directory not found at {previews_path}")
 
