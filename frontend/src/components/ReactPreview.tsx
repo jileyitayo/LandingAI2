@@ -286,7 +286,7 @@ function ReactPreview({
               selectorEnabled ? 'cursor-crosshair' : ''
             }`}
             title="React Preview"
-            sandbox="allow-scripts allow-forms"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
           />
           {/* Selector Active Indicator */}
           {selectorEnabled && (
