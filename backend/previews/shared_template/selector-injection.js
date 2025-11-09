@@ -898,4 +898,12 @@
     // Now the parent component fully controls the selector state via postMessage
 
     console.log('Visual Editor Selector loaded and ready');
+
+    // Expose a test function to manually trigger SELECTOR_READY (for debugging)
+    window.testSelectorReady = function() {
+        console.log('Manual test: Sending SELECTOR_READY');
+        window.parent.postMessage({ type: 'SELECTOR_READY' }, '*');
+    };
+
+    console.log('💡 Debug: Type testSelectorReady() in iframe console to manually test messaging');
 })();

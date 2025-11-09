@@ -69,13 +69,21 @@ function ReactPreview({
   // Listen for messages from iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Log all messages for debugging cross-origin issues
-      if (event.data.type?.startsWith('SELECTOR') || event.data.type?.startsWith('ELEMENT')) {
-        console.log('[ReactPreview] Received message:', event.data.type, event.origin);
+      // Log ALL messages to debug what's coming through
+      console.log('[ReactPreview] Raw message received:', {
+        type: event.data?.type,
+        origin: event.origin,
+        data: event.data
+      });
+
+      // Skip messages from browser extensions or other sources
+      if (!event.data || typeof event.data !== 'object') {
+        console.log('[ReactPreview] Skipping non-object message');
+        return;
       }
 
       if (event.data.type === 'SELECTOR_READY') {
-        console.log('[ReactPreview] Selector ready! Setting state...');
+        console.log('[ReactPreview] ✅ SELECTOR_READY received! Setting state...');
         setSelectorReady(true);
         // Auto-enable selector when it's ready
         if (onSelectorEnabledChange && !selectorEnabled) {
@@ -99,8 +107,12 @@ function ReactPreview({
       }
     };
 
+    console.log('[ReactPreview] Setting up message listener');
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    return () => {
+      console.log('[ReactPreview] Removing message listener');
+      window.removeEventListener('message', handleMessage);
+    };
   }, [onElementSelect, onSelectorEnabledChange, selectorEnabled, selectorReady]);
 
   // Reset iframe loaded state when URL changes
