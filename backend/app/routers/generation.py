@@ -154,11 +154,12 @@ async def log_ai_call(
 async def check_project_limit(user_id: str, supabase_client) -> Tuple[bool, dict]:
     """
     Check if user has reached their project limit based on subscription tier.
-    Free users are limited to 5 projects maximum.
+    Free users are limited to 3 projects maximum.
 
     Returns:
         tuple: (is_allowed: bool, info: dict)
     """
+    limit = 3
     try:
         # Get user's subscription tier
         user_response = supabase_client.table("users")\
@@ -195,19 +196,19 @@ async def check_project_limit(user_id: str, supabase_client) -> Tuple[bool, dict
         project_count = projects_response.count or 0
 
         # Free users are limited to 5 projects
-        if project_count >= 5:
+        if project_count >= limit:
             return False, {
                 "tier": tier_name,
                 "project_count": project_count,
-                "project_limit": 5,
-                "message": f"Free tier users are limited to 5 projects. You currently have {project_count} projects. Please delete some projects or upgrade to Pro for unlimited projects.",
+                "project_limit": limit,
+                "message": f"Free tier users are limited to 3 projects. You currently have {project_count} projects. Please delete some projects or upgrade to Pro for unlimited projects.",
                 "upgrade_suggestion": "Upgrade to Pro for unlimited projects and higher generation limits"
             }
 
         return True, {
             "tier": tier_name,
             "project_count": project_count,
-            "project_limit": 5
+            "project_limit": limit
         }
 
     except Exception as e:

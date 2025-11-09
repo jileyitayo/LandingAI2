@@ -368,7 +368,7 @@ MIT
                     print(f"Warning: Could not read {component_file}: {e}")
         
         # Also read the utils file
-        utils_path = Path("templates/src/lib/utils.ts")
+        utils_path = Path("templates/src/proj_lib/utils.ts")
         if utils_path.exists():
             try:
                 with open(utils_path, 'r', encoding='utf-8') as f:
@@ -386,7 +386,13 @@ MIT
         else:
             # Fallback to hardcoded utils if file doesn't exist
             # retrieve from a stable project with all the components
-            pass
+            files["src/lib/utils.ts"] = '''import { type ClassValue, clsx } from "clsx"
+            import { twMerge } from "tailwind-merge"
+
+            export function cn(...inputs: ClassValue[]) {
+              return twMerge(clsx(inputs))
+            }
+            '''
         
         return files
     
