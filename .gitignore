@@ -52,6 +52,7 @@ coverage/
 
 # Others
 setup.sh
+run_combined.sh
 backend/previews/builds/
 backend/previews/shared_template/node_modules/
 backend/previews/shared_template/package-lock.json
