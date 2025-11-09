@@ -17,6 +17,7 @@ from app.services.react_models import WebsiteStructure
 from app.services.react_models import PageStructure
 from app.services.react_models import PageComponent
 from app.services.react_models import NavItem
+from app.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -284,10 +285,14 @@ export default defineConfig({{
 
             # Get project name
             logger.info("[VITE PREVIEW] Preview " + str(preview_id) + " built successfully in " + str(round(build_time, 1)) + "s")
-            
+
+            # Generate absolute URL using backend_url from settings
+            relative_path = "/previews/builds/" + str(preview_id) + "/dist/index.html"
+            preview_url = settings.backend_url.rstrip('/') + relative_path
+
             return {
                 "preview_id": preview_id,
-                "preview_url": "/previews/builds/" + str(preview_id) + "/dist/index.html",
+                "preview_url": preview_url,
                 "expires_at": expires_at.isoformat()
             }
             
@@ -413,10 +418,14 @@ export default defineConfig({{
         
         info = self.active_previews[preview_id]
         preview_dir = self.builds_dir / preview_id
-        
+
+        # Generate absolute URL using backend_url from settings
+        relative_path = "/previews/builds/" + str(preview_id) + "/dist/index.html"
+        preview_url = settings.backend_url.rstrip('/') + relative_path
+
         return {
             "exists": preview_dir.exists(),
-            "preview_url": "/previews/builds/" + str(preview_id) + "/dist/index.html",
+            "preview_url": preview_url,
             "created_at": info["created_at"],
             "expires_at": info["expires_at"]
         }
@@ -545,11 +554,15 @@ export default defineConfig({{
                     logger.info("[VITE PREVIEW] Selector script re-injected successfully")
             
             logger.info(f"[VITE PREVIEW] Preview {preview_id} rebuilt successfully in {round(build_time, 1)}s")
-            
+
+            # Generate absolute URL using backend_url from settings
+            relative_path = f"/previews/builds/{preview_id}/dist/index.html"
+            preview_url = settings.backend_url.rstrip('/') + relative_path
+
             return {
                 "success": True,
                 "files_updated": files_updated,
-                "preview_url": f"/previews/builds/{preview_id}/dist/index.html",
+                "preview_url": preview_url,
                 "build_time": round(build_time, 1)
             }
             

@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     vercel_api_token: str = ""
     vercel_team_id: str = ""
 
+    # Backend URL (for generating absolute URLs in Railway/production)
+    backend_url: str = "http://localhost:8000"
+
     # CORS
     # Allow both localhost and 0.0.0.0 for development flexibility
     cors_origins: Union[list[str], str] = ["http://localhost:3000", "http://0.0.0.0:3000"]
