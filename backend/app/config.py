@@ -55,7 +55,11 @@ class Settings(BaseSettings):
     
     # Animation Configuration
     enable_animations_default: bool = True  # Enable animations by default for all users (Pro users always get animations)
-    
+
+    # Parallel Generation Configuration
+    enable_parallel_generation: bool = False  # Enable parallel page and component generation (faster but uses more resources)
+    max_parallel_pages: int = 3  # Maximum number of pages to generate in parallel
+
     # LangGraph settings
     enable_langgraph_checkpoints: bool = True
     langgraph_max_retries: int = 3

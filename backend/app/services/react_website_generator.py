@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from traceback import print_tb
 from typing import Dict, Any, List, Union, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from app.config import settings
 from app.services.business_analyzer import BusinessAnalyzer, BusinessAnalysis
@@ -410,9 +412,16 @@ class ReactWebsiteGenerator:
         if enable_animations:
             logger.info("[REACT GEN] Including animation utilities...")
             files.update(react_file_manager.generate_animation_files())
-        
+
         # Page components (will auto-generate any missing section/UI components)
-        files.update(self._generate_page_files(structure, analysis, files, enable_animations, cost_tracker=cost_tracker))
+        # Use parallel generation if enabled and we have multiple pages
+        if settings.enable_parallel_generation and len(structure.pages) > 1:
+            logger.info(f"[REACT GEN] Using parallel page generation for {len(structure.pages)} pages...")
+            files.update(self._generate_page_files_parallel(structure, analysis, files, enable_animations, cost_tracker=cost_tracker))
+        else:
+            if settings.enable_parallel_generation and len(structure.pages) == 1:
+                logger.info("[REACT GEN] Parallel generation enabled but only 1 page, using sequential generation...")
+            files.update(self._generate_page_files(structure, analysis, files, enable_animations, cost_tracker=cost_tracker))
         
         # Post-generation validation
         logger.info("[REACT GEN] Running post-generation validation...")
@@ -578,7 +587,7 @@ class ReactWebsiteGenerator:
     
     def _generate_page_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str], enable_animations: bool = False, cost_tracker=None) -> Dict[str, str]:
         """Generate page component files
-        
+
         Args:
             structure: Website structure
             analysis: Business analysis
@@ -586,15 +595,118 @@ class ReactWebsiteGenerator:
             enable_animations: Whether animations are enabled
             cost_tracker: Optional CostTracker instance to track AI costs
         """
-        
+
         # files = {}
-        
+
         for page in structure.pages:
             print(f"Generating page: {page.name}")
             page_content = self._generate_page_component(page, structure, analysis, files, enable_animations, cost_tracker=cost_tracker)
             page_filename = page.name.lower().replace(" ", "-")
             files[f"src/pages/{page_filename}.tsx"] = page_content
-        
+
+        return files
+
+    def _generate_page_files_parallel(self, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str], enable_animations: bool = False, cost_tracker=None) -> Dict[str, str]:
+        """Generate page component files in parallel
+
+        This function generates multiple pages and their components simultaneously using a thread pool,
+        which can significantly speed up generation for websites with multiple pages.
+
+        Args:
+            structure: Website structure
+            analysis: Business analysis
+            files: Existing files dictionary (will be updated thread-safely)
+            enable_animations: Whether animations are enabled
+            cost_tracker: Optional CostTracker instance to track AI costs
+
+        Returns:
+            Dictionary of generated files
+
+        Note:
+            - Uses ThreadPoolExecutor for parallel execution
+            - Thread-safe file dictionary updates using a lock
+            - Respects max_parallel_pages configuration setting
+        """
+
+        # Thread-safe lock for updating the shared files dictionary
+        files_lock = threading.Lock()
+
+        # Determine number of parallel workers
+        max_workers = min(len(structure.pages), settings.max_parallel_pages)
+
+        logger.info(f"[PARALLEL GEN] Starting parallel page generation with {max_workers} workers for {len(structure.pages)} pages")
+
+        def generate_single_page(page: PageStructure) -> tuple[str, str, str]:
+            """
+            Generate a single page component (thread worker function)
+
+            Returns:
+                Tuple of (page_filename, page_path, page_content)
+            """
+            try:
+                logger.info(f"[PARALLEL GEN] Generating page: {page.name}")
+                print(f"Generating page: {page.name}")
+
+                # Generate the page component
+                # Note: We pass a copy of files to avoid race conditions during reads
+                with files_lock:
+                    files_snapshot = files.copy()
+
+                page_content = self._generate_page_component(
+                    page,
+                    structure,
+                    analysis,
+                    files_snapshot,
+                    enable_animations,
+                    cost_tracker=cost_tracker
+                )
+
+                page_filename = page.name.lower().replace(" ", "-")
+                page_path = f"src/pages/{page_filename}.tsx"
+
+                logger.info(f"[PARALLEL GEN] ✓ Completed page: {page.name}")
+                return (page_filename, page_path, page_content)
+
+            except Exception as e:
+                logger.error(f"[PARALLEL GEN] ✗ Failed to generate page {page.name}: {str(e)}")
+                raise
+
+        # Use ThreadPoolExecutor to generate pages in parallel
+        generated_pages = []
+        errors = []
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all page generation tasks
+            future_to_page = {
+                executor.submit(generate_single_page, page): page
+                for page in structure.pages
+            }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_page):
+                page = future_to_page[future]
+                try:
+                    page_filename, page_path, page_content = future.result()
+                    generated_pages.append((page_path, page_content))
+                    logger.info(f"[PARALLEL GEN] ✓ Successfully generated: {page_filename}")
+                except Exception as e:
+                    error_msg = f"Page {page.name} generation failed: {str(e)}"
+                    errors.append(error_msg)
+                    logger.error(f"[PARALLEL GEN] ✗ {error_msg}")
+
+        # Check if any pages failed to generate
+        if errors:
+            error_summary = "\n".join(errors)
+            logger.error(f"[PARALLEL GEN] ✗ Failed to generate {len(errors)} page(s):\n{error_summary}")
+            raise Exception(f"Parallel page generation failed for {len(errors)} page(s): {error_summary}")
+
+        # Update files dictionary with all generated pages (thread-safe, though not strictly necessary at this point)
+        with files_lock:
+            for page_path, page_content in generated_pages:
+                files[page_path] = page_content
+
+        logger.info(f"[PARALLEL GEN] ✓ Successfully generated all {len(generated_pages)} pages in parallel")
+
         return files
     
     def _generate_page_component(self, page: PageStructure, structure: WebsiteStructure, analysis: BusinessAnalysis, files: Dict[str, str], enable_animations: bool = False, cost_tracker=None) -> str:
