@@ -1998,6 +1998,19 @@ async def _handle_property_edit(
         # Check if this is a prop edit that needs parent component update
         prop_edit_info_response = None  # Initialize here so it's accessible later
         
+        # If we have component edits (success=True and modified_code), save them first
+        # This handles cases where both component edits (like alt) and prop edits (like src) are made
+        if success and modified_code and prop_edit_metadata:
+            logger.info(f"[PROPERTY EDIT] Saving component edits before handling prop edits")
+            await project_file_manager.save_project_file(
+                project_id=project_id,
+                file_path=request.component_file,
+                file_content=modified_code,
+                overwrite=False
+            )
+            # Update project_files dict with component edits for prop edit handling
+            project_files[request.component_file] = modified_code
+        
         # Handle array prop edits (array items passed as props)
         if prop_edit_metadata and prop_edit_metadata.get('type') == 'array_prop_edit':
             logger.info(f"[PROPERTY EDIT] Array prop edit detected - updating array '{prop_edit_metadata['prop_name']}[{prop_edit_metadata['array_index']}].{prop_edit_metadata['property_path']}' at source")
@@ -2033,9 +2046,13 @@ async def _handle_property_edit(
                         if file_path != request.component_file:
                             prop_source_file = file_path
                 
-                # Use updated files for preview
-                project_files = updated_files
-                modified_code = project_files[request.component_file]
+                # Merge updated files into project_files (don't replace, as component file might not be in updated_files)
+                project_files.update(updated_files)
+                # Ensure modified_code is preserved if component file wasn't in updated_files
+                if request.component_file not in updated_files and modified_code:
+                    project_files[request.component_file] = modified_code
+                # Get the latest modified_code (either from updated_files or preserved)
+                modified_code = project_files.get(request.component_file, modified_code)
                 
                 logger.info(f"[PROPERTY EDIT] Updated {len(files_updated)} files: {files_updated}")
                 
@@ -2089,9 +2106,13 @@ async def _handle_property_edit(
                         if file_path != request.component_file:
                             prop_source_file = file_path
 
-                # Use updated files for preview
-                project_files = updated_files
-                modified_code = project_files[request.component_file]
+                # Merge updated files into project_files (don't replace, as component file might not be in updated_files)
+                project_files.update(updated_files)
+                # Ensure modified_code is preserved if component file wasn't in updated_files
+                if request.component_file not in updated_files and modified_code:
+                    project_files[request.component_file] = modified_code
+                # Get the latest modified_code (either from updated_files or preserved)
+                modified_code = project_files.get(request.component_file, modified_code)
 
                 logger.info(f"[PROPERTY EDIT] Updated {len(files_updated)} files: {files_updated}")
                 
@@ -2106,6 +2127,11 @@ async def _handle_property_edit(
                 logger.warning(f"[PROPERTY EDIT] Could not update prop at source: {prop_error}")
                 logger.warning(f"[PROPERTY EDIT] Falling back to hardcoding the value in component")
 
+                # Use modified_code if we have component edits, otherwise use original_code
+                # This ensures we're working with the latest version of the component file
+                code_to_use = modified_code if modified_code else original_code
+                logger.info(f"[PROPERTY EDIT] Using {'modified_code' if modified_code else 'original_code'} for fallback")
+
                 # Hardcode the value by directly replacing the JSX expression
                 # Replace {propName} with the actual value
                 prop_expr = f"{{{prop_edit_metadata['prop_name']}}}"
@@ -2113,7 +2139,7 @@ async def _handle_property_edit(
 
                 # Use regex to find and replace the prop expression in the element
                 # This is a simple find-replace that should work for most cases
-                if prop_expr in original_code:
+                if prop_expr in code_to_use:
                     # Find the element and replace the prop expression
                     # We need to be careful to only replace within the specific element
                     element_selector = request.element_selector
@@ -2121,7 +2147,7 @@ async def _handle_property_edit(
                     # Use the direct editor to find the element content
                     from app.services.direct_code_editor import DirectCodeEditor
                     editor = DirectCodeEditor()
-                    element_data = editor._find_element_content(original_code, element_selector)
+                    element_data = editor._find_element_content(code_to_use, element_selector)
 
                     if element_data:
                         _, tag_end, content_end, _, _, old_content = element_data
@@ -2129,7 +2155,7 @@ async def _handle_property_edit(
                         if prop_expr in old_content:
                             # Replace the prop expression with the new value
                             new_content = old_content.replace(prop_expr, new_value)
-                            modified_code = original_code[:tag_end] + new_content + original_code[content_end:]
+                            modified_code = code_to_use[:tag_end] + new_content + code_to_use[content_end:]
 
                             logger.info(f"[PROPERTY EDIT] Successfully hardcoded value in component")
 

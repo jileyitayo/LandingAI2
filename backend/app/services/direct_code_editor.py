@@ -156,6 +156,7 @@ class DirectCodeEditor:
             new_code = code
             changes_applied = []
             failed_changes = []
+            prop_edit_metadata = None  # Collect prop edits that need parent updates
             
             for prop in properties:
                 property_name = prop.get('property')
@@ -186,42 +187,52 @@ class DirectCodeEditor:
                         # Check if result is a prop edit metadata dict
                         if isinstance(result, dict) and result.get('type') == 'prop_edit':
                             logger.info(f"[DIRECT EDIT] Prop edit detected for '{result['prop_name']}'")
-                            # Return early with prop edit info for caller to handle
-                            return (False, None, None, result)
+                            # Collect prop edit metadata but continue processing other properties
+                            prop_edit_metadata = result
+                            continue  # Skip applying this change directly, will be handled by parent update
 
                     elif property_name == 'src':
                         result = self._edit_attribute(new_code, element_selector, 'src', str(property_value), files, component_tracker)
-                        # Check if result is array prop edit metadata
-                        if isinstance(result, dict) and result.get('type') == 'array_prop_edit':
-                            logger.info(f"[DIRECT EDIT] Array prop edit detected for '{result['prop_name']}'")
-                            # Return early with array prop edit info for caller to handle
-                            return (False, None, None, result)
+                        # Check if result is prop edit or array prop edit metadata
+                        if isinstance(result, dict) and result.get('type') in ['prop_edit', 'array_prop_edit']:
+                            logger.info(f"[DIRECT EDIT] {result.get('type')} detected for src")
+                            # Collect prop edit metadata but continue processing other properties
+                            prop_edit_metadata = result
+                            continue  # Skip applying this change directly, will be handled by parent update
                     elif property_name == 'href':
                         result = self._edit_attribute(new_code, element_selector, 'href', str(property_value), files, component_tracker)
                         # Check if result is prop edit or array prop edit metadata
                         if isinstance(result, dict) and result.get('type') in ['prop_edit', 'array_prop_edit']:
                             logger.info(f"[DIRECT EDIT] {result.get('type')} detected for href")
-                            # Return early with prop edit info for caller to handle
-                            return (False, None, None, result)
+                            # Collect prop edit metadata but continue processing other properties
+                            prop_edit_metadata = result
+                            continue  # Skip applying this change directly, will be handled by parent update
                     elif property_name == 'target':
                         result = self._edit_attribute(new_code, element_selector, 'target', str(property_value), files, component_tracker)
                         # Check if result is prop edit or array prop edit metadata
                         if isinstance(result, dict) and result.get('type') in ['prop_edit', 'array_prop_edit']:
                             logger.info(f"[DIRECT EDIT] {result.get('type')} detected for target")
-                            return (False, None, None, result)
+                            # Collect prop edit metadata but continue processing other properties
+                            prop_edit_metadata = result
+                            continue  # Skip applying this change directly, will be handled by parent update
                     elif property_name == 'rel':
                         result = self._edit_attribute(new_code, element_selector, 'rel', str(property_value), files, component_tracker)
                         # Check if result is prop edit or array prop edit metadata
                         if isinstance(result, dict) and result.get('type') in ['prop_edit', 'array_prop_edit']:
                             logger.info(f"[DIRECT EDIT] {result.get('type')} detected for rel")
-                            return (False, None, None, result)
+                            # Collect prop edit metadata but continue processing other properties
+                            prop_edit_metadata = result
+                            continue  # Skip applying this change directly, will be handled by parent update
                     elif property_name == 'alt':
                         result = self._edit_attribute(new_code, element_selector, 'alt', str(property_value), files, component_tracker)
-                        # Check if result is array prop edit metadata
-                        if isinstance(result, dict) and result.get('type') == 'array_prop_edit':
-                            logger.info(f"[DIRECT EDIT] Array prop edit detected for '{result['prop_name']}'")
-                            # Return early with array prop edit info for caller to handle
-                            return (False, None, None, result)
+                        # Check if result is prop edit or array prop edit metadata
+                        if isinstance(result, dict) and result.get('type') in ['prop_edit', 'array_prop_edit']:
+                            logger.info(f"[DIRECT EDIT] {result.get('type')} detected for alt")
+                            # Collect prop edit metadata but continue processing other properties
+                            # This handles cases where alt is a prop expression like {altText}
+                            prop_edit_metadata = result
+                            continue  # Skip applying this change directly, will be handled by parent update
+                        # If alt is hardcoded (not a prop), _edit_attribute will edit it directly in the component
                     elif property_name in TAILWIND_PROPERTY_MAP:
                         # Check if it's a custom hex color
                         if property_name in ['color', 'backgroundColor', 'borderColor'] and str(property_value).startswith('#'):
@@ -271,7 +282,20 @@ class DirectCodeEditor:
                     new_code = previous_code  # Rollback on error
             
             # Build result message
-            if changes_applied:
+            # Handle case where we have both component edits and prop edits
+            if prop_edit_metadata:
+                # We have prop edits that need parent updates
+                if changes_applied:
+                    # Both component edits and prop edits - component edits applied, prop edits need parent update
+                    success_msg = f"Successfully applied component edits: {', '.join(changes_applied)}. Prop edit requires parent update."
+                    logger.info(f"[DIRECT EDIT] {success_msg}")
+                    return (True, new_code, None, prop_edit_metadata)
+                else:
+                    # Only prop edits, no component edits
+                    logger.info(f"[DIRECT EDIT] Prop edit detected, requires parent update")
+                    return (False, None, None, prop_edit_metadata)
+            elif changes_applied:
+                # Only component edits, no prop edits
                 success_msg = f"Successfully applied: {', '.join(changes_applied)}"
                 if failed_changes:
                     failed_msg = "; ".join([f"{prop}: {err}" for prop, err in failed_changes])
@@ -280,6 +304,7 @@ class DirectCodeEditor:
                 logger.info(f"[DIRECT EDIT] {success_msg}")
                 return (True, new_code, None, None)
             else:
+                # No changes applied
                 error_msg = "No changes could be applied"
                 if failed_changes:
                     error_msg += f": {'; '.join([f'{prop} ({err})' for prop, err in failed_changes])}"
@@ -566,16 +591,23 @@ class DirectCodeEditor:
 
         logger.info(f"[PROP UPDATE] Found component at position {match_start}-{match_end}")
         logger.debug(f"[PROP UPDATE] Props section: {props_section[:100]}...")
+        logger.debug(f"[PROP UPDATE] Looking for prop '{prop_name}' with old_value: '{old_value}'")
 
         # Find and update the specific prop
         # Handle both string props: title="value" and expression props: title={value}
+        
+        # Normalize old_value - remove braces if present (e.g., {image} -> image)
+        normalized_old_value = old_value.strip()
+        if normalized_old_value.startswith('{') and normalized_old_value.endswith('}'):
+            normalized_old_value = normalized_old_value[1:-1].strip()
 
         # Try string prop first: prop_name="old_value"
         string_prop_pattern = rf'{prop_name}="([^"]*)"'
         string_match = re.search(string_prop_pattern, props_section)
 
         if string_match:
-            logger.info(f"[PROP UPDATE] Found string prop: {prop_name}=\"{string_match.group(1)}\"")
+            matched_value = string_match.group(1)
+            logger.info(f"[PROP UPDATE] Found string prop: {prop_name}=\"{matched_value}\"")
             # Replace the prop value
             old_prop_full = string_match.group(0)  # e.g., title="old value"
             new_prop_full = f'{prop_name}="{new_value}"'
@@ -590,11 +622,13 @@ class DirectCodeEditor:
             return new_code
 
         # Try expression prop: prop_name={value}
+        # Match any expression prop with this name, regardless of the value inside
         expr_prop_pattern = rf'{prop_name}=\{{([^}}]*)\}}'
         expr_match = re.search(expr_prop_pattern, props_section)
 
         if expr_match:
-            logger.info(f"[PROP UPDATE] Found expression prop: {prop_name}={{{expr_match.group(1)}}}")
+            matched_value = expr_match.group(1).strip()
+            logger.info(f"[PROP UPDATE] Found expression prop: {prop_name}={{{matched_value}}}")
             # For expression props, convert to string prop
             old_prop_full = expr_match.group(0)
             new_prop_full = f'{prop_name}="{new_value}"'
@@ -609,6 +643,8 @@ class DirectCodeEditor:
             return new_code
 
         logger.warning(f"[PROP UPDATE] Prop '{prop_name}' not found in component usage")
+        logger.warning(f"[PROP UPDATE] Props section content: {props_section[:200]}")
+        logger.warning(f"[PROP UPDATE] Searched for patterns: {prop_name}=\"*\" and {prop_name}={{*}}")
         return None
 
     def _verify_code_structure(self, code: str) -> bool:
