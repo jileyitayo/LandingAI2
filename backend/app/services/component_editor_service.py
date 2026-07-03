@@ -430,7 +430,7 @@ class ComponentEditorService:
             response, usage = self.prompt_service.call_openai_api(
                 system_prompt="You are an expert at analyzing UI edit requests. Provide precise JSON responses.",
                 user_prompt=analysis_prompt,
-                model="gemini-2.5-flash"
+                model="gemini-3.1-flash-lite"
             )
 
             logger.info(f"[COMPONENT EDITOR] AI analysis usage: {usage}")
@@ -806,7 +806,7 @@ Respond with ONLY the JSON object for the given instruction:"""
             response, usage = self.prompt_service.call_openai_api(
                 system_prompt="",
                 user_prompt=prompt,
-                model="gemini-2.5-flash"
+                model="gemini-3.1-flash-lite"
             )
             logger.info(f"[COMPONENT EDITOR] Response from AI: {response}")
             logger.info(f"[COMPONENT EDITOR] Usage for component edit: {usage}")

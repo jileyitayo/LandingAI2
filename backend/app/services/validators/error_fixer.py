@@ -251,7 +251,7 @@ Return the complete fixed file content. Make sure to fix ALL the errors listed a
             response, usage = self.google_client.call_openai_api(
                 system_prompt,
                 user_prompt,
-                model="gemini-2.5-flash"
+                model="gemini-3.1-flash-lite"
             )
             print(f"Usage for validation error fixing: {usage}")
             # Extract code from response
@@ -335,7 +335,7 @@ Return the complete fixed file content. Make sure to fix ALL the build errors li
             response, usage = self.openai_client.call_openai_api(
                 system_prompt,
                 user_prompt,
-                model="gemini-2.5-flash"
+                model="gemini-3.1-flash-lite"
             )
             logger.info(f"Usage for build error fixing: {usage}")
             # Extract code from response

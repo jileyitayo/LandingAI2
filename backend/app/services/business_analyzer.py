@@ -120,14 +120,14 @@ class BusinessAnalyzer():
         """
 
         self.google_client.set_max_completion_tokens(6000)
-        self.business_analysis, usage = self.google_client.call_openai_api_structured(system_prompt, user_prompt, BusinessAnalysis, model="gemini-2.5-flash")
+        self.business_analysis, usage = self.google_client.call_openai_api_structured(system_prompt, user_prompt, BusinessAnalysis, model="gemini-3.1-flash-lite")
         print(f"Usage for business analysis: {usage}")
-        
+
         # Track cost if cost_tracker is provided
         if cost_tracker:
             cost_tracker.track_call(
                 service_name="business_analysis",
-                model_name="gemini-2.5-flash",
+                model_name="gemini-3.1-flash-lite",
                 usage=usage
             )
         

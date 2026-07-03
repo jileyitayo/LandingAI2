@@ -45,7 +45,7 @@ class ThemeGenerator:
                 system_prompt,
                 user_prompt,
                 ThemeColors,
-                model="gemini-2.5-flash"
+                model="gemini-3.1-flash-lite"
             )
 
             logger.info(f"[THEME GEN] ✓ AI theme generated successfully")
@@ -56,7 +56,7 @@ class ThemeGenerator:
             if cost_tracker:
                 cost_tracker.track_call(
                     service_name="theme_generation",
-                    model_name="gemini-2.5-flash",
+                    model_name="gemini-3.1-flash-lite",
                     usage=usage
                 )
 

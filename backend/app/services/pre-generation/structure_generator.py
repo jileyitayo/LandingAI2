@@ -112,7 +112,7 @@ Create a website structure with appropriate pages and components for each page."
             system_prompt,
             user_prompt,
             WebsiteStructure,
-            model="gemini-2.5-flash"
+            model="gemini-3.1-flash-lite"
         )
 
         print(f"Usage for structure generation: {usage}")
@@ -121,7 +121,7 @@ Create a website structure with appropriate pages and components for each page."
         if cost_tracker:
             cost_tracker.track_call(
                 service_name="structure_generation",
-                model_name="gemini-2.5-flash",
+                model_name="gemini-3.1-flash-lite",
                 usage=usage
             )
         

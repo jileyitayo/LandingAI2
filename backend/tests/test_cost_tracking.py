@@ -27,8 +27,8 @@ def test_pricing_fetch():
     print("="*70)
     
     models_to_test = [
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash",
         "gpt-4o-mini",
         "claude-sonnet-4-5"
     ]
@@ -53,13 +53,13 @@ def test_cost_calculation():
     
     test_cases = [
         {
-            "model": "gemini-2.5-flash",
+            "model": "gemini-3.1-flash-lite",
             "input_tokens": 1000,
             "output_tokens": 500,
             "expected_cost_range": (0.0002, 0.0006)  # Rough estimate
         },
         {
-            "model": "gemini-2.5-pro",
+            "model": "gemini-3.5-flash",
             "input_tokens": 5000,
             "output_tokens": 3000,
             "expected_cost_range": (0.01, 0.03)
@@ -107,22 +107,22 @@ def test_cost_tracker():
     calls = [
         {
             "service": "business_analysis",
-            "model": "gemini-2.5-flash",
+            "model": "gemini-3.1-flash-lite",
             "usage": {"prompt_tokens": 1200, "completion_tokens": 450, "total_tokens": 1650}
         },
         {
             "service": "structure_generation",
-            "model": "gemini-2.5-flash",
+            "model": "gemini-3.1-flash-lite",
             "usage": {"prompt_tokens": 2000, "completion_tokens": 800, "total_tokens": 2800}
         },
         {
             "service": "theme_generation",
-            "model": "gemini-2.5-flash",
+            "model": "gemini-3.1-flash-lite",
             "usage": {"prompt_tokens": 800, "completion_tokens": 300, "total_tokens": 1100}
         },
         {
             "service": "page_generation",
-            "model": "gemini-2.5-pro",
+            "model": "gemini-3.5-flash",
             "usage": {"prompt_tokens": 5000, "completion_tokens": 3000, "total_tokens": 8000},
             "metadata": {"page_name": "Home"}
         }

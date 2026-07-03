@@ -914,7 +914,7 @@ class ReactWebsiteGenerator:
             system_prompt,
             user_prompt,
             PageGenerationResponse,
-            model="gemini-2.5-pro"
+            model="gemini-3.5-flash"
         )
 
         print(f"Usage for page {page.name} generation: {usage}")
@@ -923,7 +923,7 @@ class ReactWebsiteGenerator:
         if cost_tracker:
             cost_tracker.track_call(
                 service_name="page_generation",
-                model_name="gemini-2.5-pro",
+                model_name="gemini-3.5-flash",
                 usage=usage,
                 metadata={"page_name": page.name, "page_path": page.path}
             )

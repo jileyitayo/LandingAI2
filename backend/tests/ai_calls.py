@@ -19,7 +19,7 @@ def simple_openai_call(prompt: str, model: str = "gpt-4o-mini") -> str:
     return reply, usage
 
 
-def simple_gemini_flash_call(prompt: str, model: str = "gemini-2.5-flash") -> str:
+def simple_gemini_flash_call(prompt: str, model: str = "gemini-3.1-flash-lite") -> str:
     """
     Makes a simple call to Gemini Flash model.
 
@@ -55,7 +55,7 @@ def simple_anthropic_call(prompt: str, model: str = "claude-sonnet-4-5") -> str:
 #     reply = "Nothing yet..."
 #     usage = None
 #     try:    
-#         reply, usage = simple_gemini_flash_call(user_prompt, model="gemini-2.5-pro")
+#         reply, usage = simple_gemini_flash_call(user_prompt, model="gemini-3.5-flash")
 #         print(f"Gemini Flash Reply: {reply}")
 #         print(f"Gemini Flash Usage: {usage}")
 #         # reply, usage = simple_anthropic_call(user_prompt, model="claude-sonnet-4-5" )
