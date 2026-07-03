@@ -1268,6 +1268,7 @@ export default function ProjectEditorPage() {
               isApplyingEdit={isApplyingEdit}
               isAutoSaving={isAutoSaving}
               projectFiles={reactFiles}
+              projectId={projectId}
             />
           </div>
 

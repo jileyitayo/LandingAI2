@@ -24,6 +24,8 @@ interface EditSidebarProps {
   isAutoSaving: boolean;
   // Optional: Project files for route suggestions in LinkEditor
   projectFiles?: Record<string, string>;
+  // Optional: Project ID for media uploads
+  projectId?: string;
 }
 
 type PropertySection = 'content' | 'colors' | 'typography' | 'link' | 'image';
@@ -39,6 +41,7 @@ export default function EditSidebar({
   isApplyingEdit = false,
   isAutoSaving,
   projectFiles,
+  projectId,
 }: EditSidebarProps) {
   const [expandedSections, setExpandedSections] = useState<Set<PropertySection>>(
     new Set(['content', 'colors', 'typography'])
@@ -517,6 +520,7 @@ export default function EditSidebar({
               onImageUrlChange={(value) => handlePropertyChange('imageUrl', value)}
               onImageAltChange={(value) => handlePropertyChange('imageAlt', value)}
               onImageFitChange={(value) => handlePropertyChange('imageFit', value)}
+              projectId={projectId}
             />
           )}
 

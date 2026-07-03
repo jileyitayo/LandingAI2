@@ -791,6 +791,83 @@ export const api = {
   },
 
   /**
+   * Media endpoints (image uploads for chat attachments, site assets, favicons)
+   */
+  media: {
+    /**
+     * Upload a media file (image).
+     * project_id is optional — dashboard uploads happen before a project exists.
+     */
+    upload: async (file: File, options?: { projectId?: string; purpose?: 'attachment' | 'favicon' }) => {
+      const token = await getAccessToken();
+      const formData = new FormData();
+      formData.append("file", file);
+      if (options?.projectId) formData.append("project_id", options.projectId);
+      if (options?.purpose) formData.append("purpose", options.purpose);
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/media`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Don't set Content-Type for FormData - browser sets it automatically with boundary
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new ApiError(
+          response.status,
+          errorData.detail || response.statusText,
+          errorData
+        );
+      }
+
+      return response.json() as Promise<{
+        id: string;
+        project_id: string | null;
+        public_url: string;
+        media_type: string;
+        mime_type: string;
+        original_filename: string | null;
+        size_bytes: number;
+        width: number | null;
+        height: number | null;
+        purpose: string;
+        created_at: string | null;
+      }>;
+    },
+
+    /**
+     * List media attached to a project
+     */
+    list: (projectId: string) =>
+      apiRequest<{
+        media: Array<{
+          id: string;
+          project_id: string | null;
+          public_url: string;
+          media_type: string;
+          mime_type: string;
+          original_filename: string | null;
+          size_bytes: number;
+          width: number | null;
+          height: number | null;
+          purpose: string;
+          created_at: string | null;
+        }>;
+      }>(`/api/v1/projects/${projectId}/media`),
+
+    /**
+     * Delete a media file
+     */
+    delete: (mediaId: string) =>
+      apiRequest<{ message: string }>(`/api/v1/media/${mediaId}`, {
+        method: "DELETE",
+      }),
+  },
+
+  /**
    * Deployment endpoints
    */
   deployment: {

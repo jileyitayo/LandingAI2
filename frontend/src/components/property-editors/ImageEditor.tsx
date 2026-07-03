@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Image as ImageIcon, Upload, Link as LinkIcon, Check, AlertCircle, Search, X, Loader2, Trash2 } from 'lucide-react';
+import { api } from '@/lib/api';
 
 interface ImageEditorProps {
   imageUrl?: string;
@@ -10,6 +11,7 @@ interface ImageEditorProps {
   onImageUrlChange?: (value: string) => void;
   onImageAltChange?: (value: string) => void;
   onImageFitChange?: (value: string) => void;
+  projectId?: string;
 }
 
 // const IMAGE_FIT_OPTIONS = [
@@ -49,6 +51,7 @@ export default function ImageEditor({
   onImageUrlChange,
   onImageAltChange,
   onImageFitChange,
+  projectId,
 }: ImageEditorProps) {
   const [urlInput, setUrlInput] = useState(imageUrl);
   const [altInput, setAltInput] = useState(imageAlt);
@@ -71,6 +74,11 @@ export default function ImageEditor({
   const [hasMoreResults, setHasMoreResults] = useState(false);
   const searchDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const resultsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Upload state
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Update local values when props change
   useEffect(() => {
@@ -657,15 +665,51 @@ export default function ImageEditor({
         </div>
       )}
 
-      {/* Upload Button - Coming soon */}
-      <div className="relative">
-        <button 
-          disabled
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-800 border border-gray-700 rounded transition-colors opacity-50 cursor-not-allowed"
+      {/* Upload Button */}
+      <div className="relative space-y-1">
+        <input
+          ref={uploadInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            setUploadError(null);
+            setIsUploading(true);
+            try {
+              const result = await api.media.upload(file, { projectId });
+              setUrlInput(result.public_url);
+              setImageLoadError(false);
+              onImageUrlChange?.(result.public_url);
+            } catch (err) {
+              setUploadError(err instanceof Error ? err.message : 'Upload failed');
+            } finally {
+              setIsUploading(false);
+              if (uploadInputRef.current) uploadInputRef.current.value = '';
+            }
+          }}
+        />
+        <button
+          onClick={() => uploadInputRef.current?.click()}
+          disabled={isUploading}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-800 border border-gray-700 rounded transition-colors hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Upload className="w-4 h-4" />
-          <span className="text-sm text-gray-300">Upload Image (Coming Soon)</span>
+          {isUploading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Upload className="w-4 h-4" />
+          )}
+          <span className="text-sm text-gray-300">
+            {isUploading ? 'Uploading...' : 'Upload Image'}
+          </span>
         </button>
+        {uploadError && (
+          <p className="text-xs text-red-400 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" />
+            {uploadError}
+          </p>
+        )}
       </div>
 
       {/* Alt Text */}
