@@ -100,9 +100,11 @@ class GenerateReactWebsiteResponse(BaseModel):
 
 class ComponentEditRequest(BaseModel):
     """Request model for component editing"""
-    selected_element: Dict[str, Any] = Field(..., description="Element data from selector")
+    selected_element: Dict[str, Any] = Field(..., description="Element data from selector (primary/last selected)")
+    selected_elements: Optional[List[Dict[str, Any]]] = Field(None, description="All selected elements for multi-select edits")
+    scope: str = Field("element", description="Edit scope: element, section, or page")
     instruction: str = Field(..., min_length=5, max_length=500, description="Natural language edit instruction")
-    
+
     @validator('instruction')
     def validate_instruction(cls, v):
         """Validate instruction is meaningful"""
@@ -110,13 +112,21 @@ class ComponentEditRequest(BaseModel):
             raise ValueError("Instruction cannot be empty")
         return v.strip()
 
+    @validator('scope')
+    def validate_scope(cls, v):
+        if v not in ("element", "section", "page"):
+            raise ValueError("scope must be one of: element, section, page")
+        return v
+
 
 class ComponentEditResponse(BaseModel):
     """Response model for component editing"""
     success: bool
     message: str
     updated_file: Optional[str] = None
+    updated_files: Optional[List[str]] = None
     preview_url: Optional[str] = None
+    preview_id: Optional[str] = None
     old_code: Optional[str] = None
     new_code: Optional[str] = None
     edit_description: Optional[str] = None

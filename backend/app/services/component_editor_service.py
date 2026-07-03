@@ -3,9 +3,10 @@ Component Editor Service
 Handles AI-powered component modification for visual editing
 """
 
+import difflib
 import logging
 import re
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 from app.services.project_file_manager import project_file_manager
 from app.services.prompt_open_ai import PromptOpenAI
 from app.config import settings
@@ -430,7 +431,7 @@ class ComponentEditorService:
             response, usage = self.prompt_service.call_openai_api(
                 system_prompt="You are an expert at analyzing UI edit requests. Provide precise JSON responses.",
                 user_prompt=analysis_prompt,
-                model="gemini-3.1-flash-lite"
+                model=settings.edit_model
             )
 
             logger.info(f"[COMPONENT EDITOR] AI analysis usage: {usage}")
@@ -771,7 +772,10 @@ Respond with ONLY the JSON object for the given instruction:"""
         element_context: Dict[str, Any],
         project_id: str,
         files: Dict[str, str],
-        business_context: Optional[Dict[str, Any]] = None
+        business_context: Optional[Dict[str, Any]] = None,
+        additional_contexts: Optional[List[Dict[str, Any]]] = None,
+        scope: str = "element",
+        strict_note: Optional[str] = None
     ) -> Tuple[bool, str, str, Optional[str]]:
         """
         Use AI to modify component code based on user instruction.
@@ -783,6 +787,9 @@ Respond with ONLY the JSON object for the given instruction:"""
             project_id: Project ID for loading current code
             files: Dictionary of all project files
             business_context: Business analysis data for context (optional)
+            additional_contexts: Other selected elements in this same file (multi-select)
+            scope: Edit scope — "element" (only selected elements), "section" (whole component), "page"
+            strict_note: Extra constraint appended on containment-violation retries
 
         Returns:
             Tuple of (success, old_code, modified_code, error_message)
@@ -798,7 +805,10 @@ Respond with ONLY the JSON object for the given instruction:"""
             analysis = await self.analyze_edit_request(instruction, element_context)
 
             # Build AI prompt with business context
-            prompt = self._build_edit_prompt(current_code, instruction, element_context, analysis, business_context)
+            prompt = self._build_edit_prompt(
+                current_code, instruction, element_context, analysis, business_context,
+                additional_contexts=additional_contexts, scope=scope, strict_note=strict_note
+            )
             logger.info(f"[COMPONENT EDITOR] Enhanced prompt built with analysis and business context")
 
             # Call AI service
@@ -806,7 +816,7 @@ Respond with ONLY the JSON object for the given instruction:"""
             response, usage = self.prompt_service.call_openai_api(
                 system_prompt="",
                 user_prompt=prompt,
-                model="gemini-3.1-flash-lite"
+                model=settings.edit_model
             )
             logger.info(f"[COMPONENT EDITOR] Response from AI: {response}")
             logger.info(f"[COMPONENT EDITOR] Usage for component edit: {usage}")
@@ -829,6 +839,65 @@ Respond with ONLY the JSON object for the given instruction:"""
         except Exception as e:
             logger.error(f"[COMPONENT EDITOR] Error modifying component: {str(e)}")
             return False, "", "", f"Error modifying component: {str(e)}"
+
+    def check_edit_containment(
+        self,
+        old_code: str,
+        new_code: str,
+        element_contexts: List[Dict[str, Any]],
+        tolerance: int = 12
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Verify that an element-scoped edit only changed code near the selected element(s).
+
+        Anchors are located in the original code via each element's data-element name
+        and text content; every diff hunk must fall within `tolerance` lines of an anchor.
+
+        Returns:
+            Tuple of (is_contained, violation_description)
+        """
+        old_lines = old_code.splitlines()
+        new_lines = new_code.splitlines()
+
+        # Collect anchor line numbers for all selected elements
+        anchors: set = set()
+        for ctx in element_contexts:
+            keys = []
+            component_info = ctx.get('component', {}) or {}
+            element_name = component_info.get('elementName') or ctx.get('elementSelector')
+            if element_name:
+                keys.append(f'data-element="{element_name}"')
+            text = (ctx.get('textContent', '') or '').strip()
+            if text:
+                # Use a leading chunk of the text — JSX often wraps long strings
+                keys.append(text[:60])
+            for i, line in enumerate(old_lines):
+                if any(k in line for k in keys if k):
+                    anchors.add(i)
+
+        if not anchors:
+            # Cannot locate the selection in source — skip the check rather than block valid edits
+            logger.warning("[COMPONENT EDITOR] Containment check skipped: no anchors found for selection")
+            return True, None
+
+        matcher = difflib.SequenceMatcher(None, old_lines, new_lines)
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'equal':
+                continue
+            changed_range = range(i1, max(i2, i1 + 1))
+            near_anchor = any(
+                abs(line_no - anchor) <= tolerance
+                for anchor in anchors
+                for line_no in changed_range
+            )
+            if not near_anchor:
+                snippet_lines = old_lines[i1:i2] or new_lines[j1:j2]
+                snippet = ' / '.join(l.strip() for l in snippet_lines[:2])[:160]
+                violation = f"lines {i1 + 1}-{max(i2, i1 + 1)} changed outside the selected element region: {snippet}"
+                logger.warning(f"[COMPONENT EDITOR] Containment violation: {violation}")
+                return False, violation
+
+        return True, None
 
     async def generate_edit_description(
         self,
@@ -933,7 +1002,10 @@ Respond with ONLY the JSON object for the given instruction:"""
         instruction: str,
         element_context: Dict[str, Any],
         analysis: Dict[str, Any],
-        business_context: Optional[Dict[str, Any]] = None
+        business_context: Optional[Dict[str, Any]] = None,
+        additional_contexts: Optional[List[Dict[str, Any]]] = None,
+        scope: str = "element",
+        strict_note: Optional[str] = None
     ) -> str:
         """Build the AI prompt for component editing using enhanced analysis and business context"""
 
@@ -1083,6 +1155,41 @@ use the business context above to generate relevant, meaningful content that ali
 DO NOT use generic placeholders like "New Title Placeholder" - instead, create actual content based on the business context.
 """
 
+        # Enumerate additional multi-select targets in this file
+        additional_targets_note = ""
+        if additional_contexts:
+            target_lines = []
+            for idx, ctx in enumerate(additional_contexts, start=2):
+                ctx_component = ctx.get('component', {}) or {}
+                ctx_text = (ctx.get('textContent', '') or '').strip()
+                target_lines.append(
+                    f"  {idx}. <{ctx.get('tagName', '?')}> "
+                    f"data-element=\"{ctx_component.get('elementName') or ctx.get('elementSelector') or 'unknown'}\" "
+                    f"text=\"{ctx_text[:80]}{'...' if len(ctx_text) > 80 else ''}\""
+                )
+            additional_targets_note = f"""
+ADDITIONAL SELECTED TARGETS (the user multi-selected {len(additional_contexts) + 1} elements in this file —
+the instruction applies to ALL of them, including the primary target above):
+{chr(10).join(target_lines)}
+"""
+
+        # Scope enforcement — element scope must not touch anything outside the selection
+        if scope == "element":
+            scope_enforcement = """
+STRICT SCOPE ENFORCEMENT:
+- Change ONLY the selected element(s) enumerated in the target information.
+- Reproduce every other line of the file EXACTLY as it appears in the original — byte-for-byte.
+- Do NOT reformat, reorder imports, rename variables, adjust whitespace, or "improve" unrelated code.
+- If the instruction seems to imply broader changes, still restrict your changes to the selected element(s) only."""
+        elif scope == "section":
+            scope_enforcement = """
+SCOPE: The user selected this entire section/component. You may change anything within this file
+that the instruction requires, but keep unrelated parts of the file untouched."""
+        else:
+            scope_enforcement = ""
+
+        strict_retry_note = f"\nPREVIOUS ATTEMPT REJECTED: {strict_note}\n" if strict_note else ""
+
         prompt = f"""You are a React component editor. Modify the following code based on the user's instruction.
 
 {context_note}
@@ -1103,6 +1210,7 @@ TARGET INFORMATION:
 - Classes: {', '.join(element_context.get('classList', [])[:5])}
 - Component: {component_name}
 - Multi-element: {'YES - ' + str(len(text_parts)) + ' parts' if is_multi_element else 'NO'}
+{additional_targets_note}{scope_enforcement}{strict_retry_note}
 
 ANALYSIS (Confidence: {confidence:.0%}):
 - Edit Categories: {', '.join(edit_categories)}

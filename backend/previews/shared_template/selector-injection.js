@@ -10,6 +10,40 @@
     let overlay = null;
     let tooltip = null;
     let hoveredElement = null;
+    // Multi-select: currently selected DOM elements, in selection order
+    let selectedElements = [];
+
+    // Persistent highlight for selected elements (outline only — no layout shift)
+    function highlightSelected(element) {
+        element.setAttribute('data-ve-selected', 'true');
+        element.style.setProperty('outline', '2px solid #22c55e', 'important');
+        element.style.setProperty('outline-offset', '1px', 'important');
+    }
+
+    function unhighlightSelected(element) {
+        element.removeAttribute('data-ve-selected');
+        element.style.removeProperty('outline');
+        element.style.removeProperty('outline-offset');
+    }
+
+    function clearSelection() {
+        selectedElements.forEach(unhighlightSelected);
+        selectedElements = [];
+    }
+
+    // Notify parent of the full current selection
+    function postSelection() {
+        const data = selectedElements.map(extractElementData);
+        window.parent.postMessage({
+            type: 'ELEMENTS_SELECTED',
+            data: data
+        }, '*');
+        // Legacy single-element message (last selected) for older consumers
+        window.parent.postMessage({
+            type: 'ELEMENT_SELECTED',
+            data: data.length > 0 ? data[data.length - 1] : null
+        }, '*');
+    }
     
     // Create overlay for highlighting
     function createOverlay() {
@@ -514,21 +548,24 @@
             return;
         }
 
-        const elementData = extractElementData(element);
+        if (event.shiftKey) {
+            // Shift+click toggles the element in the multi-select set
+            const existingIndex = selectedElements.indexOf(element);
+            if (existingIndex >= 0) {
+                unhighlightSelected(element);
+                selectedElements.splice(existingIndex, 1);
+            } else {
+                highlightSelected(element);
+                selectedElements.push(element);
+            }
+        } else {
+            // Plain click replaces the selection
+            clearSelection();
+            highlightSelected(element);
+            selectedElements = [element];
+        }
 
-        // Log selection for debugging
-        // console.log('Component selected:', {
-        //     component: elementData.component.componentName || 'Unknown',
-        //     file: elementData.component.componentFile || 'Unknown',
-        //     element: elementData.component.elementName || elementData.tagName,
-        //     elementType: elementData.elementType
-        // });
-
-        // Send data to parent window
-        window.parent.postMessage({
-            type: 'ELEMENT_SELECTED',
-            data: elementData
-        }, '*');
+        postSelection();
 
         // Visual feedback - green flash to indicate successful selection
         if (overlay) {
@@ -826,12 +863,73 @@
         }
     }
     
+    // Best-effort lookup of a previously selected element from its serialized data
+    function findElementFromSelection(sel) {
+        if (!sel) return null;
+        // 1. data-element within its component file scope (most reliable)
+        if (sel.elementSelector) {
+            const fileAttr = sel.componentFile || (sel.component && sel.component.componentFile);
+            if (fileAttr) {
+                const scoped = document.querySelector(
+                    '[data-file="' + fileAttr + '"] [data-element="' + sel.elementSelector + '"]'
+                ) || document.querySelector(
+                    '[data-file="' + fileAttr + '"][data-element="' + sel.elementSelector + '"]'
+                );
+                if (scoped) return scoped;
+            }
+            const byName = document.querySelector('[data-element="' + sel.elementSelector + '"]');
+            if (byName) return byName;
+        }
+        // 2. tag + trimmed text content match
+        if (sel.tagName && sel.textContent) {
+            const candidates = document.getElementsByTagName(sel.tagName);
+            for (let i = 0; i < candidates.length; i++) {
+                if ((candidates[i].textContent || '').trim() === sel.textContent) {
+                    return candidates[i];
+                }
+            }
+        }
+        return null;
+    }
+
     // Listen for messages from parent
     window.addEventListener('message', function(event) {
-        if (event.data.type === 'ENABLE_SELECTOR') {
+        if (!event.data || typeof event.data !== 'object') return;
+        if (event.data.type === 'PING') {
+            // Parent-initiated handshake: always answer so the parent can
+            // recover selector readiness after missed SELECTOR_READY signals
+            window.parent.postMessage({ type: 'SELECTOR_PONG' }, '*');
+        } else if (event.data.type === 'ENABLE_SELECTOR') {
             enableSelector();
         } else if (event.data.type === 'DISABLE_SELECTOR') {
             disableSelector();
+        } else if (event.data.type === 'DESELECT_ELEMENT') {
+            // Parent removed a chip: drop the element whose selector key matches
+            const key = event.data.selector;
+            const idx = selectedElements.findIndex(function(el) {
+                return buildSelectorPath(el).join(' > ') === key;
+            });
+            if (idx >= 0) {
+                unhighlightSelected(selectedElements[idx]);
+                selectedElements.splice(idx, 1);
+                postSelection();
+            }
+        } else if (event.data.type === 'CLEAR_SELECTION') {
+            clearSelection();
+            postSelection();
+        } else if (event.data.type === 'RESTORE_SELECTION') {
+            // After a preview rebuild the parent re-sends the prior selection;
+            // re-select whatever still exists in the new document (best-effort)
+            clearSelection();
+            const selections = Array.isArray(event.data.selections) ? event.data.selections : [];
+            selections.forEach(function(sel) {
+                const el = findElementFromSelection(sel);
+                if (el && selectedElements.indexOf(el) < 0) {
+                    highlightSelected(el);
+                    selectedElements.push(el);
+                }
+            });
+            postSelection();
         } else if (event.data.type === 'UPDATE_PROPERTY') {
             // Handle instant property update (optimistic UI)
             const success = handlePropertyUpdate(event.data);
@@ -876,11 +974,22 @@
 
     // Stop retrying if we receive a message from parent (confirms communication works)
     window.addEventListener('message', function stopRetry(event) {
-        if (event.data.type === 'ENABLE_SELECTOR' || event.data.type === 'DISABLE_SELECTOR') {
+        if (!event.data || typeof event.data !== 'object') return;
+        if (event.data.type === 'ENABLE_SELECTOR' || event.data.type === 'DISABLE_SELECTOR' || event.data.type === 'PING') {
             clearInterval(retryInterval);
             // console.log('Visual Editor Selector: Communication established, stopped retry');
         }
     }, { once: false });
+
+    // Re-announce readiness after the React app has hydrated — data-component /
+    // data-element attributes only exist once components mount, and the parent
+    // may attach its listener late during heavy renders
+    window.addEventListener('load', sendReadySignal);
+    if ('requestIdleCallback' in window) {
+        requestIdleCallback(sendReadySignal);
+    } else {
+        setTimeout(sendReadySignal, 1500);
+    }
 
     // Handle page visibility changes (only disable when user switches browser tabs)
     document.addEventListener('visibilitychange', function() {

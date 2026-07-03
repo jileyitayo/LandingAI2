@@ -12,6 +12,8 @@ interface PublishButtonProps {
   onPublishSuccess?: (deploymentUrl: string) => void;
   onUnpublishSuccess?: () => void;
   className?: string;
+  // Bump to re-check for unpublished changes (e.g. after each successful edit)
+  editVersion?: number;
 }
 
 type PublishState = 'unpublished' | 'publishing' | 'published' | 'unpublishing' | 'error';
@@ -24,6 +26,7 @@ export default function PublishButton({
   onPublishSuccess,
   onUnpublishSuccess,
   className = '',
+  editVersion = 0,
 }: PublishButtonProps) {
   const [state, setState] = useState<PublishState>(
     isPublished && deploymentUrl ? 'published' : 'unpublished'
@@ -31,6 +34,7 @@ export default function PublishButton({
   const [currentUrl, setCurrentUrl] = useState<string | null>(deploymentUrl || null);
   const [error, setError] = useState<string | null>(null);
   const [showUnpublishConfirm, setShowUnpublishConfirm] = useState(false);
+  const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState(false);
 
   // Update state when props change
   useEffect(() => {
@@ -42,6 +46,26 @@ export default function PublishButton({
       setCurrentUrl(null);
     }
   }, [isPublished, deploymentUrl]);
+
+  // Check whether the live site is behind the latest edits
+  useEffect(() => {
+    if (!isPublished) {
+      setHasUnpublishedChanges(false);
+      return;
+    }
+    let cancelled = false;
+    api.deployment
+      .getStatus(projectId)
+      .then((status) => {
+        if (!cancelled) setHasUnpublishedChanges(Boolean(status.has_unpublished_changes));
+      })
+      .catch(() => {
+        /* badge is best-effort; ignore status errors */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, isPublished, editVersion, state]);
 
   const handlePublish = async () => {
     setState('publishing');
@@ -163,6 +187,16 @@ export default function PublishButton({
   if (state === 'published') {
     return (
       <div className="flex items-center gap-2">
+        {hasUnpublishedChanges && (
+          <button
+            onClick={handlePublish}
+            className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-medium rounded-lg transition-colors"
+            title="Your latest edits aren't live yet — click to publish them"
+          >
+            <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+            Unpublished changes — Publish
+          </button>
+        )}
         <button
           onClick={openDeployment}
           className={`flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 ${className}`}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, memo } from 'react';
+import { useState, useEffect, useRef, memo, forwardRef, useImperativeHandle } from 'react';
 import { RefreshCw, ExternalLink, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface SelectedElement {
@@ -47,84 +47,138 @@ interface ReactPreviewProps {
   onRebuild: () => void;
   selectedElement?: SelectedElement | null;
   onElementSelect?: (element: SelectedElement | null) => void;
+  onElementsSelect?: (elements: SelectedElement[]) => void;
   selectorEnabled?: boolean;
   onSelectorEnabledChange?: (enabled: boolean) => void;
 }
 
-function ReactPreview({
+export interface ReactPreviewHandle {
+  deselectElement: (selectorKey: string) => void;
+  clearSelection: () => void;
+  postToIframe: (message: Record<string, unknown>) => void;
+}
+
+const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function ReactPreview({
   previewUrl,
   isBuilding,
   error,
   onRebuild,
   selectedElement = null,
   onElementSelect,
+  onElementsSelect,
   selectorEnabled = false,
   onSelectorEnabledChange
-}: ReactPreviewProps) {
+}: ReactPreviewProps, ref) {
   const [selectorReady, setSelectorReady] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
+  // Last known selection, used to restore highlights after a preview rebuild
+  const lastSelectionRef = useRef<SelectedElement[]>([]);
 
-  // Listen for messages from iframe
+  // Keep latest props/state in refs so the message listener can be registered
+  // exactly once — re-registering leaves gaps where iframe messages are lost
+  const callbacksRef = useRef({ onElementSelect, onElementsSelect, onSelectorEnabledChange, selectorEnabled, selectorReady });
+  callbacksRef.current = { onElementSelect, onElementsSelect, onSelectorEnabledChange, selectorEnabled, selectorReady };
+
+  const postToIframe = (message: Record<string, unknown>) => {
+    iframeRef.current?.contentWindow?.postMessage(message, '*');
+  };
+
+  useImperativeHandle(ref, () => ({
+    deselectElement: (selectorKey: string) => {
+      postToIframe({ type: 'DESELECT_ELEMENT', selector: selectorKey });
+    },
+    clearSelection: () => {
+      postToIframe({ type: 'CLEAR_SELECTION' });
+    },
+    postToIframe,
+  }));
+
+  // Listen for messages from iframe — registered once, no teardown gaps
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Log ALL messages to debug what's coming through
-      // console.log('[ReactPreview] Raw message received:', {
-      //   type: event.data?.type,
-      //   origin: event.origin,
-      //   data: event.data
-      // });
-
       // Skip messages from browser extensions or other sources
       if (!event.data || typeof event.data !== 'object') {
-        // console.log('[ReactPreview] Skipping non-object message');
         return;
       }
+      const cb = callbacksRef.current;
 
-      if (event.data.type === 'SELECTOR_READY') {
-        // console.log('[ReactPreview] ✅ SELECTOR_READY received! Setting state...');
+      if (event.data.type === 'SELECTOR_READY' || event.data.type === 'SELECTOR_PONG') {
         setSelectorReady(true);
         // Auto-enable selector when it's ready
-        if (onSelectorEnabledChange && !selectorEnabled) {
-          // console.log('[ReactPreview] Auto-enabling selector');
-          onSelectorEnabledChange(true);
+        if (cb.onSelectorEnabledChange && !cb.selectorEnabled) {
+          cb.onSelectorEnabledChange(true);
+        }
+      } else if (event.data.type === 'ELEMENTS_SELECTED') {
+        const elements: SelectedElement[] = Array.isArray(event.data.data) ? event.data.data : [];
+        lastSelectionRef.current = elements;
+        if (cb.onElementsSelect) {
+          cb.onElementsSelect(elements);
         }
       } else if (event.data.type === 'ELEMENT_SELECTED') {
-        if (onElementSelect) {
-          onElementSelect(event.data.data);
+        // Legacy single-element path; multi-select consumers use ELEMENTS_SELECTED
+        if (cb.onElementSelect && !cb.onElementsSelect) {
+          cb.onElementSelect(event.data.data);
         }
-        // console.log('Element selected:', event.data.data);
       } else if (event.data.type === 'ELEMENT_RIGHT_CLICKED') {
-        if (onElementSelect) {
-          onElementSelect(event.data.data);
+        if (cb.onElementSelect) {
+          cb.onElementSelect(event.data.data);
         }
       } else if (event.data.type === 'PREVIEW_CLICKED') {
         // Auto-enable selector when user clicks in preview
-        if (onSelectorEnabledChange && !selectorEnabled && selectorReady) {
-          onSelectorEnabledChange(true);
+        if (cb.onSelectorEnabledChange && !cb.selectorEnabled && cb.selectorReady) {
+          cb.onSelectorEnabledChange(true);
         }
       }
     };
 
-    // console.log('[ReactPreview] Setting up message listener');
     window.addEventListener('message', handleMessage);
     return () => {
-      // console.log('[ReactPreview] Removing message listener');
       window.removeEventListener('message', handleMessage);
     };
-  }, [onElementSelect, onSelectorEnabledChange, selectorEnabled, selectorReady]);
+  }, []);
 
-  // Reset iframe loaded state when URL changes
+  // Reset iframe loaded state when URL changes; the PING handshake below
+  // re-establishes selector readiness automatically
   useEffect(() => {
-    // console.log('[ReactPreview] Preview URL changed, resetting iframe state');
     setIframeLoaded(false);
     setSelectorReady(false);
   }, [previewUrl]);
 
+  // Parent-initiated handshake: ping the iframe until it answers. This
+  // recovers readiness even if every SELECTOR_READY from the iframe was
+  // missed (slow build, heavy render, tab switch).
+  useEffect(() => {
+    if (!iframeLoaded || selectorReady || !previewUrl) return;
+
+    postToIframe({ type: 'PING' });
+    const pingInterval = setInterval(() => {
+      postToIframe({ type: 'PING' });
+    }, 500);
+
+    return () => clearInterval(pingInterval);
+  }, [iframeLoaded, selectorReady, previewUrl]);
+
+  // Once the selector is ready after a rebuild, restore the previous selection
+  const prevReadyRef = useRef(false);
+  useEffect(() => {
+    if (selectorReady && !prevReadyRef.current && lastSelectionRef.current.length > 0) {
+      postToIframe({
+        type: 'RESTORE_SELECTION',
+        selections: lastSelectionRef.current.map((sel) => ({
+          elementSelector: (sel as SelectedElement & { elementSelector?: string | null }).elementSelector ?? sel.component?.elementName ?? null,
+          componentFile: sel.component?.componentFile ?? null,
+          tagName: sel.tagName,
+          textContent: sel.textContent,
+        })),
+      });
+    }
+    prevReadyRef.current = selectorReady;
+  }, [selectorReady]);
+
   // Handle iframe load event
   const handleIframeLoad = () => {
-    // console.log('[ReactPreview] Iframe loaded successfully');
     setIframeLoaded(true);
   };
 
@@ -347,7 +401,7 @@ function ReactPreview({
         </div>
     </div>
   );
-}
+});
 
 // Export memoized version to prevent unnecessary re-renders
 export default memo(ReactPreview);

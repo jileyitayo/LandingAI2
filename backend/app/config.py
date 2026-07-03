@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     google_api_key: str = ""
 
+    # Model used for component editing and build-error fixing
+    # (gemini-3.5-flash-lite does not exist; 3.5-flash is the closest upgrade from 3.1-flash-lite)
+    edit_model: str = "gemini-3.5-flash"
+
     # Stripe (optional for initial setup)
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""

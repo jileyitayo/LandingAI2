@@ -684,17 +684,23 @@ export const api = {
       }>(`/api/v1/react_website/${projectId}`),
 
     /**
-     * Edit React component using visual selection (natural language - legacy)
+     * Edit React component(s) using visual selection and natural language.
+     * Supports multi-select (selected_elements) and scope (element | section | page).
+     * The backend verifies the edit compiles and returns the new preview URL.
      */
     editComponent: (projectId: string, data: {
       selected_element: Record<string, any>;
+      selected_elements?: Record<string, any>[];
+      scope?: 'element' | 'section' | 'page';
       instruction: string;
     }) =>
       apiRequest<{
         success: boolean;
         message: string;
         updated_file?: string;
+        updated_files?: string[];
         preview_url?: string;
+        preview_id?: string;
         old_code?: string;
         new_code?: string;
         edit_description?: string;
@@ -825,6 +831,8 @@ export const api = {
         state: string;
         ready: boolean;
         last_deployed_at: string | null;
+        last_edited_at: string | null;
+        has_unpublished_changes: boolean;
       }>(`/api/v1/projects/${projectId}/deployment-status`),
   },
 

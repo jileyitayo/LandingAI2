@@ -7,6 +7,7 @@ import logging
 from typing import Dict, List, Tuple, Optional
 from pydantic import BaseModel
 
+from app.config import settings
 from app.services.prompt_open_ai import PromptOpenAI
 from app.services.validators.code_validator import CodeValidationError
 from app.services.validators.build_tester import BuildError
@@ -251,7 +252,7 @@ Return the complete fixed file content. Make sure to fix ALL the errors listed a
             response, usage = self.google_client.call_openai_api(
                 system_prompt,
                 user_prompt,
-                model="gemini-3.1-flash-lite"
+                model=settings.edit_model
             )
             print(f"Usage for validation error fixing: {usage}")
             # Extract code from response
@@ -329,13 +330,13 @@ RELEVANT BUILD OUTPUT:
 Return the complete fixed file content. Make sure to fix ALL the build errors listed above."""
 
         try:
-            self.openai_client.set_max_completion_tokens(6000)
+            self.google_client.set_max_completion_tokens(6000)
             logger.info(f"Fixing build errors in {file_path}")
             # Call LLM to fix the code
-            response, usage = self.openai_client.call_openai_api(
+            response, usage = self.google_client.call_openai_api(
                 system_prompt,
                 user_prompt,
-                model="gemini-3.1-flash-lite"
+                model=settings.edit_model
             )
             logger.info(f"Usage for build error fixing: {usage}")
             # Extract code from response

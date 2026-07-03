@@ -36,6 +36,8 @@ class DeploymentStatusResponse(BaseModel):
     state: str
     ready: bool
     last_deployed_at: Optional[str]
+    last_edited_at: Optional[str] = None
+    has_unpublished_changes: bool = False
 
 
 class DeploymentErrorResponse(BaseModel):
@@ -259,7 +261,25 @@ async def get_project_deployment_status(
         deployment_id = project.get("deployment_id")
         deployment_url = project.get("deployment_url")
         last_deployed_at = project.get("last_deployed_at")
-        
+        last_edited_at = project.get("last_edited_at")
+
+        # The live site is behind the preview if an edit landed after the last deploy
+        def _parse_ts(value):
+            if not value:
+                return None
+            try:
+                from datetime import datetime as _dt
+                parsed = _dt.fromisoformat(str(value).replace("Z", "+00:00"))
+                return parsed.replace(tzinfo=None)  # compare as naive UTC
+            except ValueError:
+                return None
+
+        edited_ts = _parse_ts(last_edited_at)
+        deployed_ts = _parse_ts(last_deployed_at)
+        has_unpublished_changes = bool(
+            deployment_id and edited_ts and (not deployed_ts or edited_ts > deployed_ts)
+        )
+
         # If no deployment, return not deployed status
         if not deployment_id:
             return DeploymentStatusResponse(
@@ -267,25 +287,29 @@ async def get_project_deployment_status(
                 deployment_url=None,
                 state="NOT_DEPLOYED",
                 ready=False,
-                last_deployed_at=None
+                last_deployed_at=None,
+                last_edited_at=last_edited_at,
+                has_unpublished_changes=False
             )
-        
+
         # Initialize deployment service
         deployment_service = VercelDeployer()
-        
+
         # Get deployment status from Vercel
         try:
             logger.info(f"Checking deployment status for project {project_id}")
             status_data = await deployment_service.get_deployment_status(deployment_id)
-            
+
             return DeploymentStatusResponse(
                 deployment_id=status_data.get("deployment_id"),
                 deployment_url=f"https://{status_data.get('url')}" if status_data.get('url') else deployment_url,
                 state=status_data.get("state", "UNKNOWN"),
                 ready=status_data.get("ready", False),
-                last_deployed_at=last_deployed_at
+                last_deployed_at=last_deployed_at,
+                last_edited_at=last_edited_at,
+                has_unpublished_changes=has_unpublished_changes
             )
-        
+
         except VercelDeploymentError as e:
             # If we can't get status from Vercel, return cached info
             logger.warning(f"Could not get live deployment status: {str(e)}")
@@ -294,7 +318,9 @@ async def get_project_deployment_status(
                 deployment_url=deployment_url,
                 state="UNKNOWN",
                 ready=True,  # Assume ready if we have a deployment URL
-                last_deployed_at=last_deployed_at
+                last_deployed_at=last_deployed_at,
+                last_edited_at=last_edited_at,
+                has_unpublished_changes=has_unpublished_changes
             )
     
     except HTTPException:

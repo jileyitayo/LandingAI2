@@ -9,8 +9,8 @@ import PublishModal from '@/components/PublishModal';
 import DeploymentHistory from '@/components/DeploymentHistory';
 import FileTree from '@/components/FileTree';
 import CodeViewer from '@/components/CodeViewer';
-import ReactPreview from '@/components/ReactPreview';
-import EditSidebar from '@/components/EditSidebar';
+import ReactPreview, { ReactPreviewHandle } from '@/components/ReactPreview';
+import EditSidebar, { EditScope } from '@/components/EditSidebar';
 import FeedbackModal from '@/components/FeedbackModal';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { Project } from '@/types/project.types';
@@ -43,8 +43,19 @@ export default function ProjectEditorPage() {
 
   // Element selection and editing state
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
+  const [selectedElements, setSelectedElements] = useState<SelectedElement[]>([]);
   const [selectorEnabled, setSelectorEnabled] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const [isApplyingEdit, setIsApplyingEdit] = useState(false);
+  // Bumped after every successful save so PublishButton re-checks for unpublished changes
+  const [editVersion, setEditVersion] = useState(0);
+  const previewRef = useRef<ReactPreviewHandle>(null);
+
+  // Multi-select handler: keep the array and the primary (last selected) element in sync
+  const handleElementsSelect = useCallback((elements: SelectedElement[]) => {
+    setSelectedElements(elements);
+    setSelectedElement(elements.length > 0 ? elements[elements.length - 1] : null);
+  }, []);
 
   // Page info for sidebar
   const [pageInfo, setPageInfo] = useState<PageInfo>({
@@ -94,6 +105,8 @@ export default function ProjectEditorPage() {
     },
     onClearSelection: () => {
       setSelectedElement(null);
+      setSelectedElements([]);
+      previewRef.current?.clearSelection();
       setSelectorEnabled(false);
       pendingRequestElementRef.current = null; // Clear pending request tracking
     },
@@ -278,6 +291,56 @@ export default function ProjectEditorPage() {
       setIsBuilding(false);
     }
   }, [projectId]);
+
+  // AI edit: send the selection + instruction to the LLM edit endpoint.
+  // The backend verifies the change compiles before saving and returns the
+  // fresh preview URL, so the iframe swaps straight to the verified build.
+  const handleAiEdit = useCallback(async (instruction: string, scope: EditScope) => {
+    if (!selectedElement) {
+      toast.error('Select an element in the preview first');
+      return;
+    }
+
+    setIsApplyingEdit(true);
+    try {
+      const elements = selectedElements.length > 0 ? selectedElements : [selectedElement];
+      const response = await api.generation.editComponent(projectId, {
+        instruction,
+        selected_element: selectedElement,
+        selected_elements: elements,
+        scope,
+      });
+
+      if (!response.success) {
+        toast.error('Edit not applied', {
+          description: response.message,
+          duration: 6000,
+        });
+        return;
+      }
+
+      // Swap the iframe to the freshly built, verified preview
+      if (response.preview_url) {
+        setPreviewUrl(response.preview_url);
+      }
+
+      // Sync the code view with everything the edit changed
+      await loadReactFiles();
+      setEditVersion(v => v + 1);
+
+      toast.success('Edit applied', {
+        description: response.edit_description || response.message,
+        duration: 3000,
+      });
+    } catch (error: any) {
+      toast.error('Edit failed', {
+        description: error?.message || 'Something went wrong applying the edit',
+        duration: 6000,
+      });
+    } finally {
+      setIsApplyingEdit(false);
+    }
+  }, [projectId, selectedElement, selectedElements, loadReactFiles]);
 
   // Load React files when project is loaded
   useEffect(() => {
@@ -515,7 +578,8 @@ export default function ProjectEditorPage() {
 
         if (response.success) {
           // console.log('Backend save successful');
-          
+          setEditVersion(v => v + 1);
+
           // Update the code view with the new code from backend
           // Backend returns the updated code, so we can update it directly
           if (response.new_code && element.componentFile) {
@@ -655,6 +719,52 @@ export default function ProjectEditorPage() {
       pendingImagePropertiesRef.current = {};
     }
   }, [selectedElement?.elementSelector]);
+
+  // Quick edits (images, links, colors, fonts) routed through the LLM pipeline.
+  // Pending changes accumulate and flush as ONE combined instruction after the
+  // user pauses, so rapid tweaks don't trigger a build per keystroke.
+  const pendingAiQuickEditsRef = useRef<Map<PropertyType, string>>(new Map());
+  const aiQuickEditTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const debouncedAiQuickEdit = useCallback((property: PropertyType, value: string | number | boolean) => {
+    pendingAiQuickEditsRef.current.set(property, String(value));
+
+    if (aiQuickEditTimerRef.current) {
+      clearTimeout(aiQuickEditTimerRef.current);
+    }
+
+    aiQuickEditTimerRef.current = setTimeout(() => {
+      const pending = pendingAiQuickEditsRef.current;
+      if (pending.size === 0) return;
+
+      const instructionFor = (prop: PropertyType, val: string): string => {
+        switch (prop) {
+          case 'imageUrl': return `change the image src to "${val}"`;
+          case 'imageAlt': return `change the image alt text to "${val}"`;
+          case 'imageFit': return `set the image object-fit Tailwind class to "${val}"`;
+          case 'linkHref': return `change the link href to "${val}"`;
+          case 'linkTarget': return `set the link target attribute to "${val}"`;
+          case 'linkRel': return `set the link rel attribute to "${val}"`;
+          case 'color':
+          case 'textColor': return `change the text color to ${val}`;
+          case 'backgroundColor': return `change the background color to ${val}`;
+          case 'borderColor': return `change the border color to ${val}`;
+          case 'fontSize': return `set the font size Tailwind class to "${val}"`;
+          case 'fontWeight': return `set the font weight Tailwind class to "${val}"`;
+          case 'fontFamily': return `set the font family Tailwind class to "${val}"`;
+          case 'textAlign': return `set the text alignment to "${val}"`;
+          case 'textTransform': return `set the text transform to "${val}"`;
+          default: return `set ${prop} to "${val}"`;
+        }
+      };
+
+      const parts = Array.from(pending.entries()).map(([prop, val]) => instructionFor(prop, val));
+      pending.clear();
+
+      const instruction = `On the selected element only: ${parts.join('; ')}. Do not change anything else.`;
+      handleAiEdit(instruction, 'element');
+    }, 1500);
+  }, [handleAiEdit]);
 
   // Handle property changes with optimistic updates
   const handlePropertyChange = useCallback((property: PropertyType, value: string | number | boolean) => {
@@ -824,11 +934,18 @@ export default function ProjectEditorPage() {
     
     // No toast for optimistic update - the visual change in preview is feedback enough!
     // Toast notifications would be distracting when typing rapidly
-    
-    // Step 3: Save to backend (debounced - waits 500ms after last change)
-    debouncedBackendSave(property, value, selectedElement);
-    
-  }, [selectedElement, applyOptimisticUpdate, debouncedBackendSave]);
+
+    // Step 3: Save to backend.
+    // Plain text edits keep the fast regex-based path; everything else (images,
+    // links, colors, fonts) goes through the LLM edit pipeline, which is verified
+    // by a real build before saving — this is what fixes the unreliable saves.
+    if (property === 'text') {
+      debouncedBackendSave(property, value, selectedElement);
+    } else {
+      debouncedAiQuickEdit(property, value);
+    }
+
+  }, [selectedElement, applyOptimisticUpdate, debouncedBackendSave, debouncedAiQuickEdit]);
 
   // Helper function to get user-friendly error message
   // Note: This is a regular function, not a hook, so it can be defined here
@@ -1117,6 +1234,7 @@ export default function ProjectEditorPage() {
               isPublished={isPublished}
               onPublishSuccess={handlePublishSuccess}
               onUnpublishSuccess={handleUnpublishSuccess}
+              editVersion={editVersion}
             />
           </div>
         </header>
@@ -1134,12 +1252,20 @@ export default function ProjectEditorPage() {
           <div className="w-1/4 flex flex-col bg-gray-900 border-r border-gray-700">
             <EditSidebar
               selectedElement={selectedElement}
+              selectedElements={selectedElements}
               pageInfo={pageInfo}
               onClearSelection={() => {
                 setSelectedElement(null);
+                setSelectedElements([]);
+                previewRef.current?.clearSelection();
                 pendingRequestElementRef.current = null; // Clear pending request tracking
               }}
+              onDeselectElement={(selectorKey) => {
+                previewRef.current?.deselectElement(selectorKey);
+              }}
               onPropertyChange={handlePropertyChange}
+              onAiEdit={handleAiEdit}
+              isApplyingEdit={isApplyingEdit}
               isAutoSaving={isAutoSaving}
               projectFiles={reactFiles}
             />
@@ -1194,16 +1320,29 @@ export default function ProjectEditorPage() {
                   </div>
                 </div>
               ) : (
-                <ReactPreview
-                  previewUrl={previewUrl}
-                  isBuilding={isBuilding}
-                  error={buildError}
-                  onRebuild={buildPreview}
-                  selectedElement={selectedElement}
-                  onElementSelect={setSelectedElement}
-                  selectorEnabled={selectorEnabled}
-                  onSelectorEnabledChange={setSelectorEnabled}
-                />
+                <div className="relative h-full">
+                  <ReactPreview
+                    ref={previewRef}
+                    previewUrl={previewUrl}
+                    isBuilding={isBuilding}
+                    error={buildError}
+                    onRebuild={buildPreview}
+                    selectedElement={selectedElement}
+                    onElementSelect={setSelectedElement}
+                    onElementsSelect={handleElementsSelect}
+                    selectorEnabled={selectorEnabled}
+                    onSelectorEnabledChange={setSelectorEnabled}
+                  />
+                  {/* AI edit in progress — overlay without unmounting the iframe */}
+                  {isApplyingEdit && (
+                    <div className="absolute inset-0 bg-gray-900/40 flex items-start justify-center pt-16 z-10 pointer-events-none">
+                      <div className="flex items-center gap-2 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg shadow-xl text-sm text-white">
+                        <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                        Updating preview…
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>

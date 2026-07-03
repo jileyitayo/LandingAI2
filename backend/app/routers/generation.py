@@ -22,6 +22,8 @@ from app.services.react_website_generator import react_website_generator
 from app.services.project_file_manager import project_file_manager
 from app.services.vite_preview_service import vite_preview_service
 from app.services.component_editor_service import component_editor_service
+from app.services.validators.error_fixer import error_fixer
+from app.services.validators.build_tester import BuildError, BuildTester
 from app.services.direct_code_editor import direct_code_editor
 from app.services.component_relationship_tracker import ComponentRelationshipTracker
 from app.services.property_edit_queue_service import get_queue_service
@@ -1677,10 +1679,10 @@ async def edit_project_component(
         # Verify project ownership and fetch business context
         logger.info(f"[COMPONENT EDIT] Fetching project {project_id} from database")
         response = supabase.table("projects")\
-            .select("id, user_id, project_type, generation_status, business_analysis")\
+            .select("id, user_id, project_type, generation_status, business_analysis, preview_id")\
             .eq("id", project_id)\
             .execute()
-        
+
         if not response.data:
             logger.error(f"[COMPONENT EDIT] Project {project_id} not found in database")
             raise HTTPException(
@@ -1715,50 +1717,191 @@ async def edit_project_component(
                 detail="Project generation is not completed yet"
             )
         
-        # Identify component file
-        logger.info(f"[COMPONENT EDIT] Identifying component file for selected element")
+        # Resolve the selection set (multi-select sends selected_elements; single select falls back)
+        selected_elements = request.selected_elements or [request.selected_element]
+        scope = request.scope or "element"
+        logger.info(f"[COMPONENT EDIT] Editing {len(selected_elements)} selected element(s), scope={scope}")
 
-        # Option 1: Fetch all files
+        # Group selected elements by their component file
         files = await project_file_manager.get_project_files(project_id)
-        component_file = await component_editor_service.identify_component(request.selected_element, files)
+        targets_by_file: Dict[str, List[Dict[str, Any]]] = {}
+        for element in selected_elements:
+            component_file = await component_editor_service.identify_component(element, files)
+            if not component_file:
+                logger.error(f"[COMPONENT EDIT] Could not identify component file for element: {element.get('tagName', 'unknown')}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Could not identify component file for one of the selected elements"
+                )
+            targets_by_file.setdefault(component_file, []).append(element)
 
-        if not component_file:
-            logger.error(f"[COMPONENT EDIT] Could not identify component file for element: {request.selected_element.get('tagName', 'unknown')}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not identify component file for the selected element"
-            )
-        
-        logger.info(f"[COMPONENT EDIT] Identified component file: {component_file}")
+        logger.info(f"[COMPONENT EDIT] Target files: {list(targets_by_file.keys())}")
 
         # Extract business context for better AI editing
         business_analysis = project.get("business_analysis", {})
         logger.info(f"[COMPONENT EDIT] Business analysis available: {bool(business_analysis)}")
 
-        # Modify component code using AI
-        logger.info(f"[COMPONENT EDIT] Calling AI to modify component {component_file}")
-        success, old_code, new_code, error = await component_editor_service.modify_component_code(
-            file_path=component_file,
-            instruction=request.instruction,
-            element_context=request.selected_element,
-            project_id=project_id,
-            files=files,
-            business_context=business_analysis
-        )
-        logger.info(f"[COMPONENT EDIT] AI modification successful: {success}")
-        logger.info(f"[COMPONENT EDIT] Old code length: {len(old_code)} characters")
-        logger.info(f"[COMPONENT EDIT] New code length: {len(new_code)} characters")
-        logger.info(f"[COMPONENT EDIT] Error: {error}")
+        # LLM edit per target file, with scope-containment verification and one strict retry
+        old_codes: Dict[str, str] = {}
+        new_codes: Dict[str, str] = {}
+        for component_file, targets in targets_by_file.items():
+            primary_element = targets[0]
+            additional = targets[1:]
+            strict_note = None
+            contained = True
+            old_code, new_code = "", ""
 
+            for attempt in range(2):
+                logger.info(f"[COMPONENT EDIT] Calling AI to modify {component_file} (attempt {attempt + 1})")
+                success, old_code, new_code, error = await component_editor_service.modify_component_code(
+                    file_path=component_file,
+                    instruction=request.instruction,
+                    element_context=primary_element,
+                    project_id=project_id,
+                    files=files,
+                    business_context=business_analysis,
+                    additional_contexts=additional,
+                    scope=scope,
+                    strict_note=strict_note
+                )
 
-        if not success:
-            logger.error(f"[COMPONENT EDIT] AI modification failed: {error}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to modify component: {error}"
+                if not success:
+                    logger.error(f"[COMPONENT EDIT] AI modification failed: {error}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Failed to modify component: {error}"
+                    )
+
+                # Element scope must only change the selected element(s)
+                if scope != "element":
+                    break
+                contained, violation = component_editor_service.check_edit_containment(
+                    old_code, new_code, targets
+                )
+                if contained:
+                    break
+                strict_note = (
+                    f"You modified code outside the selected element(s) ({violation}). "
+                    "Output the original file with ONLY the selected element(s) changed; "
+                    "reproduce every other line exactly."
+                )
+
+            if scope == "element" and not contained:
+                logger.error(f"[COMPONENT EDIT] Containment violation persisted for {component_file}; nothing saved")
+                return ComponentEditResponse(
+                    success=False,
+                    message=(
+                        "The AI kept changing code outside your selection, so nothing was changed. "
+                        "Try rephrasing the instruction or widening the scope to the section."
+                    )
+                )
+
+            old_codes[component_file] = old_code
+            new_codes[component_file] = new_code
+
+        # Build-verify: the edit is only saved after the project compiles.
+        # On failure, feed build errors back to the LLM for up to 2 repair attempts.
+        candidate_files = {**files, **new_codes}
+        preview_result = None
+        build_output = ""
+        build_tester = BuildTester()
+        max_repair_attempts = 2
+
+        for attempt in range(max_repair_attempts + 1):
+            try:
+                preview_result = await asyncio.to_thread(
+                    vite_preview_service.create_preview, project_id, candidate_files
+                )
+                break
+            except Exception as build_exc:
+                build_output = str(build_exc)
+                logger.warning(f"[COMPONENT EDIT] Candidate build failed (attempt {attempt + 1}): {build_output[:500]}")
+                if attempt >= max_repair_attempts:
+                    break
+
+                parsed_errors = build_tester._parse_build_errors(build_output)
+                # Keep only errors that resolve to a real project file — the parser
+                # sometimes attributes vite output to bogus paths like "build"
+                parsed_errors = [
+                    e for e in parsed_errors
+                    if error_fixer._find_matching_file(e.file_path, candidate_files)
+                ]
+                if not parsed_errors:
+                    # Attribute errors from file paths mentioned in the build output,
+                    # falling back to the files this edit touched
+                    import re as _re
+                    mentioned = {
+                        m for m in _re.findall(r"src/[\w\-./]+\.(?:tsx|ts|jsx|js|css)", build_output)
+                        if m in candidate_files
+                    }
+                    target_files = mentioned or set(new_codes.keys())
+                    parsed_errors = [
+                        BuildError(file_path=f, line=None, column=None,
+                                   error_type="build", message=build_output[:1500])
+                        for f in target_files
+                    ]
+
+                fixed_files, _ = await asyncio.to_thread(
+                    error_fixer.fix_build_errors, candidate_files, parsed_errors, build_output
+                )
+                candidate_files = fixed_files
+                # Keep edited-file contents in sync with any repairs
+                for f in new_codes:
+                    new_codes[f] = candidate_files.get(f, new_codes[f])
+
+        if preview_result is None:
+            logger.error(f"[COMPONENT EDIT] Build failed after {max_repair_attempts} repair attempts; nothing saved")
+            return ComponentEditResponse(
+                success=False,
+                message=(
+                    "The AI's change didn't compile, so nothing was changed. "
+                    "Try rephrasing the instruction."
+                )
             )
 
-        logger.info(f"[COMPONENT EDIT] AI modification successful, code length: {len(new_code)} characters")
+        # Green build — persist every file that changed (edits + any build repairs)
+        files_to_save = {
+            path: content for path, content in candidate_files.items()
+            if files.get(path) != content
+        }
+        logger.info(f"[COMPONENT EDIT] Saving {len(files_to_save)} changed file(s) to database")
+        for file_path, file_content in files_to_save.items():
+            save_success, save_message = await component_editor_service.apply_component_edit(
+                project_id=project_id,
+                file_path=file_path,
+                new_code=file_content
+            )
+            if not save_success:
+                logger.error(f"[COMPONENT EDIT] Failed to save {file_path}: {save_message}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to save component: {save_message}"
+                )
+
+        # Swap the project's preview to the freshly verified build and clean up the old one
+        new_preview_id = preview_result.get("preview_id")
+        preview_url = preview_result.get("preview_url")
+        old_preview_id = project.get("preview_id")
+        try:
+            supabase.table("projects").update({"preview_id": new_preview_id}).eq("id", project_id).execute()
+        except Exception as e:
+            logger.warning(f"[COMPONENT EDIT] Failed to store new preview_id: {e}")
+        try:
+            supabase.table("projects").update(
+                {"last_edited_at": datetime.utcnow().isoformat()}
+            ).eq("id", project_id).execute()
+        except Exception as e:
+            logger.warning(f"[COMPONENT EDIT] Failed to stamp last_edited_at: {e}")
+        if old_preview_id and old_preview_id != new_preview_id:
+            try:
+                vite_preview_service.delete_preview(old_preview_id)
+            except Exception as e:
+                logger.warning(f"[COMPONENT EDIT] Failed to delete old preview {old_preview_id}: {e}")
+
+        # Primary file for descriptions/history (first target file)
+        component_file = next(iter(targets_by_file.keys()))
+        old_code = old_codes[component_file]
+        new_code = new_codes[component_file]
 
         # Generate edit description
         edit_description = await component_editor_service.generate_edit_description(
@@ -1767,23 +1910,6 @@ async def edit_project_component(
             file_path=component_file
         )
         logger.info(f"[COMPONENT EDIT] Generated description: {edit_description}")
-
-        # Save the updated component
-        logger.info(f"[COMPONENT EDIT] Saving updated component to database")
-        save_success, save_message = await component_editor_service.apply_component_edit(
-            project_id=project_id,
-            file_path=component_file,
-            new_code=new_code
-        )
-
-        if not save_success:
-            logger.error(f"[COMPONENT EDIT] Failed to save component: {save_message}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to save component: {save_message}"
-            )
-
-        logger.info(f"[COMPONENT EDIT] Component saved successfully: {save_message}")
 
         # Save to chat history
         logger.info(f"[COMPONENT EDIT] Saving to chat history")
@@ -1857,7 +1983,9 @@ async def edit_project_component(
             success=True,
             message=f"Component {component_file} updated successfully",
             updated_file=component_file,
-            preview_url=None,  # Frontend will handle preview refresh
+            updated_files=sorted(files_to_save.keys()),
+            preview_url=preview_url,
+            preview_id=new_preview_id,
             old_code=old_code,
             new_code=new_code,
             edit_description=edit_description,
@@ -2281,10 +2409,18 @@ async def _handle_property_edit(
         )
         
         logger.info(f"[PROPERTY EDIT] Property edit completed successfully")
-        
+
+        # Stamp last edit time for the unpublished-changes indicator
+        try:
+            supabase.table("projects").update(
+                {"last_edited_at": datetime.utcnow().isoformat()}
+            ).eq("id", project_id).execute()
+        except Exception as e:
+            logger.warning(f"[PROPERTY EDIT] Failed to stamp last_edited_at: {e}")
+
         # Prepare prop_edit_info if this was a prop edit
         # prop_edit_info_response is already set above if it was a prop edit
-        
+
         return PropertyEditResponse(
             success=True,
             message=f"Successfully updated {len(request.properties)} properties",
