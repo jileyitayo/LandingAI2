@@ -358,8 +358,7 @@ class VercelDeployer:
                         "outputDirectory": "dist",
                         "installCommand": "npm install"
                     },
-                    "target": "production",
-                    "public": True
+                    "target": "production"
                 }
             else:
                 payload = {
@@ -370,8 +369,7 @@ class VercelDeployer:
                         "buildCommand": None,
                         "outputDirectory": "."
                     },
-                    "target": "production",
-                    "public": True
+                    "target": "production"
                 }
             
             # Create deployment
