@@ -29,7 +29,12 @@ interface ChatPanelProps {
   projectId: string;
   selectedElement: SelectedElement | null;
   selectedElements?: SelectedElement[];
-  onSend: (instruction: string, scope: EditScope, attachments: Attachment[]) => Promise<ChatSendResult>;
+  onSend: (
+    instruction: string,
+    scope: EditScope,
+    attachments: Attachment[],
+    onProgress?: (stage: string, detail: string) => void
+  ) => Promise<ChatSendResult>;
   /** Revert an edit by chat message id; returns true on success. */
   onUndo?: (chatMessageId: string) => Promise<boolean>;
   onClearSelection: () => void;
@@ -51,6 +56,7 @@ export default function ChatPanel({
   isApplyingEdit,
 }: ChatPanelProps) {
   const [undoingId, setUndoingId] = useState<string | null>(null);
+  const [progressLabel, setProgressLabel] = useState<string>('Applying edit…');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [input, setInput] = useState('');
@@ -130,6 +136,7 @@ export default function ChatPanel({
     const scope: EditScope = selectedElement ? editScope : 'page';
     setInput('');
     setAttachments([]);
+    setProgressLabel('Applying edit…');
     setMessages((prev) => [
       ...prev,
       {
@@ -141,7 +148,15 @@ export default function ChatPanel({
       },
     ]);
 
-    const result = await onSend(instruction, scope, sentAttachments);
+    const stageLabels: Record<string, string> = {
+      analyzing: 'Understanding your request…',
+      editing: 'Rewriting the code…',
+      building: 'Building & verifying preview…',
+      done: 'Finishing up…',
+    };
+    const result = await onSend(instruction, scope, sentAttachments, (stage, detail) => {
+      setProgressLabel(detail || stageLabels[stage] || 'Applying edit…');
+    });
     setMessages((prev) => [
       ...prev,
       {
@@ -314,7 +329,7 @@ export default function ChatPanel({
           <div className="flex justify-start">
             <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-400 flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Applying edit…
+              {progressLabel}
             </div>
           </div>
         )}

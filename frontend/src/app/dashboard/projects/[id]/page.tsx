@@ -302,7 +302,8 @@ export default function ProjectEditorPage() {
   const handleChatSend = useCallback(async (
     instruction: string,
     scope: EditScope,
-    attachments: Attachment[]
+    attachments: Attachment[],
+    onProgress?: (stage: string, detail: string) => void
   ): Promise<ChatSendResult> => {
     setIsApplyingEdit(true);
     try {
@@ -311,7 +312,7 @@ export default function ProjectEditorPage() {
         : selectedElement
           ? [selectedElement]
           : undefined;
-      const response = await api.generation.editComponent(projectId, {
+      const payload = {
         instruction,
         selected_element: selectedElement ?? undefined,
         selected_elements: elements,
@@ -321,7 +322,24 @@ export default function ProjectEditorPage() {
           url: a.url,
           media_type: a.mediaType,
         })),
-      });
+      };
+
+      // Prefer the streaming endpoint for live stage progress; fall back to the
+      // standard endpoint if the stream errors before delivering a result.
+      let response;
+      try {
+        response = await api.generation.editComponentStream(
+          projectId,
+          payload,
+          (stage, detail) => onProgress?.(stage, detail)
+        );
+      } catch (streamErr: any) {
+        // A rate-limit / validation error is a real failure — surface it, don't retry
+        if (streamErr?.status === 429 || streamErr?.status === 400 || streamErr?.status === 403) {
+          throw streamErr;
+        }
+        response = await api.generation.editComponent(projectId, payload);
+      }
 
       if (!response.success) {
         return { success: false, message: response.message };

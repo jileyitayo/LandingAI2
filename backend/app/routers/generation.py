@@ -4,6 +4,7 @@ API endpoints for AI website content generation and rendering.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, List, Union, Tuple
 from datetime import datetime, timedelta
 import uuid
@@ -1681,24 +1682,25 @@ def _find_page_file(files: Dict[str, str]) -> Optional[str]:
     return None
 
 
-@router.post("/edit/project/{project_id}", response_model=ComponentEditResponse)
-async def edit_project_component(
+async def _run_edit_pipeline(
     project_id: str,
     request: ComponentEditRequest,
-    current_user: dict = Depends(get_current_user)
-):
+    user_id: str,
+    progress=None,
+) -> ComponentEditResponse:
     """
-    Edit a React component using visual selection and natural language instructions.
-    
-    This endpoint:
-    1. Identifies the component file from the selected element
-    2. Uses AI to modify the component based on the instruction
-    3. Saves the updated component to the project
-    4. Returns success status and preview URL for refresh
+    Core edit pipeline shared by the standard and streaming edit endpoints.
+
+    Identifies the target component, runs the AI edit (multimodal + structural
+    escalation), build-verifies, saves, and records history. `progress(stage,
+    detail)` — if provided — is called at stage boundaries so the streaming
+    endpoint can surface live status; it's a no-op for the standard endpoint.
+
+    Returns a ComponentEditResponse or raises HTTPException.
     """
-    user_id = current_user["id"]
+    progress = progress or (lambda *a, **k: None)
     supabase = get_supabase_client()
-    
+
     logger.info(f"[COMPONENT EDIT] Starting edit request for project {project_id} by user {user_id}")
     logger.info(f"[COMPONENT EDIT] Instruction: '{request.instruction}' (length: {len(request.instruction)})")
     if request.selected_element:
@@ -1875,6 +1877,7 @@ async def edit_project_component(
         # Analyze the request once up front: structural rewrites ("turn this into
         # a carousel") escalate element scope to section, drop containment, and
         # pull vetted patterns (+ their npm deps) from the component library.
+        progress("analyzing", "Understanding your request")
         edit_analysis = await component_editor_service.analyze_edit_request(
             effective_instruction, selected_elements[0], images=attachment_images or None
         )
@@ -1904,6 +1907,7 @@ async def edit_project_component(
             contained = True
             old_code, new_code = "", ""
 
+            progress("editing", f"Rewriting {component_file.split('/')[-1]}")
             for attempt in range(2):
                 logger.info(f"[COMPONENT EDIT] Calling AI to modify {component_file} (attempt {attempt + 1})")
                 success, old_code, new_code, error = await component_editor_service.modify_component_code(
@@ -1969,6 +1973,7 @@ async def edit_project_component(
 
         # Build-verify: the edit is only saved after the project compiles.
         # On failure, feed build errors back to the LLM for up to 2 repair attempts.
+        progress("building", "Building and verifying the preview")
         candidate_files = {**files, **new_codes}
         preview_result = None
         build_output = ""
@@ -2157,6 +2162,7 @@ async def edit_project_component(
 
         logger.info(f"[COMPONENT EDIT] ✓ Component {component_file} edited successfully for project {project_id}")
 
+        progress("done", "Edit applied")
         return ComponentEditResponse(
             success=True,
             message=f"Component {component_file} updated successfully",
@@ -2169,7 +2175,7 @@ async def edit_project_component(
             edit_description=edit_description,
             chat_message_id=chat_message_id
         )
-        
+
     except HTTPException as e:
         logger.error(f"[COMPONENT EDIT] HTTPException: {e.status_code} - {e.detail}")
         raise
@@ -2179,6 +2185,75 @@ async def edit_project_component(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to edit component"
         )
+
+
+@router.post("/edit/project/{project_id}", response_model=ComponentEditResponse)
+async def edit_project_component(
+    project_id: str,
+    request: ComponentEditRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Edit a React component using visual selection and natural language instructions.
+    Standard (non-streaming) endpoint — runs the shared edit pipeline and returns
+    the final result.
+    """
+    return await _run_edit_pipeline(project_id, request, current_user["id"])
+
+
+@router.post("/edit/project/{project_id}/stream")
+async def edit_project_component_stream(
+    project_id: str,
+    request: ComponentEditRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Streaming variant: runs the same edit pipeline but emits Server-Sent Events
+    for each stage (analyzing → editing → building → done|error) so the chat can
+    show live progress. The terminal event carries the full ComponentEditResponse
+    (on success) or an error message. The frontend falls back to the standard
+    endpoint if the stream fails.
+    """
+    user_id = current_user["id"]
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def progress(stage: str, detail: str = ""):
+        # Called from the pipeline's async context; thread-safe enough for our use
+        queue.put_nowait({"type": "progress", "stage": stage, "detail": detail})
+
+    async def run():
+        try:
+            result = await _run_edit_pipeline(project_id, request, user_id, progress=progress)
+            queue.put_nowait({"type": "result", "data": result.model_dump()})
+        except HTTPException as e:
+            queue.put_nowait({"type": "error", "detail": str(e.detail), "status": e.status_code})
+        except Exception as e:
+            logger.error(f"[COMPONENT EDIT STREAM] Unexpected error: {e}", exc_info=True)
+            queue.put_nowait({"type": "error", "detail": "Failed to edit component"})
+        finally:
+            queue.put_nowait(None)  # sentinel: stream complete
+
+    async def event_generator():
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            if not task.done():
+                await task
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # disable nginx proxy buffering for SSE
+        },
+    )
 
 
 async def _handle_property_edit(

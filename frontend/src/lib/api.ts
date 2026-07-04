@@ -714,6 +714,82 @@ export const api = {
       }),
 
     /**
+     * Streaming edit: same as editComponent but yields live stage events
+     * (analyzing → editing → building → done|error) via SSE. Calls onProgress
+     * for each stage and resolves with the final result. Throws on stream error
+     * so callers can fall back to the non-streaming editComponent.
+     */
+    editComponentStream: async (
+      projectId: string,
+      data: {
+        selected_element?: Record<string, any>;
+        selected_elements?: Record<string, any>[];
+        scope?: 'element' | 'section' | 'page';
+        instruction: string;
+        attachments?: Array<{ media_id: string; url: string; media_type?: string }>;
+      },
+      onProgress: (stage: string, detail: string) => void
+    ): Promise<{
+      success: boolean;
+      message: string;
+      updated_file?: string;
+      updated_files?: string[];
+      preview_url?: string;
+      preview_id?: string;
+      old_code?: string;
+      new_code?: string;
+      edit_description?: string;
+      chat_message_id?: string;
+    }> => {
+      const token = await getAccessToken();
+      const response = await fetch(`${API_BASE_URL}/api/v1/edit/project/${projectId}/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok || !response.body) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new ApiError(response.status, errorData.detail || response.statusText, errorData);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let result: any = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE frames are separated by a blank line
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) {
+          const line = frame.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          const event = JSON.parse(line.slice(6));
+          if (event.type === "progress") {
+            onProgress(event.stage, event.detail);
+          } else if (event.type === "result") {
+            result = event.data;
+          } else if (event.type === "error") {
+            throw new ApiError(event.status || 500, event.detail || "Edit failed", event);
+          }
+        }
+      }
+
+      if (!result) {
+        throw new ApiError(500, "Edit stream ended without a result");
+      }
+      return result;
+    },
+
+    /**
      * Edit React component properties directly (click-to-edit system)
      */
     editProperties: (projectId: string, data: {
