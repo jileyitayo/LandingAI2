@@ -5,6 +5,7 @@ Edit history listing and one-click revert (undo) for AI edits.
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +17,7 @@ from app.utils.supabase_client import get_supabase_client
 from app.services.project_file_manager import project_file_manager
 from app.services.vite_preview_service import vite_preview_service
 from app.services.component_editor_service import component_editor_service
+from app.services import page_structure_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["history"])
@@ -219,6 +221,154 @@ async def revert_edit(
         success=True,
         message=f"Reverted {len(reverted_files)} file(s)",
         reverted_files=reverted_files,
+        preview_url=preview_result.get("preview_url"),
+        preview_id=preview_result.get("preview_id"),
+    )
+
+
+# ============================================================================
+# Page section reordering (deterministic, no LLM)
+# ============================================================================
+
+class PageSection(BaseModel):
+    id: int
+    name: str
+    is_component: bool
+
+
+class PageStructure(BaseModel):
+    page_file: str
+    page_name: str
+    sections: List[PageSection]
+
+
+class PageStructureResponse(BaseModel):
+    pages: List[PageStructure]
+
+
+class ReorderRequest(BaseModel):
+    page_file: str
+    order: List[int]  # new sequence of section block ids
+
+
+class ReorderResponse(BaseModel):
+    success: bool
+    message: str
+    preview_url: Optional[str] = None
+    preview_id: Optional[str] = None
+
+
+def _page_display_name(page_file: str) -> str:
+    base = page_file.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return base[:1].upper() + base[1:]
+
+
+@router.get("/projects/{project_id}/page-structure", response_model=PageStructureResponse)
+async def get_page_structure(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """List each page's reorderable sections (top-level components inside <main>)."""
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    _get_owned_project(supabase, project_id, user_id)
+
+    files = await project_file_manager.get_project_files(project_id)
+    pages = []
+    for path in sorted(files):
+        if not (path.startswith("src/pages/") and path.endswith(".tsx")):
+            continue
+        sections = page_structure_service.parse_sections(files[path])
+        if sections and len(sections) >= 2:
+            pages.append(PageStructure(
+                page_file=path,
+                page_name=_page_display_name(path),
+                sections=[
+                    PageSection(id=s.id, name=s.name, is_component=s.is_component)
+                    for s in sections
+                ],
+            ))
+    return PageStructureResponse(pages=pages)
+
+
+@router.post("/projects/{project_id}/pages/reorder", response_model=ReorderResponse)
+async def reorder_page_sections(
+    project_id: str,
+    request: ReorderRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Reorder a page's sections deterministically (no LLM). Snapshots to edit
+    history (undoable), rebuilds the preview, and swaps it in.
+    """
+    user_id = current_user["id"]
+    supabase = get_supabase_client()
+    project = _get_owned_project(supabase, project_id, user_id)
+
+    files = await project_file_manager.get_project_files(project_id)
+    if request.page_file not in files:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Page not found")
+
+    old_code = files[request.page_file]
+    current_blocks = page_structure_service.parse_sections(old_code) or []
+    logger.info(
+        f"[REORDER] {request.page_file}: current ids={[b.id for b in current_blocks]} "
+        f"({[b.name for b in current_blocks]}), requested order={request.order}"
+    )
+    new_code, error = page_structure_service.reorder_sections(old_code, request.order)
+    if new_code is None:
+        logger.warning(f"[REORDER] rejected: {error}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+    if new_code == old_code:
+        return ReorderResponse(success=True, message="No change")
+
+    # Build-verify before saving (same order as the edit endpoint)
+    candidate_files = {**files, request.page_file: new_code}
+    try:
+        preview_result = await rebuild_and_swap_preview(supabase, project_id, project, candidate_files)
+    except Exception as e:
+        logger.error(f"[REORDER] Build failed for project {project_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The reordered page failed to build; nothing was changed."
+        )
+
+    save_success, save_message = await component_editor_service.apply_component_edit(
+        project_id=project_id, file_path=request.page_file, new_code=new_code
+    )
+    if not save_success:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=save_message)
+
+    # Record as an undoable edit
+    chat_message_id = str(uuid.uuid4())
+    description = f"Reordered sections on {_page_display_name(request.page_file)}"
+    try:
+        order_str = ", ".join(str(i) for i in request.order)
+        supabase.table("project_chat_messages").insert({
+            "id": chat_message_id,
+            "project_id": project_id,
+            "user_id": user_id,
+            "message_type": "edit",
+            "user_prompt": f"Reorder sections: [{order_str}]",
+            "ai_response": description,
+            "metadata": {"file_path": request.page_file, "reorder": True},
+        }).execute()
+        supabase.table("project_edit_history").insert({
+            "project_id": project_id,
+            "chat_message_id": chat_message_id,
+            "file_path": request.page_file,
+            "old_code": old_code,
+            "new_code": new_code,
+            "diff_summary": description,
+            "edit_description": description,
+            "ai_instruction": f"Reorder: [{order_str}]",
+        }).execute()
+    except Exception as e:
+        logger.warning(f"[REORDER] Failed to record history: {e}")
+
+    return ReorderResponse(
+        success=True,
+        message=description,
         preview_url=preview_result.get("preview_url"),
         preview_id=preview_result.get("preview_id"),
     )

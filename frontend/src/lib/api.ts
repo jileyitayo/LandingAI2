@@ -861,6 +861,32 @@ export const api = {
       }>(`/api/v1/projects/${projectId}/edit-history`),
 
     /**
+     * Get each page's reorderable sections
+     */
+    getPageStructure: (projectId: string) =>
+      apiRequest<{
+        pages: Array<{
+          page_file: string;
+          page_name: string;
+          sections: Array<{ id: number; name: string; is_component: boolean }>;
+        }>;
+      }>(`/api/v1/projects/${projectId}/page-structure`),
+
+    /**
+     * Reorder a page's sections (deterministic, undoable)
+     */
+    reorderSections: (projectId: string, pageFile: string, order: number[]) =>
+      apiRequest<{
+        success: boolean;
+        message: string;
+        preview_url?: string;
+        preview_id?: string;
+      }>(`/api/v1/projects/${projectId}/pages/reorder`, {
+        method: "POST",
+        body: JSON.stringify({ page_file: pageFile, order }),
+      }),
+
+    /**
      * Revert (undo) an AI edit — restores every file it touched to pre-edit code
      */
     revertEdit: (projectId: string, chatMessageId: string) =>

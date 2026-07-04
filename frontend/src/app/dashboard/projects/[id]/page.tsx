@@ -1317,6 +1317,11 @@ export default function ProjectEditorPage() {
               onPropertyChange={handlePropertyChange}
               onChatSend={handleChatSend}
               onRevert={handleRevert}
+              onPreviewUrlChange={(url) => {
+                setPreviewUrl(url);
+                loadReactFiles();
+                setEditVersion(v => v + 1);
+              }}
               isApplyingEdit={isApplyingEdit}
               isAutoSaving={isAutoSaving}
               projectFiles={reactFiles}

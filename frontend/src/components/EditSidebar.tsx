@@ -11,8 +11,9 @@ import ImageEditor from './property-editors/ImageEditor';
 import LinkEditor from './property-editors/LinkEditor';
 import ChatPanel, { ChatSendResult } from './ChatPanel';
 import EditHistoryPanel from './EditHistoryPanel';
+import PageStructurePanel from './PageStructurePanel';
 import type { Attachment } from './AttachmentButton';
-import { MessageSquare, History } from 'lucide-react';
+import { MessageSquare, History, Layers } from 'lucide-react';
 
 export type EditScope = 'element' | 'section' | 'page';
 
@@ -23,9 +24,16 @@ interface EditSidebarProps {
   onClearSelection: () => void;
   onDeselectElement?: (selectorKey: string) => void;
   onPropertyChange: (property: PropertyType, value: string | number | boolean) => void;
-  onChatSend: (instruction: string, scope: EditScope, attachments: Attachment[]) => Promise<ChatSendResult>;
+  onChatSend: (
+    instruction: string,
+    scope: EditScope,
+    attachments: Attachment[],
+    onProgress?: (stage: string, detail: string) => void
+  ) => Promise<ChatSendResult>;
   // Revert an AI edit by chat message id; returns true on success
   onRevert?: (chatMessageId: string) => Promise<boolean>;
+  // Apply a section reorder result (swap the preview iframe)
+  onPreviewUrlChange?: (previewUrl: string) => void;
   isApplyingEdit?: boolean;
   isAutoSaving: boolean;
   // Optional: Project files for route suggestions in LinkEditor
@@ -45,6 +53,7 @@ export default function EditSidebar({
   onPropertyChange,
   onChatSend,
   onRevert,
+  onPreviewUrlChange,
   isApplyingEdit = false,
   isAutoSaving,
   projectFiles,
@@ -58,7 +67,7 @@ export default function EditSidebar({
   // Quick edits stay tucked away; the chat is the primary editing surface
   const [quickEditsOpen, setQuickEditsOpen] = useState(false);
   const [pageInfoOpen, setPageInfoOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'history'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'layout' | 'history'>('chat');
 
   // Collapse quick edits whenever the selection changes
   useEffect(() => {
@@ -557,6 +566,15 @@ export default function EditSidebar({
             Chat
           </button>
           <button
+            onClick={() => setActiveTab('layout')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
+              activeTab === 'layout' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Layout
+          </button>
+          <button
             onClick={() => setActiveTab('history')}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
               activeTab === 'history' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
@@ -596,12 +614,21 @@ export default function EditSidebar({
         </div>
       </div>
 
-      {/* Sidebar Content: element quick-edits (when selected) + persistent chat/history */}
+      {/* Sidebar Content: element quick-edits (when selected) + persistent chat/history/layout */}
       {activeTab === 'history' ? (
         <EditHistoryPanel
           projectId={projectId}
           onRevert={onRevert ?? (async () => false)}
         />
+      ) : activeTab === 'layout' ? (
+        <div className="flex-1 overflow-y-auto">
+          <PageStructurePanel
+            projectId={projectId}
+            onReordered={(previewUrl) => {
+              if (previewUrl && onPreviewUrlChange) onPreviewUrlChange(previewUrl);
+            }}
+          />
+        </div>
       ) : (
         <>
           {selectedElement ? (
