@@ -1,7 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef, memo, forwardRef, useImperativeHandle } from 'react';
-import { RefreshCw, ExternalLink, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { RefreshCw, ExternalLink, AlertCircle, Eye, EyeOff, Smartphone, Tablet, Monitor } from 'lucide-react';
+
+type DeviceMode = 'mobile' | 'tablet' | 'desktop';
+
+const DEVICE_WIDTHS: Record<DeviceMode, number | null> = {
+  mobile: 390,
+  tablet: 768,
+  desktop: null,
+};
 
 interface SelectedElement {
     tagName: string;
@@ -71,6 +79,7 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
 }: ReactPreviewProps, ref) {
   const [selectorReady, setSelectorReady] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [deviceMode, setDeviceMode] = useState<DeviceMode>('desktop');
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   // Last known selection, used to restore highlights after a preview rebuild
@@ -345,6 +354,26 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* Device preview toggle */}
+            <div className="flex items-center gap-0.5 bg-gray-900 rounded p-0.5 mr-1">
+              {(['mobile', 'tablet', 'desktop'] as DeviceMode[]).map((mode) => {
+                const Icon = mode === 'mobile' ? Smartphone : mode === 'tablet' ? Tablet : Monitor;
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => setDeviceMode(mode)}
+                    className={`flex items-center justify-center p-1.5 rounded transition-colors ${
+                      deviceMode === mode
+                        ? 'bg-blue-500 text-white'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                    }`}
+                    title={`${mode.charAt(0).toUpperCase() + mode.slice(1)} preview`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                  </button>
+                );
+              })}
+            </div>
             <button
               onClick={onRebuild}
               className="flex items-center gap-1 px-3 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
@@ -367,22 +396,29 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
         </div>
 
         {/* Preview Iframe */}
-        <div 
+        <div
           ref={previewContainerRef}
-          className={`flex-1 bg-white relative transition-all ${
+          className={`flex-1 bg-gray-800 relative transition-all overflow-auto ${
             selectorEnabled ? 'ring-2 ring-blue-500 ring-inset' : ''
           }`}
         >
-          <iframe
-            ref={iframeRef}
-            src={previewUrl}
-            onLoad={handleIframeLoad}
-            className={`w-full h-full border-0 ${
-              selectorEnabled ? 'cursor-crosshair' : ''
+          <div
+            className={`h-full mx-auto bg-white transition-[width] duration-200 ${
+              deviceMode !== 'desktop' ? 'shadow-2xl border-x border-gray-700' : ''
             }`}
-            title="React Preview"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-          />
+            style={{ width: DEVICE_WIDTHS[deviceMode] ? `${DEVICE_WIDTHS[deviceMode]}px` : '100%' }}
+          >
+            <iframe
+              ref={iframeRef}
+              src={previewUrl}
+              onLoad={handleIframeLoad}
+              className={`w-full h-full border-0 ${
+                selectorEnabled ? 'cursor-crosshair' : ''
+              }`}
+              title="React Preview"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+            />
+          </div>
           {/* Selector Active Indicator */}
           {selectorEnabled && (
             <div className="absolute top-2 left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded shadow-lg flex items-center gap-1 pointer-events-none">

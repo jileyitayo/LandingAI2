@@ -1808,10 +1808,42 @@ async def edit_project_component(
         business_analysis = project.get("business_analysis", {})
         logger.info(f"[COMPONENT EDIT] Business analysis available: {bool(business_analysis)}")
 
+        # Conversational context: feed the last few edits so follow-ups resolve
+        # ("make it darker" after "make the heading blue" should target the same
+        # element/color without re-selection). Kept as a SEPARATE prompt block
+        # (not merged into the instruction text) — mixing it into the quoted
+        # "USER INSTRUCTION" let history bleed into targeting and caused edits
+        # to land on a previously-touched element instead of the new selection.
+        effective_instruction = request.instruction
+        conversation_context = None
+        try:
+            recent_messages = (
+                supabase.table("project_chat_messages")
+                .select("user_prompt, ai_response")
+                .eq("project_id", project_id)
+                .eq("message_type", "edit")
+                .order("created_at", desc=True)
+                .limit(6)
+                .execute()
+            )
+            history_rows = list(reversed(recent_messages.data or []))
+            if history_rows:
+                transcript_lines = []
+                budget = 1500  # rough character budget, not exact tokens
+                for row in history_rows:
+                    line = f'User: {row["user_prompt"][:200]}\nApplied: {row["ai_response"][:200]}'
+                    if budget - len(line) < 0:
+                        break
+                    transcript_lines.append(line)
+                    budget -= len(line)
+                if transcript_lines:
+                    conversation_context = "\n---\n".join(transcript_lines)
+        except Exception as e:
+            logger.warning(f"[COMPONENT EDIT] Failed to load conversational context: {e}")
+
         # Make uploaded attachment URLs available to the LLM: when the user says
         # "use the attached image", the model must embed these exact public URLs.
         # The images themselves are also sent as multimodal input (base64 data URLs).
-        effective_instruction = request.instruction
         attachment_images: List[str] = []
         if request.attachments:
             media_ids = [a["media_id"] for a in request.attachments if a.get("media_id")]
@@ -1832,7 +1864,7 @@ async def edit_project_component(
             if attachment_urls:
                 url_lines = "\n".join(f"  {i+1}. {u}" for i, u in enumerate(attachment_urls))
                 effective_instruction = (
-                    f"{request.instruction}\n\n"
+                    f"{effective_instruction}\n\n"
                     f"[The user attached {len(attachment_urls)} uploaded image(s), publicly hosted at:\n"
                     f"{url_lines}\n"
                     f"Follow the ATTACHED IMAGES guidance for whether to embed these URLs or "
@@ -1886,7 +1918,8 @@ async def edit_project_component(
                     strict_note=strict_note,
                     images=attachment_images or None,
                     analysis=edit_analysis,
-                    library_note=library_note
+                    library_note=library_note,
+                    conversation_context=conversation_context
                 )
 
                 if not success:

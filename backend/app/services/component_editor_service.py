@@ -312,6 +312,16 @@ class ComponentEditorService:
                         logger.info(f"[COMPONENT EDITOR] ✓ Found component from legacy data-component: {path}")
                         return path
             
+            # PRIORITY 2.5: Content fingerprint search — locate the file that
+            # actually contains this element. Far more reliable than the heuristic
+            # below when data attributes are missing (e.g. after a structural
+            # rewrite that dropped them). Matches on the image src, then exact
+            # text, then a distinctive class combination.
+            fingerprint_file = self._find_file_by_content(selected_element, components)
+            if fingerprint_file:
+                logger.info(f"[COMPONENT EDITOR] ✓ Found component by content fingerprint: {fingerprint_file}")
+                return fingerprint_file
+
             # PRIORITY 3: Simplified heuristic fallback (last resort)
             logger.warning("[COMPONENT EDITOR] ⚠ No data attributes found, using heuristic detection (unreliable)")
 
@@ -363,7 +373,65 @@ class ComponentEditorService:
             logger.error(f"[COMPONENT EDITOR] Error identifying component: {str(e)}")
             # On error, default to Home page as safe fallback
             return "src/pages/Home.tsx"
-    
+
+    def _find_file_by_content(self, selected_element: Dict[str, Any], components: Dict[str, str]) -> Optional[str]:
+        """
+        Locate the source file that renders the selected element by matching a
+        distinctive fingerprint of the element against file contents. Used when
+        component data attributes are missing so the blind heuristic (which
+        always guesses the hero) is avoided.
+
+        Match priority: image src → exact text content → distinctive class combo.
+        Only returns a match when it is unambiguous (exactly one file contains it).
+        """
+        tsx_files = {p: c for p, c in components.items()
+                     if p.endswith(('.tsx', '.jsx')) and p.startswith('src/')}
+
+        def unique_match(needle: str, min_len: int = 8) -> Optional[str]:
+            if not needle or len(needle) < min_len:
+                return None
+            hits = [p for p, c in tsx_files.items() if needle in c]
+            return hits[0] if len(hits) == 1 else None
+
+        attributes = selected_element.get('attributes', {}) or {}
+
+        # 1. Image src — near-unique fingerprint. Try the full URL, then the
+        #    Unsplash photo id, which survives query-string differences.
+        src = attributes.get('src', '')
+        if src:
+            match = unique_match(src, min_len=12)
+            if match:
+                return match
+            photo_match = re.search(r'(photo-[\w-]+)', src)
+            if photo_match:
+                match = unique_match(photo_match.group(1), min_len=12)
+                if match:
+                    return match
+
+        # 2. Exact (trimmed) text content
+        text = (selected_element.get('textContent') or '').strip()
+        if text:
+            match = unique_match(text, min_len=8)
+            if match:
+                return match
+
+        # 3. href for links
+        href = attributes.get('href', '')
+        if href and href not in ('#', '/'):
+            match = unique_match(href, min_len=6)
+            if match:
+                return match
+
+        # 4. Distinctive class combination (last resort within content search)
+        class_list = selected_element.get('classList', []) or []
+        if len(class_list) >= 3:
+            combo = ' '.join(class_list[:6])
+            match = unique_match(combo, min_len=12)
+            if match:
+                return match
+
+        return None
+
     async def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any], images: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Advanced AI-powered analysis of edit requests to determine what type of changes are needed.
@@ -807,7 +875,8 @@ Respond with ONLY the JSON object for the given instruction:"""
         strict_note: Optional[str] = None,
         images: Optional[List[str]] = None,
         analysis: Optional[Dict[str, Any]] = None,
-        library_note: Optional[str] = None
+        library_note: Optional[str] = None,
+        conversation_context: Optional[str] = None
     ) -> Tuple[bool, str, str, Optional[str]]:
         """
         Use AI to modify component code based on user instruction.
@@ -845,7 +914,7 @@ Respond with ONLY the JSON object for the given instruction:"""
             prompt = self._build_edit_prompt(
                 current_code, instruction, element_context, analysis, business_context,
                 additional_contexts=additional_contexts, scope=scope, strict_note=strict_note,
-                library_note=library_note
+                library_note=library_note, conversation_context=conversation_context
             )
             logger.info(f"[COMPONENT EDITOR] Enhanced prompt built with analysis and business context")
 
@@ -1045,7 +1114,8 @@ Respond with ONLY the JSON object for the given instruction:"""
         additional_contexts: Optional[List[Dict[str, Any]]] = None,
         scope: str = "element",
         strict_note: Optional[str] = None,
-        library_note: Optional[str] = None
+        library_note: Optional[str] = None,
+        conversation_context: Optional[str] = None
     ) -> str:
         """Build the AI prompt for component editing using enhanced analysis and business context"""
 
@@ -1260,6 +1330,16 @@ layout, typography and mood in your changes, but the image URLs listed in the in
 must NOT appear anywhere in the code — not in src, not in background-image, nowhere.
 If imagery is needed, keep the existing images or use appropriate Unsplash URLs."""
 
+        conversation_block = ""
+        if conversation_context:
+            conversation_block = f"""
+PAST EDIT HISTORY (background only — this is NOT part of the current instruction):
+{conversation_context}
+⚠️ The history above is unrelated to this edit unless the USER INSTRUCTION explicitly
+references it (e.g. "like before", "the same as last time", "make it darker" meaning the
+element you JUST changed). Always target ONLY the element described in TARGET INFORMATION
+below — never redirect this edit to something mentioned only in the history."""
+
         prompt = f"""You are a React component editor. Modify the following code based on the user's instruction.
 
 {context_note}
@@ -1282,6 +1362,7 @@ TARGET INFORMATION:
 - Multi-element: {'YES - ' + str(len(text_parts)) + ' parts' if is_multi_element else 'NO'}
 {additional_targets_note}{scope_enforcement}{strict_retry_note}{image_note}
 {library_block}
+{conversation_block}
 
 ANALYSIS (Confidence: {confidence:.0%}):
 - Edit Categories: {', '.join(edit_categories)}

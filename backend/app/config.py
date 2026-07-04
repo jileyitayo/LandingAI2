@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # Model used for component editing and build-error fixing
     # (gemini-3.5-flash-lite does not exist; 3.5-flash is the closest upgrade from 3.1-flash-lite)
-    edit_model: str = "gemini-3.5-flash"
+    edit_model: str = "gemini-3.1-flash-lite"
 
     # Stripe (optional for initial setup)
     stripe_secret_key: str = ""
