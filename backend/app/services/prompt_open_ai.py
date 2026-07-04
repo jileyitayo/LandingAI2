@@ -49,19 +49,34 @@ class PromptOpenAI:
     def set_url(self, url: str):
         self.url = url
 
-    def call_openai_api(self, system_prompt: str, user_prompt: str, temperature: float = 0.7, model: str = "gpt-4o-mini") -> str:
-        """Call OpenAI API with retry logic and return raw string content."""
+    @staticmethod
+    def _build_user_content(user_prompt: str, images: list = None):
+        """Build the user message content: plain string, or multimodal parts
+        when images (base64 data URLs) are attached."""
+        if not images:
+            return user_prompt
+        return (
+            [{"type": "text", "text": user_prompt}]
+            + [{"type": "image_url", "image_url": {"url": data_url}} for data_url in images]
+        )
+
+    def call_openai_api(self, system_prompt: str, user_prompt: str, temperature: float = 0.7, model: str = "gpt-4o-mini", images: list = None) -> str:
+        """Call OpenAI API with retry logic and return raw string content.
+
+        images: optional list of base64 data URLs sent as multimodal input.
+        """
+        user_content = self._build_user_content(user_prompt, images)
         for attempt in range(self.max_retries):
             try:
-                logger.info(f"Sending request to OpenAI (attempt {attempt + 1}/{self.max_retries})")
+                logger.info(f"Sending request to OpenAI (attempt {attempt + 1}/{self.max_retries})" + (f" with {len(images)} image(s)" if images else ""))
                 if system_prompt is None or system_prompt == "":
                     message = [
-                        {"role": "user", "content": user_prompt}
+                        {"role": "user", "content": user_content}
                     ]
                 else:
                     message = [
                         {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
+                        {"role": "user", "content": user_content}
                     ]
                 if model == "gpt-5-mini" or model == "gpt-5":
                     response = self.client.chat.completions.create(
@@ -95,8 +110,11 @@ class PromptOpenAI:
                 logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
                 raise
 
-    def call_openai_api_structured(self, system_prompt: str, user_prompt: str, response_format: dict, model: str = "gpt-4o-mini", raw=False) -> tuple:
-        """Call OpenAI API with retry logic - returns (parsed_response, usage_info)"""
+    def call_openai_api_structured(self, system_prompt: str, user_prompt: str, response_format: dict, model: str = "gpt-4o-mini", raw=False, images: list = None) -> tuple:
+        """Call OpenAI API with retry logic - returns (parsed_response, usage_info)
+
+        images: optional list of base64 data URLs sent as multimodal input.
+        """
         json_format = response_format if not raw else {
             "type": "json_schema",
             "json_schema": {
@@ -105,6 +123,7 @@ class PromptOpenAI:
             }
         }
         model = model if model != "gpt-4o-mini" else self.model
+        user_content = self._build_user_content(user_prompt, images)
         for attempt in range(self.max_retries):
             try:
                 if model == "gpt-5-mini" or model == "gpt-5":
@@ -112,7 +131,7 @@ class PromptOpenAI:
                         model=model,
                         messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
+                            {"role": "user", "content": user_content}
                         ],
                         max_completion_tokens=self.max_completion_tokens,
                         response_format=json_format
@@ -122,7 +141,7 @@ class PromptOpenAI:
                         model=model,
                         messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
+                            {"role": "user", "content": user_content}
                         ],
                         max_completion_tokens=self.max_completion_tokens,
                         response_format=json_format
@@ -132,7 +151,7 @@ class PromptOpenAI:
                         model=model,
                         messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
+                            {"role": "user", "content": user_content}
                         ],
                         temperature=0.3,
                         max_tokens=self.max_completion_tokens,

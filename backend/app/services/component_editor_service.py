@@ -364,7 +364,7 @@ class ComponentEditorService:
             # On error, default to Home page as safe fallback
             return "src/pages/Home.tsx"
     
-    async def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any], images: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Advanced AI-powered analysis of edit requests to determine what type of changes are needed.
 
@@ -418,20 +418,23 @@ class ComponentEditorService:
             "component": component_name
         }
 
-        if settings.cost_savings_mode:
+        # Attachments force the AI analysis even in cost-savings mode: only the
+        # multimodal model can decide asset-to-embed vs style-reference.
+        if settings.cost_savings_mode and not images:
             logger.info(f"[COMPONENT EDITOR] Cost savings mode enabled, using fallback analysis")
             return self._fallback_analysis(instruction, instruction_lower,
                                        target_element, component_name, element_tag,
                                        element_text, element_classes, is_multi_element, text_parts)
-        
+
         # Call AI for advanced analysis
-        analysis_prompt = self._build_analysis_prompt(instruction, element_context)
-        
+        analysis_prompt = self._build_analysis_prompt(instruction, element_context, has_images=bool(images))
+
         try:
             response, usage = self.prompt_service.call_openai_api(
                 system_prompt="You are an expert at analyzing UI edit requests. Provide precise JSON responses.",
                 user_prompt=analysis_prompt,
-                model=settings.edit_model
+                model=settings.edit_model,
+                images=images
             )
 
             logger.info(f"[COMPONENT EDITOR] AI analysis usage: {usage}")
@@ -464,7 +467,8 @@ class ComponentEditorService:
                     "requires_new_elements": ai_analysis.get("requires_new_elements", False),
                     "affects_layout": ai_analysis.get("affects_layout", False),
                     "is_multi_element": is_multi_element,
-                    "text_parts": text_parts
+                    "text_parts": text_parts,
+                    "image_intent": ai_analysis.get("image_intent", self._heuristic_image_intent(instruction_lower) if images else None)
                 }
 
         except Exception as e:
@@ -475,9 +479,30 @@ class ComponentEditorService:
                                        target_element, component_name, element_tag,
                                        element_text, element_classes, is_multi_element, text_parts)
 
-    def _build_analysis_prompt(self, instruction: str, element_context: Dict[str, Any]) -> str:
+    @staticmethod
+    def _heuristic_image_intent(instruction_lower: str) -> str:
+        """Heuristic asset-vs-reference intent when the AI analysis is unavailable."""
+        reference_markers = ("like this", "look like", "match", "style of", "similar to", "inspired", "mimic", "copy the design", "reference")
+        if any(m in instruction_lower for m in reference_markers):
+            return "style_reference"
+        return "embed_asset"
+
+    def _build_analysis_prompt(self, instruction: str, element_context: Dict[str, Any], has_images: bool = False) -> str:
         """Build prompt for AI-powered edit analysis"""
-        return f"""Analyze this UI edit request and return a JSON response.
+        image_intent_field = ""
+        image_intent_guidance = ""
+        if has_images:
+            image_intent_field = '\n  "image_intent": "embed_asset" | "style_reference",  // See IMAGE INTENT below'
+            image_intent_guidance = """
+
+IMAGE INTENT: The user attached image(s) to this edit request (shown above).
+Decide their purpose from the instruction and the image content:
+- "embed_asset": the image itself should appear in the site (a logo, product photo,
+  "use this as the hero image", "update this image with the attached one").
+- "style_reference": the image shows a design/style to imitate but must NOT be embedded
+  ("make it look like this", "match this style", a screenshot of another site).
+"""
+        return f"""Analyze this UI edit request and return a JSON response.{image_intent_guidance}
 
 INSTRUCTION: "{instruction}"
 
@@ -515,7 +540,7 @@ Analyze what changes are needed and respond with ONLY a valid JSON object (no ma
   }},
   "scope": "element" | "component" | "multiple",  // How many things affected
   "requires_new_elements": true | false,
-  "affects_layout": true | false
+  "affects_layout": true | false{image_intent_field}
 }}
 
 EXAMPLES:
@@ -775,7 +800,8 @@ Respond with ONLY the JSON object for the given instruction:"""
         business_context: Optional[Dict[str, Any]] = None,
         additional_contexts: Optional[List[Dict[str, Any]]] = None,
         scope: str = "element",
-        strict_note: Optional[str] = None
+        strict_note: Optional[str] = None,
+        images: Optional[List[str]] = None
     ) -> Tuple[bool, str, str, Optional[str]]:
         """
         Use AI to modify component code based on user instruction.
@@ -790,6 +816,7 @@ Respond with ONLY the JSON object for the given instruction:"""
             additional_contexts: Other selected elements in this same file (multi-select)
             scope: Edit scope — "element" (only selected elements), "section" (whole component), "page"
             strict_note: Extra constraint appended on containment-violation retries
+            images: Attached images as base64 data URLs (multimodal input)
 
         Returns:
             Tuple of (success, old_code, modified_code, error_message)
@@ -801,8 +828,10 @@ Respond with ONLY the JSON object for the given instruction:"""
             if not current_code:
                 return False, "", "", f"Component file {file_path} not found in project"
 
-            # Analyze the edit request (now async)
-            analysis = await self.analyze_edit_request(instruction, element_context)
+            # Analyze the edit request (now async, multimodal when images attached)
+            analysis = await self.analyze_edit_request(instruction, element_context, images=images)
+            if images and not analysis.get("image_intent"):
+                analysis["image_intent"] = self._heuristic_image_intent(instruction.lower())
 
             # Build AI prompt with business context
             prompt = self._build_edit_prompt(
@@ -816,7 +845,8 @@ Respond with ONLY the JSON object for the given instruction:"""
             response, usage = self.prompt_service.call_openai_api(
                 system_prompt="",
                 user_prompt=prompt,
-                model=settings.edit_model
+                model=settings.edit_model,
+                images=images
             )
             logger.info(f"[COMPONENT EDITOR] Response from AI: {response}")
             logger.info(f"[COMPONENT EDITOR] Usage for component edit: {usage}")
@@ -1190,6 +1220,24 @@ that the instruction requires, but keep unrelated parts of the file untouched.""
 
         strict_retry_note = f"\nPREVIOUS ATTEMPT REJECTED: {strict_note}\n" if strict_note else ""
 
+        # Guidance for attached images (the images themselves are sent as multimodal input;
+        # their public URLs are listed in the instruction)
+        image_intent = analysis.get('image_intent')
+        image_note = ""
+        if image_intent == "embed_asset":
+            image_note = """
+ATTACHED IMAGES — EMBED AS ASSETS:
+The user's attached image(s) should appear in the site. Use the exact public URLs listed
+in the instruction (in src / background-image). Do NOT substitute Unsplash or placeholder
+URLs for them. Preserve appropriate alt text and sizing classes."""
+        elif image_intent == "style_reference":
+            image_note = """
+ATTACHED IMAGES — STYLE REFERENCE ONLY:
+The attached image(s) show a design/style the user wants to imitate. Match their palette,
+layout, typography and mood in your changes, but the image URLs listed in the instruction
+must NOT appear anywhere in the code — not in src, not in background-image, nowhere.
+If imagery is needed, keep the existing images or use appropriate Unsplash URLs."""
+
         prompt = f"""You are a React component editor. Modify the following code based on the user's instruction.
 
 {context_note}
@@ -1210,7 +1258,7 @@ TARGET INFORMATION:
 - Classes: {', '.join(element_context.get('classList', [])[:5])}
 - Component: {component_name}
 - Multi-element: {'YES - ' + str(len(text_parts)) + ' parts' if is_multi_element else 'NO'}
-{additional_targets_note}{scope_enforcement}{strict_retry_note}
+{additional_targets_note}{scope_enforcement}{strict_retry_note}{image_note}
 
 ANALYSIS (Confidence: {confidence:.0%}):
 - Edit Categories: {', '.join(edit_categories)}

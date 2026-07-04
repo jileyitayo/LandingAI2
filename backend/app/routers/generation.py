@@ -14,6 +14,7 @@ from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import ActionLogger, log_action
 from app.utils.auth import get_current_user
 from app.utils.rate_limiter import RateLimiter
+from app.utils.image_loader import fetch_images_as_data_urls
 from app.services.content_generator import content_generator, ContentGenerationError
 from app.services.templates.template_renderer import template_renderer, TemplateRenderError
 from app.services.templates.template_generator import template_generator
@@ -663,7 +664,8 @@ async def generate_react_website_from_prompt(
             process_react_generation(
                 project_id=project_id,
                 prompt=request.prompt,
-                user_id=user_id
+                user_id=user_id,
+                attachments=request.attachments
             )
         )
 
@@ -684,9 +686,23 @@ async def generate_react_website_from_prompt(
         )
 
 
-async def process_react_generation(project_id: str, prompt: str, user_id: str):
+async def process_react_generation(project_id: str, prompt: str, user_id: str, attachments: Optional[List[Dict[str, Any]]] = None):
     """Background task that actually does the generation with live progress updates"""
     supabase = get_supabase_client()
+
+    # Classify uploaded images (logo / product photo / style reference) once;
+    # the block is injected verbatim downstream (business analysis summarizes the
+    # prompt, which would mangle exact URLs). The stored project prompt stays as
+    # the user wrote it.
+    media_context = None
+    if attachments:
+        try:
+            from app.services.media_classifier import build_media_context
+            media_context = await build_media_context(attachments, prompt)
+            if media_context:
+                logger.info(f"[BG] Media context built for project {project_id}")
+        except Exception as e:
+            logger.warning(f"[BG] Media classification failed, generating without media context: {e}")
     
     # Import CostTracker
     from app.services.cost_calculator import CostTracker
@@ -794,10 +810,11 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str):
             result = await loop.run_in_executor(
                 executor,
                 lambda: react_website_generator.generate_website_structure(
-                    prompt, 
+                    prompt,
                     enable_animations=enable_animations,
                     cost_tracker=cost_tracker,
-                    progress_callback=sync_progress_callback
+                    progress_callback=sync_progress_callback,
+                    media_context=media_context
                 )
             )
         # await asyncio.sleep(10)
@@ -1792,17 +1809,33 @@ async def edit_project_component(
 
         # Make uploaded attachment URLs available to the LLM: when the user says
         # "use the attached image", the model must embed these exact public URLs.
+        # The images themselves are also sent as multimodal input (base64 data URLs).
         effective_instruction = request.instruction
+        attachment_images: List[str] = []
         if request.attachments:
+            media_ids = [a["media_id"] for a in request.attachments if a.get("media_id")]
+            if media_ids:
+                owned = supabase.table("project_media")\
+                    .select("id")\
+                    .in_("id", media_ids)\
+                    .eq("user_id", user_id)\
+                    .execute()
+                owned_ids = {r["id"] for r in (owned.data or [])}
+                if owned_ids != set(media_ids):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="One or more attachments do not belong to you"
+                    )
             attachment_urls = [a["url"] for a in request.attachments if a.get("url")]
+            attachment_images = await fetch_images_as_data_urls(attachment_urls)
             if attachment_urls:
                 url_lines = "\n".join(f"  {i+1}. {u}" for i, u in enumerate(attachment_urls))
                 effective_instruction = (
                     f"{request.instruction}\n\n"
                     f"[The user attached {len(attachment_urls)} uploaded image(s), publicly hosted at:\n"
                     f"{url_lines}\n"
-                    f"When the instruction refers to an attached/uploaded image, use these exact URLs "
-                    f"(e.g. in src or background-image). Do NOT substitute stock/Unsplash URLs for them.]"
+                    f"Follow the ATTACHED IMAGES guidance for whether to embed these URLs or "
+                    f"treat the images as a style reference only.]"
                 )
                 logger.info(f"[COMPONENT EDIT] {len(attachment_urls)} attachment URL(s) added to instruction context")
 
@@ -1827,7 +1860,8 @@ async def edit_project_component(
                     business_context=business_analysis,
                     additional_contexts=additional,
                     scope=scope,
-                    strict_note=strict_note
+                    strict_note=strict_note,
+                    images=attachment_images or None
                 )
 
                 if not success:

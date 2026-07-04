@@ -114,12 +114,13 @@ class ReactWebsiteGenerator:
     
     
     def generate_website_structure(
-        self, 
-        prompt: str, 
+        self,
+        prompt: str,
         enable_build_validation: Optional[bool] = None,
         enable_animations: Optional[bool] = None,
         cost_tracker=None,
-        progress_callback=None
+        progress_callback=None,
+        media_context: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Main entry point: Generate complete React website from prompt with validation
@@ -154,8 +155,15 @@ class ReactWebsiteGenerator:
         
         # Step 1: Analyze business requirements
         logger.info("[REACT GEN] Analyzing business requirements...")
-        business_analysis = self.business_analyzer.generate_business_analysis(prompt, cost_tracker=cost_tracker)
+        analysis_prompt = f"{prompt}\n\n{media_context}" if media_context else prompt
+        business_analysis = self.business_analyzer.generate_business_analysis(analysis_prompt, cost_tracker=cost_tracker)
         # print(f"Business analysis: \n{business_analysis.model_dump_json(indent=2)}")
+
+        # Re-attach the media block verbatim: business analysis SUMMARIZES the prompt,
+        # which would mangle the exact asset URLs that must reach page generation
+        # (page prompts include analysis.prompt).
+        if media_context:
+            business_analysis.prompt = f"{business_analysis.prompt}\n\n{media_context}"
         
         # Step 2: Generate website structure
         logger.info("[REACT GEN] Generating website structure...")
