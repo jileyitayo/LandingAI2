@@ -23,6 +23,7 @@ from app.services.react_website_generator import react_website_generator
 from app.services.project_file_manager import project_file_manager
 from app.services.vite_preview_service import vite_preview_service
 from app.services.component_editor_service import component_editor_service
+from app.services.generation import component_library
 from app.services.validators.error_fixer import error_fixer
 from app.services.validators.build_tester import BuildError, BuildTester
 from app.services.direct_code_editor import direct_code_editor
@@ -1839,6 +1840,28 @@ async def edit_project_component(
                 )
                 logger.info(f"[COMPONENT EDIT] {len(attachment_urls)} attachment URL(s) added to instruction context")
 
+        # Analyze the request once up front: structural rewrites ("turn this into
+        # a carousel") escalate element scope to section, drop containment, and
+        # pull vetted patterns (+ their npm deps) from the component library.
+        edit_analysis = await component_editor_service.analyze_edit_request(
+            effective_instruction, selected_elements[0], images=attachment_images or None
+        )
+        is_structural = bool(edit_analysis.get("requires_structural_rewrite")) and \
+            edit_analysis.get("confidence", 0) >= 0.6
+        matched_library = []
+        library_note = None
+        if is_structural:
+            matched_library = component_library.match_components(
+                edit_analysis.get("suggested_components"), request.instruction
+            )
+            library_note = component_library.build_library_note(matched_library)
+            if scope == "element":
+                scope = "section"
+                logger.info(
+                    f"[COMPONENT EDIT] Structural rewrite detected "
+                    f"(components: {[c.name for c in matched_library]}) — escalating scope to section"
+                )
+
         # LLM edit per target file, with scope-containment verification and one strict retry
         old_codes: Dict[str, str] = {}
         new_codes: Dict[str, str] = {}
@@ -1861,7 +1884,9 @@ async def edit_project_component(
                     additional_contexts=additional,
                     scope=scope,
                     strict_note=strict_note,
-                    images=attachment_images or None
+                    images=attachment_images or None,
+                    analysis=edit_analysis,
+                    library_note=library_note
                 )
 
                 if not success:
@@ -1897,6 +1922,17 @@ async def edit_project_component(
 
             old_codes[component_file] = old_code
             new_codes[component_file] = new_code
+
+        # Structural rewrites may need new npm deps (e.g. embla for carousels):
+        # merge them into package.json BEFORE the preview build (which runs npm install)
+        if matched_library and "package.json" in files:
+            deps = component_library.collect_dependencies(matched_library)
+            updated_package = component_library.ensure_package_dependencies(
+                new_codes.get("package.json", files["package.json"]), deps
+            )
+            if updated_package:
+                old_codes.setdefault("package.json", files["package.json"])
+                new_codes["package.json"] = updated_package
 
         # Build-verify: the edit is only saved after the project compiles.
         # On failure, feed build errors back to the LLM for up to 2 repair attempts.

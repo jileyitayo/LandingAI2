@@ -466,6 +466,8 @@ class ComponentEditorService:
                     "change_scope": scope,
                     "requires_new_elements": ai_analysis.get("requires_new_elements", False),
                     "affects_layout": ai_analysis.get("affects_layout", False),
+                    "requires_structural_rewrite": bool(ai_analysis.get("requires_structural_rewrite", False)),
+                    "suggested_components": ai_analysis.get("suggested_components", []) or [],
                     "is_multi_element": is_multi_element,
                     "text_parts": text_parts,
                     "image_intent": ai_analysis.get("image_intent", self._heuristic_image_intent(instruction_lower) if images else None)
@@ -540,7 +542,9 @@ Analyze what changes are needed and respond with ONLY a valid JSON object (no ma
   }},
   "scope": "element" | "component" | "multiple",  // How many things affected
   "requires_new_elements": true | false,
-  "affects_layout": true | false{image_intent_field}
+  "affects_layout": true | false,
+  "requires_structural_rewrite": true | false,  // TRUE when the element/section must be REBUILT as something different (e.g. "turn this image into a carousel", "redesign this section", "make these testimonials a slider", "convert this list to tabs/accordion"). FALSE for text, color, styling, or attribute tweaks.
+  "suggested_components": ["carousel" | "testimonial-slider" | "tabs" | "accordion" | "video-embed" | "pricing-table" | "stats-grid"]  // Patterns the rewrite needs; [] if none{image_intent_field}
 }}
 
 EXAMPLES:
@@ -801,7 +805,9 @@ Respond with ONLY the JSON object for the given instruction:"""
         additional_contexts: Optional[List[Dict[str, Any]]] = None,
         scope: str = "element",
         strict_note: Optional[str] = None,
-        images: Optional[List[str]] = None
+        images: Optional[List[str]] = None,
+        analysis: Optional[Dict[str, Any]] = None,
+        library_note: Optional[str] = None
     ) -> Tuple[bool, str, str, Optional[str]]:
         """
         Use AI to modify component code based on user instruction.
@@ -828,15 +834,18 @@ Respond with ONLY the JSON object for the given instruction:"""
             if not current_code:
                 return False, "", "", f"Component file {file_path} not found in project"
 
-            # Analyze the edit request (now async, multimodal when images attached)
-            analysis = await self.analyze_edit_request(instruction, element_context, images=images)
+            # Analyze the edit request unless the caller already did (the router
+            # precomputes it to decide scope escalation before this call)
+            if analysis is None:
+                analysis = await self.analyze_edit_request(instruction, element_context, images=images)
             if images and not analysis.get("image_intent"):
                 analysis["image_intent"] = self._heuristic_image_intent(instruction.lower())
 
             # Build AI prompt with business context
             prompt = self._build_edit_prompt(
                 current_code, instruction, element_context, analysis, business_context,
-                additional_contexts=additional_contexts, scope=scope, strict_note=strict_note
+                additional_contexts=additional_contexts, scope=scope, strict_note=strict_note,
+                library_note=library_note
             )
             logger.info(f"[COMPONENT EDITOR] Enhanced prompt built with analysis and business context")
 
@@ -1035,7 +1044,8 @@ Respond with ONLY the JSON object for the given instruction:"""
         business_context: Optional[Dict[str, Any]] = None,
         additional_contexts: Optional[List[Dict[str, Any]]] = None,
         scope: str = "element",
-        strict_note: Optional[str] = None
+        strict_note: Optional[str] = None,
+        library_note: Optional[str] = None
     ) -> str:
         """Build the AI prompt for component editing using enhanced analysis and business context"""
 
@@ -1212,11 +1222,23 @@ STRICT SCOPE ENFORCEMENT:
 - Do NOT reformat, reorder imports, rename variables, adjust whitespace, or "improve" unrelated code.
 - If the instruction seems to imply broader changes, still restrict your changes to the selected element(s) only."""
         elif scope == "section":
-            scope_enforcement = """
+            if analysis.get('requires_structural_rewrite'):
+                scope_enforcement = """
+SCOPE — STRUCTURAL REDESIGN OF THIS SECTION:
+The user wants this section REBUILT, not tweaked. You may fully restructure the section's
+JSX, add state/hooks/imports, and replace its layout, as long as:
+- The component keeps its name, file, export style, and prop interface
+- The root element keeps its data-component / data-file / id attributes
+- Content (text, images) is preserved or sensibly adapted unless the instruction says otherwise
+- Unrelated parts of the file stay untouched"""
+            else:
+                scope_enforcement = """
 SCOPE: The user selected this entire section/component. You may change anything within this file
 that the instruction requires, but keep unrelated parts of the file untouched."""
         else:
             scope_enforcement = ""
+
+        library_block = f"\n{library_note}\n" if library_note else ""
 
         strict_retry_note = f"\nPREVIOUS ATTEMPT REJECTED: {strict_note}\n" if strict_note else ""
 
@@ -1259,6 +1281,7 @@ TARGET INFORMATION:
 - Component: {component_name}
 - Multi-element: {'YES - ' + str(len(text_parts)) + ' parts' if is_multi_element else 'NO'}
 {additional_targets_note}{scope_enforcement}{strict_retry_note}{image_note}
+{library_block}
 
 ANALYSIS (Confidence: {confidence:.0%}):
 - Edit Categories: {', '.join(edit_categories)}
