@@ -10,7 +10,9 @@ import FontEditor from './property-editors/FontEditor';
 import ImageEditor from './property-editors/ImageEditor';
 import LinkEditor from './property-editors/LinkEditor';
 import ChatPanel, { ChatSendResult } from './ChatPanel';
+import EditHistoryPanel from './EditHistoryPanel';
 import type { Attachment } from './AttachmentButton';
+import { MessageSquare, History } from 'lucide-react';
 
 export type EditScope = 'element' | 'section' | 'page';
 
@@ -22,6 +24,8 @@ interface EditSidebarProps {
   onDeselectElement?: (selectorKey: string) => void;
   onPropertyChange: (property: PropertyType, value: string | number | boolean) => void;
   onChatSend: (instruction: string, scope: EditScope, attachments: Attachment[]) => Promise<ChatSendResult>;
+  // Revert an AI edit by chat message id; returns true on success
+  onRevert?: (chatMessageId: string) => Promise<boolean>;
   isApplyingEdit?: boolean;
   isAutoSaving: boolean;
   // Optional: Project files for route suggestions in LinkEditor
@@ -40,6 +44,7 @@ export default function EditSidebar({
   onDeselectElement,
   onPropertyChange,
   onChatSend,
+  onRevert,
   isApplyingEdit = false,
   isAutoSaving,
   projectFiles,
@@ -53,6 +58,7 @@ export default function EditSidebar({
   // Quick edits stay tucked away; the chat is the primary editing surface
   const [quickEditsOpen, setQuickEditsOpen] = useState(false);
   const [pageInfoOpen, setPageInfoOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'chat' | 'history'>('chat');
 
   // Collapse quick edits whenever the selection changes
   useEffect(() => {
@@ -540,10 +546,25 @@ export default function EditSidebar({
 
       {/* Sidebar Header */}
       <div className="px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-white">
-            {selectedElement ? 'Element Selected' : 'AI Editor'}
-          </h2>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
+              activeTab === 'chat' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Chat
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
+              activeTab === 'history' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            History
+          </button>
         </div>
         
         {/* Save Status Indicator - Subtle and in corner */}
@@ -575,39 +596,49 @@ export default function EditSidebar({
         </div>
       </div>
 
-      {/* Sidebar Content: element quick-edits (when selected) + persistent chat */}
-      {selectedElement ? (
-        renderElementEditor()
+      {/* Sidebar Content: element quick-edits (when selected) + persistent chat/history */}
+      {activeTab === 'history' ? (
+        <EditHistoryPanel
+          projectId={projectId}
+          onRevert={onRevert ?? (async () => false)}
+        />
       ) : (
-        <div className="flex-shrink-0 border-b border-gray-700">
-          <button
-            onClick={() => setPageInfoOpen(prev => !prev)}
-            className="w-full flex items-center justify-between px-4 py-2.5 text-gray-500 hover:text-gray-300 hover:bg-gray-800/40 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Info className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium">Page info</span>
+        <>
+          {selectedElement ? (
+            renderElementEditor()
+          ) : (
+            <div className="flex-shrink-0 border-b border-gray-700">
+              <button
+                onClick={() => setPageInfoOpen(prev => !prev)}
+                className="w-full flex items-center justify-between px-4 py-2.5 text-gray-500 hover:text-gray-300 hover:bg-gray-800/40 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Info className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium">Page info</span>
+                </div>
+                {pageInfoOpen ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+              </button>
+              {pageInfoOpen && (
+                <div className="max-h-[40vh] overflow-y-auto">{renderPageInfo()}</div>
+              )}
             </div>
-            {pageInfoOpen ? (
-              <ChevronDown className="w-3.5 h-3.5" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5" />
-            )}
-          </button>
-          {pageInfoOpen && (
-            <div className="max-h-[40vh] overflow-y-auto">{renderPageInfo()}</div>
           )}
-        </div>
-      )}
 
-      <ChatPanel
-        projectId={projectId}
-        selectedElement={selectedElement}
-        selectedElements={selectedElements}
-        onSend={onChatSend}
-        onClearSelection={onClearSelection}
-        isApplyingEdit={isApplyingEdit}
-      />
+          <ChatPanel
+            projectId={projectId}
+            selectedElement={selectedElement}
+            selectedElements={selectedElements}
+            onSend={onChatSend}
+            onUndo={onRevert}
+            onClearSelection={onClearSelection}
+            isApplyingEdit={isApplyingEdit}
+          />
+        </>
+      )}
     </div>
   );
 }

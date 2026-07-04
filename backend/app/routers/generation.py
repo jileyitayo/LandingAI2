@@ -2036,18 +2036,25 @@ async def edit_project_component(
                 }
             }).execute()
 
-            # Insert edit history
-            edit_history_insert = supabase.table("project_edit_history").insert({
-                "project_id": project_id,
-                "chat_message_id": chat_message_id,
-                "file_path": component_file,
-                "old_code": old_code,
-                "new_code": new_code,
-                "diff_summary": edit_description,
-                "selected_element": primary_element,
-                "edit_description": edit_description,
-                "ai_instruction": request.instruction
-            }).execute()
+            # Insert edit history — one row per changed file (including files the
+            # build-repair step touched), all sharing this chat_message_id, so a
+            # revert restores the complete pre-edit state.
+            history_rows = [
+                {
+                    "project_id": project_id,
+                    "chat_message_id": chat_message_id,
+                    "file_path": file_path,
+                    "old_code": files.get(file_path, ""),
+                    "new_code": file_content,
+                    "diff_summary": edit_description,
+                    "selected_element": primary_element,
+                    "edit_description": edit_description,
+                    "ai_instruction": request.instruction
+                }
+                for file_path, file_content in files_to_save.items()
+            ]
+            if history_rows:
+                supabase.table("project_edit_history").insert(history_rows).execute()
 
             logger.info(f"[COMPONENT EDIT] Chat and edit history saved successfully")
 

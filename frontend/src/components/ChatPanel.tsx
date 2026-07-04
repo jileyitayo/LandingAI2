@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, X, Send, AlertCircle } from 'lucide-react';
+import { Sparkles, Loader2, X, Send, AlertCircle, RotateCcw } from 'lucide-react';
 import { api } from '@/lib/api';
 import { SelectedElement } from '@/types/chat.types';
 import AttachmentButton, { Attachment } from './AttachmentButton';
@@ -14,12 +14,15 @@ export interface ChatMessage {
   attachments?: Attachment[];
   isError?: boolean;
   createdAt: string;
+  /** Backend chat message id — enables one-click undo for edit messages */
+  chatMessageId?: string;
 }
 
 export interface ChatSendResult {
   success: boolean;
   description?: string;
   message?: string;
+  chatMessageId?: string;
 }
 
 interface ChatPanelProps {
@@ -27,6 +30,8 @@ interface ChatPanelProps {
   selectedElement: SelectedElement | null;
   selectedElements?: SelectedElement[];
   onSend: (instruction: string, scope: EditScope, attachments: Attachment[]) => Promise<ChatSendResult>;
+  /** Revert an edit by chat message id; returns true on success. */
+  onUndo?: (chatMessageId: string) => Promise<boolean>;
   onClearSelection: () => void;
   isApplyingEdit: boolean;
 }
@@ -41,9 +46,11 @@ export default function ChatPanel({
   selectedElement,
   selectedElements = [],
   onSend,
+  onUndo,
   onClearSelection,
   isApplyingEdit,
 }: ChatPanelProps) {
+  const [undoingId, setUndoingId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [input, setInput] = useState('');
@@ -95,6 +102,7 @@ export default function ChatPanel({
             role: 'assistant',
             content: m.ai_response,
             createdAt: m.created_at,
+            chatMessageId: m.message_type === 'edit' ? m.id : undefined,
           });
         }
         setMessages(loaded);
@@ -144,9 +152,45 @@ export default function ChatPanel({
           : result.message || 'Edit failed',
         isError: !result.success,
         createdAt: new Date().toISOString(),
+        chatMessageId: result.chatMessageId,
       },
     ]);
   }, [input, attachments, isApplyingEdit, selectedElement, editScope, onSend]);
+
+  const handleUndo = useCallback(async (message: ChatMessage) => {
+    if (!onUndo || !message.chatMessageId) return;
+    if (!window.confirm('Undo this edit? The affected files will be restored to their previous state.')) return;
+    setUndoingId(message.chatMessageId);
+    try {
+      const ok = await onUndo(message.chatMessageId);
+      if (ok) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `local-${Date.now()}-undo`,
+            role: 'assistant',
+            content: `Reverted: ${message.content}`,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      }
+    } finally {
+      setUndoingId(null);
+    }
+  }, [onUndo]);
+
+  // The one message that gets an inline Undo button: the most recent
+  // successful edit (reverts and errors don't qualify)
+  const lastUndoableId = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== 'assistant') continue;
+      if (m.isError || !m.chatMessageId) continue;
+      if (m.content.startsWith('Reverted:')) return null;
+      return m.id;
+    }
+    return null;
+  })();
 
   // Scope chip: breadcrumb when an element is selected, "Page" otherwise
   const renderScopeChip = () => {
@@ -244,6 +288,23 @@ export default function ChatPanel({
                   <AlertCircle className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
                 )}
                 {message.content}
+                {onUndo && message.id === lastUndoableId && (
+                  <div className="mt-1.5 pt-1.5 border-t border-gray-700/60">
+                    <button
+                      onClick={() => handleUndo(message)}
+                      disabled={undoingId !== null || isApplyingEdit}
+                      className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+                      title="Restore the files this edit changed"
+                    >
+                      {undoingId === message.chatMessageId ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <RotateCcw className="w-3 h-3" />
+                      )}
+                      Undo
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))

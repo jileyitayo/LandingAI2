@@ -339,6 +339,7 @@ export default function ProjectEditorPage() {
       return {
         success: true,
         description: response.edit_description || response.message,
+        chatMessageId: response.chat_message_id,
       };
     } catch (error: any) {
       return {
@@ -349,6 +350,30 @@ export default function ProjectEditorPage() {
       setIsApplyingEdit(false);
     }
   }, [projectId, selectedElement, selectedElements, loadReactFiles]);
+
+  // Revert (undo) an AI edit: backend restores pre-edit code and rebuilds the
+  // preview; we swap the iframe and re-sync files just like after an edit.
+  const handleRevert = useCallback(async (chatMessageId: string): Promise<boolean> => {
+    try {
+      const response = await api.generation.revertEdit(projectId, chatMessageId);
+      if (response.preview_url) {
+        setPreviewUrl(response.preview_url);
+      }
+      await loadReactFiles();
+      setEditVersion(v => v + 1);
+      toast.success('Edit reverted', {
+        description: response.message,
+        duration: 3000,
+      });
+      return true;
+    } catch (error: any) {
+      toast.error('Revert failed', {
+        description: error?.message || 'Something went wrong reverting the edit',
+        duration: 6000,
+      });
+      return false;
+    }
+  }, [projectId, loadReactFiles]);
 
   // Load React files when project is loaded
   useEffect(() => {
@@ -1273,6 +1298,7 @@ export default function ProjectEditorPage() {
               }}
               onPropertyChange={handlePropertyChange}
               onChatSend={handleChatSend}
+              onRevert={handleRevert}
               isApplyingEdit={isApplyingEdit}
               isAutoSaving={isAutoSaving}
               projectFiles={reactFiles}

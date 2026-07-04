@@ -768,6 +768,36 @@ export const api = {
       }>(`/api/v1/projects/${projectId}/chat-history`),
 
     /**
+     * Get edit history (grouped per AI edit) for the undo/history panel
+     */
+    getEditHistory: (projectId: string) =>
+      apiRequest<{
+        edits: Array<{
+          chat_message_id: string;
+          instruction: string;
+          edit_description: string | null;
+          created_at: string;
+          files: Array<{ file_path: string; is_reverted: boolean }>;
+          is_reverted: boolean;
+          can_revert: boolean;
+        }>;
+      }>(`/api/v1/projects/${projectId}/edit-history`),
+
+    /**
+     * Revert (undo) an AI edit — restores every file it touched to pre-edit code
+     */
+    revertEdit: (projectId: string, chatMessageId: string) =>
+      apiRequest<{
+        success: boolean;
+        message: string;
+        reverted_files: string[];
+        preview_url?: string;
+        preview_id?: string;
+      }>(`/api/v1/projects/${projectId}/edits/${chatMessageId}/revert`, {
+        method: "POST",
+      }),
+
+    /**
      * Save a chat message
      */
     saveChatMessage: (projectId: string, data: {
