@@ -909,10 +909,8 @@ export const api = {
      */
     deploy: (projectId: string) =>
       apiRequest<{
-        deployment_id: string;
-        deployment_url: string;
         status: string;
-        deployed_at: string;
+        message: string;
       }>(`/api/v1/projects/${projectId}/deploy`, {
         method: "POST",
       }),
@@ -942,6 +940,9 @@ export const api = {
         last_deployed_at: string | null;
         last_edited_at: string | null;
         has_unpublished_changes: boolean;
+        deploy_status: 'idle' | 'queued' | 'uploading' | 'building' | 'ready' | 'error';
+        deploy_stage_detail: string | null;
+        deploy_error: string | null;
       }>(`/api/v1/projects/${projectId}/deployment-status`),
   },
 

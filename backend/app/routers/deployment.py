@@ -21,12 +21,10 @@ router = APIRouter(tags=["deployment"])
 # Request/Response Models
 # ============================================================================
 
-class DeploymentResponse(BaseModel):
-    """Deployment response model"""
-    deployment_id: str
-    deployment_url: str
+class DeploymentQueuedResponse(BaseModel):
+    """Response for an accepted (queued) async deployment"""
     status: str
-    deployed_at: str
+    message: str
 
 
 class DeploymentStatusResponse(BaseModel):
@@ -38,6 +36,10 @@ class DeploymentStatusResponse(BaseModel):
     last_deployed_at: Optional[str]
     last_edited_at: Optional[str] = None
     has_unpublished_changes: bool = False
+    # Async deploy progress (DB-backed, written by the background task)
+    deploy_status: str = "idle"
+    deploy_stage_detail: Optional[str] = None
+    deploy_error: Optional[str] = None
 
 
 class DeploymentErrorResponse(BaseModel):
@@ -59,23 +61,46 @@ def verify_project_ownership(project: dict, user_id: str):
         )
 
 
+IN_FLIGHT_DEPLOY_STATUSES = ("queued", "uploading", "building")
+
+
+def _set_deploy_status(project_id: str, deploy_status: str, detail: Optional[str] = None, error: Optional[str] = None):
+    """Write the async deploy progress to the project row (best-effort)."""
+    try:
+        supabase = get_supabase_client()
+        supabase.table("projects").update({
+            "deploy_status": deploy_status,
+            "deploy_stage_detail": detail,
+            "deploy_error": error,
+        }).eq("id", project_id).execute()
+    except Exception as e:
+        logger.warning(f"Failed to write deploy status '{deploy_status}' for project {project_id}: {e}")
+
+
 async def perform_deployment(project_id: str, user_id: str):
     """
     Background task to perform deployment.
-    This runs asynchronously to avoid blocking the request.
+    Writes staged progress (uploading -> building -> ready | error) to the
+    project row; the frontend polls deployment-status to render it.
     """
     try:
         deployment_service = VercelDeployer()
-        await deployment_service.deploy_website(project_id)
+        await deployment_service.deploy_website(
+            project_id,
+            progress_cb=lambda stage, detail: _set_deploy_status(project_id, stage, detail),
+        )
+        _set_deploy_status(project_id, "ready", "Deployment live")
+        logger.info(f"Background deployment succeeded for project {project_id}")
     except Exception as e:
         logger.error(f"Background deployment failed for project {project_id}: {str(e)}")
+        _set_deploy_status(project_id, "error", None, error=str(e)[:1000])
 
 
 # ============================================================================
 # API Endpoints
 # ============================================================================
 
-@router.post("/projects/{project_id}/deploy", response_model=DeploymentResponse)
+@router.post("/projects/{project_id}/deploy", response_model=DeploymentQueuedResponse, status_code=status.HTTP_202_ACCEPTED)
 @log_action(action_type='DEPLOY', target_resource_type='project')
 async def deploy_project(
     project_id: str,
@@ -83,62 +108,58 @@ async def deploy_project(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Deploy a project to Vercel.
-    
-    This endpoint:
-    1. Validates the project exists and user has permission
-    2. Generates static HTML/CSS/JS files
-    3. Deploys to Vercel using Vercel API v2
-    4. Updates the project with deployment URL
-    5. Uses subdomain if configured, or generates one
-    
-    The deployment runs synchronously to return the deployment URL immediately.
+    Deploy a project to Vercel (async).
+
+    Validates the project, marks it queued, and runs the deployment as a
+    background task. The frontend polls /deployment-status for staged
+    progress (queued -> uploading -> building -> ready | error).
     """
     user_id = current_user["id"]
     supabase = get_supabase_client()
-    
+
     try:
         # Verify project exists and user owns it
         response = supabase.table("projects").select("*").eq("id", project_id).execute()
-        
+
         if not response.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found"
             )
-        
+
         project = response.data[0]
         verify_project_ownership(project, user_id)
-        
+
         # Check if project has content to deploy
         if not project.get("project_type") == "react":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Project must be a React project to deploy. Please generate or add content first."
             )
-        
+
         # Check if project generation is still in progress
         if project.get("generation_status") != "completed":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Project generation is still in progress. Please wait until it completes."
             )
-        
-        # Initialize deployment service
-        deployment_service = VercelDeployer()
-        
-        # Deploy the project
-        logger.info(f"Starting deployment for project {project_id}")
-        deployment_result = await deployment_service.deploy_website(project_id)
-        
-        return DeploymentResponse(**deployment_result)
-    
-    except VercelDeploymentError as e:
-        logger.error(f"Deployment error for project {project_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+
+        # Only one deploy at a time per project
+        if project.get("deploy_status") in IN_FLIGHT_DEPLOY_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A deployment is already in progress for this project."
+            )
+
+        _set_deploy_status(project_id, "queued", "Deployment queued")
+        background_tasks.add_task(perform_deployment, project_id, user_id)
+
+        logger.info(f"Deployment queued for project {project_id}")
+        return DeploymentQueuedResponse(
+            status="queued",
+            message="Deployment started. Poll deployment-status for progress."
         )
+
     except HTTPException:
         raise
     except Exception as e:
@@ -201,6 +222,9 @@ async def delete_project_deployment(
             "deployment_id": None,
             "deployment_url": None,
             "published": False,
+            "deploy_status": "idle",
+            "deploy_stage_detail": None,
+            "deploy_error": None,
             "updated_at": datetime.utcnow().isoformat()
         }
         
@@ -280,6 +304,11 @@ async def get_project_deployment_status(
             deployment_id and edited_ts and (not deployed_ts or edited_ts > deployed_ts)
         )
 
+        deploy_status = project.get("deploy_status") or "idle"
+        deploy_stage_detail = project.get("deploy_stage_detail")
+        deploy_error = project.get("deploy_error")
+        deploy_in_flight = deploy_status in IN_FLIGHT_DEPLOY_STATUSES
+
         # If no deployment, return not deployed status
         if not deployment_id:
             return DeploymentStatusResponse(
@@ -289,7 +318,26 @@ async def get_project_deployment_status(
                 ready=False,
                 last_deployed_at=None,
                 last_edited_at=last_edited_at,
-                has_unpublished_changes=False
+                has_unpublished_changes=False,
+                deploy_status=deploy_status,
+                deploy_stage_detail=deploy_stage_detail,
+                deploy_error=deploy_error
+            )
+
+        # While a deploy is in flight, skip the Vercel roundtrip — the DB-backed
+        # progress written by the background task is the source of truth
+        if deploy_in_flight:
+            return DeploymentStatusResponse(
+                deployment_id=deployment_id,
+                deployment_url=deployment_url,
+                state="DEPLOYING",
+                ready=False,
+                last_deployed_at=last_deployed_at,
+                last_edited_at=last_edited_at,
+                has_unpublished_changes=has_unpublished_changes,
+                deploy_status=deploy_status,
+                deploy_stage_detail=deploy_stage_detail,
+                deploy_error=deploy_error
             )
 
         # Initialize deployment service
@@ -307,7 +355,10 @@ async def get_project_deployment_status(
                 ready=status_data.get("ready", False),
                 last_deployed_at=last_deployed_at,
                 last_edited_at=last_edited_at,
-                has_unpublished_changes=has_unpublished_changes
+                has_unpublished_changes=has_unpublished_changes,
+                deploy_status=deploy_status,
+                deploy_stage_detail=deploy_stage_detail,
+                deploy_error=deploy_error
             )
 
         except VercelDeploymentError as e:
@@ -320,7 +371,10 @@ async def get_project_deployment_status(
                 ready=True,  # Assume ready if we have a deployment URL
                 last_deployed_at=last_deployed_at,
                 last_edited_at=last_edited_at,
-                has_unpublished_changes=has_unpublished_changes
+                has_unpublished_changes=has_unpublished_changes,
+                deploy_status=deploy_status,
+                deploy_stage_detail=deploy_stage_detail,
+                deploy_error=deploy_error
             )
     
     except HTTPException:

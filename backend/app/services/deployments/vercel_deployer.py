@@ -312,7 +312,8 @@ class VercelDeployer:
         self,
         project_files: Dict[str, str],
         project_name: str,
-        is_react: bool = True
+        is_react: bool = True,
+        progress_cb=None
     ) -> Dict[str, Any]:
         """
         Deploy project files to Vercel from in-memory dictionary.
@@ -400,10 +401,17 @@ class VercelDeployer:
             
             logger.info(f"Deployment created successfully: {deployment_url}")
             
+            # Files accepted — Vercel is now building
+            if progress_cb:
+                try:
+                    progress_cb("building", "Vercel is building your site")
+                except Exception as e:
+                    logger.warning(f"Deploy progress callback failed: {e}")
+
             # Make the project publicly viewable
             if deployment_project_id:
                 await self._make_project_public(deployment_project_id)
-            
+
             # Wait for deployment to be ready
             await self._wait_for_deployment(deployment_id)
             
@@ -423,63 +431,75 @@ class VercelDeployer:
             logger.error(f"Unexpected error during deployment: {str(e)}")
             raise VercelDeploymentError(f"Deployment failed: {str(e)}")
     
-    async def deploy_website(self, project_id: str) -> Dict[str, Any]:
+    async def deploy_website(self, project_id: str, progress_cb=None) -> Dict[str, Any]:
         """
         Deploy a project to Vercel from database.
-        
+
         This method fetches the project from the database and determines whether
         it's a React project or static HTML/CSS/JS project, then deploys accordingly.
-        
+
         Args:
             project_id: UUID of the project to deploy
-            
+            progress_cb: Optional callback(stage: str, detail: str) invoked at
+                stage transitions ("uploading", "building")
+
         Returns:
             Dict containing deployment_url, deployment_id, and other deployment info
-            
+
         Raises:
             VercelDeploymentError: If deployment fails
         """
         supabase = get_supabase_client()
-        
+
+        def _progress(stage: str, detail: str):
+            if progress_cb:
+                try:
+                    progress_cb(stage, detail)
+                except Exception as e:
+                    logger.warning(f"Deploy progress callback failed: {e}")
+
         try:
             # Fetch project from database
             logger.info(f"Fetching project {project_id} for deployment")
             response = supabase.table("projects").select("*").eq("id", project_id).execute()
-            
+
             if not response.data:
                 raise VercelDeploymentError(f"Project {project_id} not found")
-            
+
             project = response.data[0]
             project_type = project.get("project_type", "static")
             project_name = project.get("subdomain") or project.get("name", "website").lower().replace(" ", "-")
-            
+
             # Determine if this is a React project
             is_react = project_type == "react"
-            
+
+            _progress("uploading", "Preparing and uploading project files")
+
             if is_react:
                 # Fetch React project files from database
                 logger.info(f"Fetching React project files for project {project_id}")
                 project_files = await self.file_manager.get_project_files(project_id)
-                
+
                 if not project_files:
                     raise VercelDeploymentError("No React project files found. Please generate the project first.")
-                
+
                 logger.info(f"Found {len(project_files)} React files to deploy")
             else:
                 # Generate static files from HTML/CSS/JS content
                 if not project.get("html_content"):
                     raise VercelDeploymentError("Project must have HTML content to deploy")
-                
+
                 logger.info(f"Generating static files for project {project_id}")
                 project_files = await self._generate_static_files(project)
-            
+
             # Deploy using the unified deployment method
             deployment_result = await self.deploy_from_files(
                 project_files=project_files,
                 project_name=project_name,
-                is_react=is_react
+                is_react=is_react,
+                progress_cb=_progress
             )
-            
+
             # Update project in database
             now = datetime.utcnow().isoformat()
             update_data = {
@@ -489,22 +509,20 @@ class VercelDeployer:
                 "updated_at": now,
                 "published": True
             }
-            
+
             supabase.table("projects").update(update_data).eq("id", project_id).execute()
-            
+
             logger.info(f"Project {project_id} deployment information updated in database")
-            
-            # Sleep for 10 seconds to ensure deployment is fully processed
-            logger.info("Waiting for deployment to be fully processed...")
-            await asyncio.sleep(10)
-            
+            # Note: deploy_from_files already polls Vercel until READY
+            # (_wait_for_deployment) — no artificial sleep needed.
+
             return {
                 "deployment_id": deployment_result["deployment_id"],
                 "deployment_url": deployment_result["deployment_url"],
                 "status": "ready",
                 "deployed_at": now
             }
-        
+
         except VercelDeploymentError:
             raise
         except Exception as e:
@@ -604,12 +622,15 @@ class VercelDeployer:
                 
                 data = response.json()
             
+            # Note: Vercel's "ready" field is a timestamp (ms), not a boolean —
+            # readiness is derived from readyState.
+            state = data.get("readyState", "UNKNOWN")
             return {
                 "deployment_id": data.get("id"),
                 "url": data.get("url"),
-                "state": data.get("readyState", "UNKNOWN"),
+                "state": state,
                 "created_at": data.get("createdAt"),
-                "ready": data.get("ready", False)
+                "ready": state == "READY"
             }
         
         except VercelDeploymentError:
