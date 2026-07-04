@@ -23,7 +23,7 @@ from app.services.react_website_generator import react_website_generator
 from app.services.project_file_manager import project_file_manager
 from app.services.vite_preview_service import vite_preview_service
 from app.services.component_editor_service import component_editor_service
-from app.services.generation import component_library
+from app.services import component_library
 from app.services.validators.error_fixer import error_fixer
 from app.services.validators.build_tester import BuildError, BuildTester
 from app.services.direct_code_editor import direct_code_editor
