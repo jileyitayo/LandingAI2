@@ -77,11 +77,17 @@ export default async function ProjectSettingsPage({ params }: PageProps) {
         initialProject={{
           name: project.name,
           description: project.description,
+          prompt: project.prompt,
           subdomain: project.subdomain,
           seo_title: project.seo_title,
           seo_description: project.seo_description,
+          favicon_url: project.favicon_url,
           whatsapp_number: project.whatsapp_number,
           published: project.published,
+          deployment_url: project.deployment_url,
+          last_deployed_at: project.last_deployed_at,
+          last_edited_at: project.last_edited_at,
+          created_at: project.created_at,
         }}
         user={{
           email: user.email!,

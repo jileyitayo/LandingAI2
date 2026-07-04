@@ -524,6 +524,7 @@ export const api = {
         subdomain?: string;
         seo_title?: string;
         seo_description?: string;
+        favicon_url?: string;
         published?: boolean;
       }
     ) =>

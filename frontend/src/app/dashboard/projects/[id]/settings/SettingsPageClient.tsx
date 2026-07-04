@@ -9,11 +9,17 @@ interface SettingsPageClientProps {
   initialProject: {
     name: string;
     description?: string;
+    prompt?: string;
     subdomain?: string;
     seo_title?: string;
     seo_description?: string;
+    favicon_url?: string;
     whatsapp_number?: string;
     published?: boolean;
+    deployment_url?: string;
+    last_deployed_at?: string;
+    last_edited_at?: string;
+    created_at?: string;
   };
   user: {
     email: string;

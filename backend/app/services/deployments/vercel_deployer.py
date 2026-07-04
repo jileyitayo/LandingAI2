@@ -492,6 +492,14 @@ class VercelDeployer:
                 logger.info(f"Generating static files for project {project_id}")
                 project_files = await self._generate_static_files(project)
 
+            # Apply project-level site meta (SEO title/description, favicon)
+            # to index.html before upload
+            if "index.html" in project_files:
+                project_files = dict(project_files)
+                project_files["index.html"] = self._apply_site_meta(
+                    project_files["index.html"], project
+                )
+
             # Deploy using the unified deployment method
             deployment_result = await self.deploy_from_files(
                 project_files=project_files,
@@ -529,6 +537,37 @@ class VercelDeployer:
             logger.error(f"Unexpected error during deployment: {str(e)}")
             raise VercelDeploymentError(f"Deployment failed: {str(e)}")
     
+    @staticmethod
+    def _apply_site_meta(index_html: str, project: dict) -> str:
+        """Patch index.html with the project's SEO title/description and favicon."""
+        import re as _re
+
+        seo_title = project.get("seo_title")
+        seo_description = project.get("seo_description")
+        favicon_url = project.get("favicon_url")
+
+        if seo_title:
+            index_html = _re.sub(
+                r"<title>.*?</title>",
+                f"<title>{seo_title}</title>",
+                index_html,
+                count=1,
+                flags=_re.DOTALL,
+            )
+        if seo_description:
+            meta_tag = f'<meta name="description" content="{seo_description}" />'
+            if _re.search(r'<meta\s+name="description"[^>]*>', index_html):
+                index_html = _re.sub(r'<meta\s+name="description"[^>]*/?>', meta_tag, index_html, count=1)
+            else:
+                index_html = index_html.replace("</title>", f"</title>\n    {meta_tag}", 1)
+        if favicon_url:
+            icon_tag = f'<link rel="icon" href="{favicon_url}" />'
+            if _re.search(r'<link\s+rel="icon"[^>]*>', index_html):
+                index_html = _re.sub(r'<link\s+rel="icon"[^>]*/?>', icon_tag, index_html, count=1)
+            else:
+                index_html = index_html.replace("</title>", f"</title>\n    {icon_tag}", 1)
+        return index_html
+
     async def delete_deployment(self, deployment_id: str) -> bool:
         """
         Delete a deployment from Vercel.

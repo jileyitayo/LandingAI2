@@ -62,6 +62,9 @@ class ProjectDetail(BaseModel):
     whatsapp_number: Optional[str]
     seo_title: Optional[str]
     seo_description: Optional[str]
+    favicon_url: Optional[str] = None
+    last_deployed_at: Optional[str] = None
+    last_edited_at: Optional[str] = None
     generation_status: str
     generation_error: Optional[str]
     generation_cost: Optional[dict] = None  # Cost breakdown from generation_cost_tracking
@@ -82,6 +85,7 @@ class ProjectUpdateRequest(BaseModel):
     subdomain: Optional[str] = Field(None, min_length=3, max_length=20, pattern="^[a-z0-9-]+$")
     seo_title: Optional[str] = Field(None, max_length=60)
     seo_description: Optional[str] = Field(None, max_length=160)
+    favicon_url: Optional[str] = Field(None, max_length=1000)
 
 
 class ProjectDuplicateRequest(BaseModel):
@@ -290,7 +294,9 @@ async def update_project(
             update_data["seo_title"] = request.seo_title
         if request.seo_description is not None:
             update_data["seo_description"] = request.seo_description
-        
+        if request.favicon_url is not None:
+            update_data["favicon_url"] = request.favicon_url or None
+
         # Always update the updated_at timestamp
         update_data["updated_at"] = datetime.utcnow().isoformat()
         
