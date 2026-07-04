@@ -14,6 +14,7 @@ import { TemplateCard } from "@/components/TemplateCard";
 import { useUnifiedGeneration } from "@/hooks/useUnifiedGeneration";
 import DashboardHeader from "@/components/DashboardHeader";
 import GenerationStatus from "@/components/GenerationStatus";
+import AttachmentButton, { type Attachment } from "@/components/AttachmentButton";
 
 interface Template {
   id: string;
@@ -49,6 +50,7 @@ export default function DashboardPage() {
   const [prompt, setPrompt] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#6366f1");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   // Templates state
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -91,13 +93,19 @@ export default function DashboardPage() {
       undefined, // projectName
       {
         primaryColor,
-      }
+      },
+      attachments.map((a) => ({
+        media_id: a.id,
+        url: a.url,
+        media_type: a.mediaType,
+      }))
     );
 
     if (result) {
       // Website generated successfully
       // Could navigate to the project or show success message
       setPrompt("");
+      setAttachments([]);
 
       // if (result.status === 'completed') {
       //   router.push(`/dashboard/projects/${result.project_id}`);
@@ -107,7 +115,7 @@ export default function DashboardPage() {
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleGenerate();
     }
@@ -160,14 +168,26 @@ export default function DashboardPage() {
         {/* Prompt Input Section */}
         <div className="max-w-4xl mx-auto mb-12">
           <div className="relative">
-            <div className="flex items-center gap-3 bg-white rounded-xl border-2 border-gray-200 focus-within:border-indigo-500 transition-colors shadow-sm">
-              <input
-                type="text"
+            <div className="flex items-end gap-3 bg-white rounded-xl border-2 border-gray-200 focus-within:border-indigo-500 transition-colors shadow-sm px-4 py-3">
+              <div className="pb-0.5">
+                <AttachmentButton
+                  attachments={attachments}
+                  onAttachmentsChange={setAttachments}
+                  disabled={isGenerating}
+                />
+              </div>
+              <textarea
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+                onChange={(e) => {
+                  setPrompt(e.target.value);
+                  const el = e.target;
+                  el.style.height = "auto";
+                  el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+                }}
                 onKeyDown={handleKeyPress}
                 placeholder="e.g., 'A modern coffee shop in downtown Seattle'"
-                className="flex-1 px-6 py-4 text-base text-gray-900 placeholder-gray-400 bg-transparent border-0 focus:outline-none focus:ring-0"
+                rows={1}
+                className="flex-1 px-2 py-2 text-base text-gray-900 placeholder-gray-400 bg-transparent border-0 focus:outline-none focus:ring-0 resize-none"
                 maxLength={500}
                 disabled={isGenerating}
               />

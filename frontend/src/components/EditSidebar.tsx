@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ChevronDown, ChevronRight, Info, Palette, Type, Link as LinkIcon, Eye, Sparkles, Loader2, SlidersHorizontal } from 'lucide-react';
+import { X, ChevronDown, ChevronRight, Info, Palette, Type, Link as LinkIcon, Eye, SlidersHorizontal } from 'lucide-react';
 import { SelectedElement } from '@/types/chat.types';
 import { PageInfo, PropertyType, EditableElement } from '@/types/property-edit.types';
 import TextEditor from './property-editors/TextEditor';
@@ -9,6 +9,8 @@ import ColorEditor from './property-editors/ColorEditor';
 import FontEditor from './property-editors/FontEditor';
 import ImageEditor from './property-editors/ImageEditor';
 import LinkEditor from './property-editors/LinkEditor';
+import ChatPanel, { ChatSendResult } from './ChatPanel';
+import type { Attachment } from './AttachmentButton';
 
 export type EditScope = 'element' | 'section' | 'page';
 
@@ -19,13 +21,13 @@ interface EditSidebarProps {
   onClearSelection: () => void;
   onDeselectElement?: (selectorKey: string) => void;
   onPropertyChange: (property: PropertyType, value: string | number | boolean) => void;
-  onAiEdit?: (instruction: string, scope: EditScope) => void;
+  onChatSend: (instruction: string, scope: EditScope, attachments: Attachment[]) => Promise<ChatSendResult>;
   isApplyingEdit?: boolean;
   isAutoSaving: boolean;
   // Optional: Project files for route suggestions in LinkEditor
   projectFiles?: Record<string, string>;
-  // Optional: Project ID for media uploads
-  projectId?: string;
+  // Project ID for media uploads and chat history
+  projectId: string;
 }
 
 type PropertySection = 'content' | 'colors' | 'typography' | 'link' | 'image';
@@ -37,7 +39,7 @@ export default function EditSidebar({
   onClearSelection,
   onDeselectElement,
   onPropertyChange,
-  onAiEdit,
+  onChatSend,
   isApplyingEdit = false,
   isAutoSaving,
   projectFiles,
@@ -48,23 +50,14 @@ export default function EditSidebar({
   );
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [lastSavedProperty, setLastSavedProperty] = useState<string | null>(null);
-  // AI-first editing: instruction + scope; quick edits stay tucked away
-  const [aiInstruction, setAiInstruction] = useState('');
-  const [editScope, setEditScope] = useState<EditScope>('element');
+  // Quick edits stay tucked away; the chat is the primary editing surface
   const [quickEditsOpen, setQuickEditsOpen] = useState(false);
+  const [pageInfoOpen, setPageInfoOpen] = useState(false);
 
-  // Reset scope + collapse quick edits whenever the selection changes
+  // Collapse quick edits whenever the selection changes
   useEffect(() => {
-    setEditScope('element');
     setQuickEditsOpen(false);
   }, [selectedElement?.selector]);
-
-  const handleAiSubmit = () => {
-    const instruction = aiInstruction.trim();
-    if (!instruction || instruction.length < 5 || !onAiEdit || isApplyingEdit) return;
-    onAiEdit(instruction, editScope);
-    setAiInstruction('');
-  };
 
   // Update save status based on isAutoSaving
   useEffect(() => {
@@ -306,36 +299,6 @@ export default function EditSidebar({
     return sections;
   };
 
-  // Breadcrumb crumb: Section › Element (+ Page) — doubles as the scope control
-  const renderBreadcrumb = () => {
-    if (!selectedElement) return null;
-    const sectionLabel = selectedElement.component?.componentName || 'Section';
-    const elementLabel = selectedElement.component?.elementName || selectedElement.tagName;
-
-    const crumbClass = (active: boolean) =>
-      `px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-        active
-          ? 'bg-blue-500/30 text-blue-200 ring-1 ring-blue-400/50'
-          : 'text-gray-400 hover:text-white hover:bg-gray-700/60'
-      }`;
-
-    return (
-      <div className="flex items-center flex-wrap gap-1 mb-2" title="Choose how much the AI edit can change">
-        <button onClick={() => setEditScope('page')} className={crumbClass(editScope === 'page')}>
-          Page
-        </button>
-        <span className="text-gray-600 text-xs">›</span>
-        <button onClick={() => setEditScope('section')} className={crumbClass(editScope === 'section')}>
-          {sectionLabel}
-        </button>
-        <span className="text-gray-600 text-xs">›</span>
-        <button onClick={() => setEditScope('element')} className={crumbClass(editScope === 'element')}>
-          {elementLabel}
-        </button>
-      </div>
-    );
-  };
-
   // Chips for multi-selected elements (shift+click)
   const renderSelectionChips = () => {
     if (selectedElements.length <= 1) return null;
@@ -366,63 +329,6 @@ export default function EditSidebar({
     );
   };
 
-  // Primary editing surface: natural-language instruction scoped to the selection
-  const renderAiEditBox = () => {
-    if (!onAiEdit) return null;
-    const targetCount = Math.max(selectedElements.length, 1);
-    return (
-      <div className="p-4 border-b border-gray-700 bg-gray-800/40">
-        <div className="flex items-center gap-2 mb-2">
-          <Sparkles className="w-4 h-4 text-blue-400" />
-          <span className="text-sm font-semibold text-white">Edit with AI</span>
-          {targetCount > 1 && (
-            <span className="text-xs text-blue-300 bg-blue-500/10 px-1.5 py-0.5 rounded">
-              {targetCount} elements
-            </span>
-          )}
-        </div>
-        <textarea
-          value={aiInstruction}
-          onChange={(e) => setAiInstruction(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleAiSubmit();
-            }
-          }}
-          placeholder={
-            targetCount > 1
-              ? 'Describe the change to apply to all selected elements…'
-              : 'Describe your change… e.g. "Make this say Get Started and turn it green"'
-          }
-          rows={3}
-          disabled={isApplyingEdit}
-          className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none disabled:opacity-60"
-        />
-        <button
-          onClick={handleAiSubmit}
-          disabled={isApplyingEdit || aiInstruction.trim().length < 5}
-          className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-400 text-white text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed"
-        >
-          {isApplyingEdit ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Updating preview…
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" />
-              Apply edit
-            </>
-          )}
-        </button>
-        <p className="mt-1.5 text-[11px] text-gray-500">
-          Changes apply only to the selected {editScope === 'element' ? 'element(s)' : editScope}. Shift+click in the preview to select more.
-        </p>
-      </div>
-    );
-  };
-
   const renderElementEditor = () => {
     if (!selectedElement) return null;
 
@@ -435,13 +341,12 @@ export default function EditSidebar({
                      selectedElement.attributes?.['data-editable-text'] === 'false';
 
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-shrink-0 max-h-[45%] overflow-y-auto border-b border-gray-700">
         {/* Header with element info */}
-        <div className="p-4 bg-gradient-to-br from-blue-900/40 to-purple-900/40 border-b border-gray-700">
-          <div className="flex items-start justify-between mb-2">
+        <div className="p-3 bg-gradient-to-br from-blue-900/40 to-purple-900/40 border-b border-gray-700">
+          <div className="flex items-start justify-between">
             <div className="min-w-0">
-              {renderBreadcrumb()}
-              <div className="text-lg font-bold text-white">
+              <div className="text-base font-bold text-white">
                 {elementType}
               </div>
               {componentName && (
@@ -481,9 +386,6 @@ export default function EditSidebar({
             </div>
           )}
         </div>
-
-        {/* AI edit — the primary editing path */}
-        {!isLocked && renderAiEditBox()}
 
         {/* Quick edits (direct property editors) — subtle, collapsed by default */}
         {!isLocked && (
@@ -640,7 +542,7 @@ export default function EditSidebar({
       <div className="px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-semibold text-white">
-            {selectedElement ? 'Element Properties' : 'Page Info'}
+            {selectedElement ? 'Element Selected' : 'AI Editor'}
           </h2>
         </div>
         
@@ -673,8 +575,39 @@ export default function EditSidebar({
         </div>
       </div>
 
-      {/* Sidebar Content */}
-      {selectedElement ? renderElementEditor() : renderPageInfo()}
+      {/* Sidebar Content: element quick-edits (when selected) + persistent chat */}
+      {selectedElement ? (
+        renderElementEditor()
+      ) : (
+        <div className="flex-shrink-0 border-b border-gray-700">
+          <button
+            onClick={() => setPageInfoOpen(prev => !prev)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-gray-500 hover:text-gray-300 hover:bg-gray-800/40 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Info className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Page info</span>
+            </div>
+            {pageInfoOpen ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
+          </button>
+          {pageInfoOpen && (
+            <div className="max-h-[40vh] overflow-y-auto">{renderPageInfo()}</div>
+          )}
+        </div>
+      )}
+
+      <ChatPanel
+        projectId={projectId}
+        selectedElement={selectedElement}
+        selectedElements={selectedElements}
+        onSend={onChatSend}
+        onClearSelection={onClearSelection}
+        isApplyingEdit={isApplyingEdit}
+      />
     </div>
   );
 }

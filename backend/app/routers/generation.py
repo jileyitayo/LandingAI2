@@ -627,6 +627,20 @@ async def generate_react_website_from_prompt(
             supabase_client=supabase
         )
 
+        # Step 3.5: Link pre-project media uploads (dashboard attachments) to the new project
+        if request.attachments:
+            try:
+                media_ids = [a["media_id"] for a in request.attachments if a.get("media_id")]
+                if media_ids:
+                    supabase.table("project_media")\
+                        .update({"project_id": project_id})\
+                        .in_("id", media_ids)\
+                        .eq("user_id", user_id)\
+                        .execute()
+                    logger.info(f"Linked {len(media_ids)} media attachment(s) to project {project_id}")
+            except Exception as e:
+                logger.warning(f"Failed to link media attachments to project {project_id}: {e}")
+
         # Step 4: Log AI call for rate limiting (counts as 1 generation)
         await log_ai_call(
             user_id=user_id,
@@ -1634,6 +1648,21 @@ async def delete_preview(
         )
 
 
+def _find_page_file(files: Dict[str, str]) -> Optional[str]:
+    """Pick the page file to target for a no-selection (whole page) edit."""
+    page_files = sorted(f for f in files if f.startswith("src/pages/") and f.endswith(".tsx"))
+    # Prefer the landing page regardless of casing (Home.tsx, home.tsx, index.tsx, ...)
+    for name in ("home.tsx", "index.tsx", "landing.tsx", "main.tsx"):
+        for f in page_files:
+            if f.rsplit("/", 1)[-1].lower() == name:
+                return f
+    if page_files:
+        return page_files[0]
+    if "src/App.tsx" in files:
+        return "src/App.tsx"
+    return None
+
+
 @router.post("/edit/project/{project_id}", response_model=ComponentEditResponse)
 async def edit_project_component(
     project_id: str,
@@ -1654,10 +1683,11 @@ async def edit_project_component(
     
     logger.info(f"[COMPONENT EDIT] Starting edit request for project {project_id} by user {user_id}")
     logger.info(f"[COMPONENT EDIT] Instruction: '{request.instruction}' (length: {len(request.instruction)})")
-    logger.info(f"[COMPONENT EDIT] Selected element tag: {request.selected_element.get('tagName', 'unknown')}")
-    logger.info(f"[COMPONENT EDIT] Selected element attributes: {request.selected_element.get('attributes', {})}")
-    logger.info(f"[COMPONENT EDIT] Full selected element keys: {list(request.selected_element.keys())}")
-    logger.info(f"[COMPONENT EDIT] Selected element text content: '{request.selected_element.get('textContent', '')[:50]}...'")
+    if request.selected_element:
+        logger.info(f"[COMPONENT EDIT] Selected element tag: {request.selected_element.get('tagName', 'unknown')}")
+        logger.info(f"[COMPONENT EDIT] Selected element text content: '{request.selected_element.get('textContent', '')[:50]}...'")
+    else:
+        logger.info(f"[COMPONENT EDIT] No element selected — page-scope edit")
 
     try:
         # Check rate limits first (dual: per-minute + daily)
@@ -1718,12 +1748,31 @@ async def edit_project_component(
             )
         
         # Resolve the selection set (multi-select sends selected_elements; single select falls back)
-        selected_elements = request.selected_elements or [request.selected_element]
+        selected_elements = request.selected_elements or (
+            [request.selected_element] if request.selected_element else []
+        )
         scope = request.scope or "element"
+        files = await project_file_manager.get_project_files(project_id)
+
+        if not selected_elements:
+            # No selection: the whole page is the target (chat message without a selection)
+            scope = "page"
+            page_file = _find_page_file(files)
+            if not page_file:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Could not identify a page file to edit"
+                )
+            selected_elements = [{
+                "tagName": "page",
+                "textContent": "",
+                "classList": [],
+                "attributes": {},
+                "component": {"componentFile": page_file},
+            }]
         logger.info(f"[COMPONENT EDIT] Editing {len(selected_elements)} selected element(s), scope={scope}")
 
         # Group selected elements by their component file
-        files = await project_file_manager.get_project_files(project_id)
         targets_by_file: Dict[str, List[Dict[str, Any]]] = {}
         for element in selected_elements:
             component_file = await component_editor_service.identify_component(element, files)
@@ -1741,6 +1790,22 @@ async def edit_project_component(
         business_analysis = project.get("business_analysis", {})
         logger.info(f"[COMPONENT EDIT] Business analysis available: {bool(business_analysis)}")
 
+        # Make uploaded attachment URLs available to the LLM: when the user says
+        # "use the attached image", the model must embed these exact public URLs.
+        effective_instruction = request.instruction
+        if request.attachments:
+            attachment_urls = [a["url"] for a in request.attachments if a.get("url")]
+            if attachment_urls:
+                url_lines = "\n".join(f"  {i+1}. {u}" for i, u in enumerate(attachment_urls))
+                effective_instruction = (
+                    f"{request.instruction}\n\n"
+                    f"[The user attached {len(attachment_urls)} uploaded image(s), publicly hosted at:\n"
+                    f"{url_lines}\n"
+                    f"When the instruction refers to an attached/uploaded image, use these exact URLs "
+                    f"(e.g. in src or background-image). Do NOT substitute stock/Unsplash URLs for them.]"
+                )
+                logger.info(f"[COMPONENT EDIT] {len(attachment_urls)} attachment URL(s) added to instruction context")
+
         # LLM edit per target file, with scope-containment verification and one strict retry
         old_codes: Dict[str, str] = {}
         new_codes: Dict[str, str] = {}
@@ -1755,7 +1820,7 @@ async def edit_project_component(
                 logger.info(f"[COMPONENT EDIT] Calling AI to modify {component_file} (attempt {attempt + 1})")
                 success, old_code, new_code, error = await component_editor_service.modify_component_code(
                     file_path=component_file,
-                    instruction=request.instruction,
+                    instruction=effective_instruction,
                     element_context=primary_element,
                     project_id=project_id,
                     files=files,
@@ -1902,11 +1967,12 @@ async def edit_project_component(
         component_file = next(iter(targets_by_file.keys()))
         old_code = old_codes[component_file]
         new_code = new_codes[component_file]
+        primary_element = request.selected_element or selected_elements[0]
 
         # Generate edit description
         edit_description = await component_editor_service.generate_edit_description(
             instruction=request.instruction,
-            element_context=request.selected_element,
+            element_context=primary_element,
             file_path=component_file
         )
         logger.info(f"[COMPONENT EDIT] Generated description: {edit_description}")
@@ -1926,11 +1992,13 @@ async def edit_project_component(
                 "ai_response": edit_description,
                 "metadata": {
                     "file_path": component_file,
+                    "scope": scope,
                     "selected_element": {
-                        "tagName": request.selected_element.get('tagName', ''),
-                        "textContent": request.selected_element.get('textContent', '')[:100],
-                        "component": request.selected_element.get('component', {})
-                    }
+                        "tagName": primary_element.get('tagName', ''),
+                        "textContent": (primary_element.get('textContent') or '')[:100],
+                        "component": primary_element.get('component', {})
+                    },
+                    "attachments": request.attachments or []
                 }
             }).execute()
 
@@ -1942,7 +2010,7 @@ async def edit_project_component(
                 "old_code": old_code,
                 "new_code": new_code,
                 "diff_summary": edit_description,
-                "selected_element": request.selected_element,
+                "selected_element": primary_element,
                 "edit_description": edit_description,
                 "ai_instruction": request.instruction
             }).execute()
@@ -1963,8 +2031,8 @@ async def edit_project_component(
                 "project_id": project_id,
                 "component_file": component_file,
                 "instruction": request.instruction,
-                "element_tag": request.selected_element.get('tagName', ''),
-                "element_text": request.selected_element.get('textContent', '')[:100]
+                "element_tag": primary_element.get('tagName', ''),
+                "element_text": (primary_element.get('textContent') or '')[:100]
             }
         )
 

@@ -631,6 +631,7 @@ export const api = {
       prompt: string;
       project_name?: string;
       style_preferences?: Record<string, any>;
+      attachments?: Array<{ media_id: string; url: string; media_type?: string }>;
     }) =>
       apiRequest<{
         project_id: string;
@@ -689,10 +690,11 @@ export const api = {
      * The backend verifies the edit compiles and returns the new preview URL.
      */
     editComponent: (projectId: string, data: {
-      selected_element: Record<string, any>;
+      selected_element?: Record<string, any>;
       selected_elements?: Record<string, any>[];
       scope?: 'element' | 'section' | 'page';
       instruction: string;
+      attachments?: Array<{ media_id: string; url: string; media_type?: string }>;
     }) =>
       apiRequest<{
         success: boolean;

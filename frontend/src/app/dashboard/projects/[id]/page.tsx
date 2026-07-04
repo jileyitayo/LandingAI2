@@ -11,6 +11,8 @@ import FileTree from '@/components/FileTree';
 import CodeViewer from '@/components/CodeViewer';
 import ReactPreview, { ReactPreviewHandle } from '@/components/ReactPreview';
 import EditSidebar, { EditScope } from '@/components/EditSidebar';
+import type { ChatSendResult } from '@/components/ChatPanel';
+import type { Attachment } from '@/components/AttachmentButton';
 import FeedbackModal from '@/components/FeedbackModal';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { Project } from '@/types/project.types';
@@ -292,31 +294,37 @@ export default function ProjectEditorPage() {
     }
   }, [projectId]);
 
-  // AI edit: send the selection + instruction to the LLM edit endpoint.
-  // The backend verifies the change compiles before saving and returns the
-  // fresh preview URL, so the iframe swaps straight to the verified build.
-  const handleAiEdit = useCallback(async (instruction: string, scope: EditScope) => {
-    if (!selectedElement) {
-      toast.error('Select an element in the preview first');
-      return;
-    }
-
+  // Chat send: forward the instruction (+ selection scope + attachments) to the
+  // LLM edit endpoint. Works with no selection (page scope). The backend verifies
+  // the change compiles before saving and returns the fresh preview URL, so the
+  // iframe swaps straight to the verified build. The result is returned so the
+  // chat panel can render it as an assistant message.
+  const handleChatSend = useCallback(async (
+    instruction: string,
+    scope: EditScope,
+    attachments: Attachment[]
+  ): Promise<ChatSendResult> => {
     setIsApplyingEdit(true);
     try {
-      const elements = selectedElements.length > 0 ? selectedElements : [selectedElement];
+      const elements = selectedElements.length > 0
+        ? selectedElements
+        : selectedElement
+          ? [selectedElement]
+          : undefined;
       const response = await api.generation.editComponent(projectId, {
         instruction,
-        selected_element: selectedElement,
+        selected_element: selectedElement ?? undefined,
         selected_elements: elements,
         scope,
+        attachments: attachments.map(a => ({
+          media_id: a.id,
+          url: a.url,
+          media_type: a.mediaType,
+        })),
       });
 
       if (!response.success) {
-        toast.error('Edit not applied', {
-          description: response.message,
-          duration: 6000,
-        });
-        return;
+        return { success: false, message: response.message };
       }
 
       // Swap the iframe to the freshly built, verified preview
@@ -328,15 +336,15 @@ export default function ProjectEditorPage() {
       await loadReactFiles();
       setEditVersion(v => v + 1);
 
-      toast.success('Edit applied', {
+      return {
+        success: true,
         description: response.edit_description || response.message,
-        duration: 3000,
-      });
+      };
     } catch (error: any) {
-      toast.error('Edit failed', {
-        description: error?.message || 'Something went wrong applying the edit',
-        duration: 6000,
-      });
+      return {
+        success: false,
+        message: error?.message || 'Something went wrong applying the edit',
+      };
     } finally {
       setIsApplyingEdit(false);
     }
@@ -762,9 +770,9 @@ export default function ProjectEditorPage() {
       pending.clear();
 
       const instruction = `On the selected element only: ${parts.join('; ')}. Do not change anything else.`;
-      handleAiEdit(instruction, 'element');
+      handleChatSend(instruction, 'element', []);
     }, 1500);
-  }, [handleAiEdit]);
+  }, [handleChatSend]);
 
   // Handle property changes with optimistic updates
   const handlePropertyChange = useCallback((property: PropertyType, value: string | number | boolean) => {
@@ -1264,7 +1272,7 @@ export default function ProjectEditorPage() {
                 previewRef.current?.deselectElement(selectorKey);
               }}
               onPropertyChange={handlePropertyChange}
-              onAiEdit={handleAiEdit}
+              onChatSend={handleChatSend}
               isApplyingEdit={isApplyingEdit}
               isAutoSaving={isAutoSaving}
               projectFiles={reactFiles}

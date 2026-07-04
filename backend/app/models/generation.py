@@ -27,7 +27,11 @@ class GenerateWebsiteRequest(BaseModel):
         None,
         description="Optional style preferences for template generation"
     )
-    
+    attachments: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="Uploaded media attachments: [{media_id, url, media_type}]"
+    )
+
     @validator('prompt')
     def validate_prompt(cls, v):
         """Validate prompt is meaningful"""
@@ -100,10 +104,11 @@ class GenerateReactWebsiteResponse(BaseModel):
 
 class ComponentEditRequest(BaseModel):
     """Request model for component editing"""
-    selected_element: Dict[str, Any] = Field(..., description="Element data from selector (primary/last selected)")
+    selected_element: Optional[Dict[str, Any]] = Field(None, description="Element data from selector (primary/last selected); None = page-scope edit")
     selected_elements: Optional[List[Dict[str, Any]]] = Field(None, description="All selected elements for multi-select edits")
     scope: str = Field("element", description="Edit scope: element, section, or page")
-    instruction: str = Field(..., min_length=5, max_length=500, description="Natural language edit instruction")
+    instruction: str = Field(..., min_length=5, max_length=2000, description="Natural language edit instruction")
+    attachments: Optional[List[Dict[str, Any]]] = Field(None, description="Uploaded media attachments: [{media_id, url, media_type}]")
 
     @validator('instruction')
     def validate_instruction(cls, v):

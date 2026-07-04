@@ -22,7 +22,12 @@ export const useUnifiedGeneration = () => {
   const [error, setError] = useState<string | null>(null);
   const [generatedProject, setGeneratedProject] = useState<any>(null);
 
-  const generateWebsite = async (prompt: string, projectName?: string, stylePreferences?: any) => {
+  const generateWebsite = async (
+    prompt: string,
+    projectName?: string,
+    stylePreferences?: any,
+    attachments?: Array<{ media_id: string; url: string; media_type?: string }>
+  ) => {
     setIsGenerating(true);
     setError(null);
 
@@ -30,7 +35,8 @@ export const useUnifiedGeneration = () => {
       const result = await api.generation.generateWebsite({
         prompt,
         project_name: projectName,
-        style_preferences: stylePreferences
+        style_preferences: stylePreferences,
+        attachments,
       });
 
       // console.log('[Generation] Initial response:', result);
