@@ -4,6 +4,7 @@ Generates website structure from business analysis.
 """
 
 import logging
+from app.config import settings
 from app.services.business_analyzer import BusinessAnalysis
 from app.services.react_models import WebsiteStructure
 from app.services.prompt_open_ai import PromptOpenAI
@@ -112,7 +113,7 @@ Create a website structure with appropriate pages and components for each page."
             system_prompt,
             user_prompt,
             WebsiteStructure,
-            model="gemini-3.1-flash-lite"
+            model=settings.analysis_model
         )
 
         print(f"Usage for structure generation: {usage}")
@@ -121,7 +122,7 @@ Create a website structure with appropriate pages and components for each page."
         if cost_tracker:
             cost_tracker.track_call(
                 service_name="structure_generation",
-                model_name="gemini-3.1-flash-lite",
+                model_name=settings.analysis_model,
                 usage=usage
             )
         

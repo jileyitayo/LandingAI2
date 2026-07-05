@@ -6,6 +6,7 @@ Generates custom CSS themes based on business analysis using AI.
 import logging
 from typing import Optional
 
+from app.config import settings
 from app.services.business_analyzer import BusinessAnalysis
 from app.services.prompt_open_ai import PromptOpenAI
 from app.services.default_theme import ThemeColors, get_default_theme, get_theme_variant
@@ -45,7 +46,7 @@ class ThemeGenerator:
                 system_prompt,
                 user_prompt,
                 ThemeColors,
-                model="gemini-3.1-flash-lite"
+                model=settings.analysis_model
             )
 
             logger.info(f"[THEME GEN] ✓ AI theme generated successfully")
@@ -56,7 +57,7 @@ class ThemeGenerator:
             if cost_tracker:
                 cost_tracker.track_call(
                     service_name="theme_generation",
-                    model_name="gemini-3.1-flash-lite",
+                    model_name=settings.analysis_model,
                     usage=usage
                 )
 

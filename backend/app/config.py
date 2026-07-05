@@ -23,9 +23,14 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     google_api_key: str = ""
 
+    # LLM model selection (env-overridable; gemini-3.5-flash-lite does not exist
+    # on this API key — only gemini-3.5-flash and gemini-3.1-flash-lite do)
     # Model used for component editing and build-error fixing
-    # (gemini-3.5-flash-lite does not exist; 3.5-flash is the closest upgrade from 3.1-flash-lite)
     edit_model: str = "gemini-3.1-flash-lite"
+    # Model used for per-page website code generation (the expensive call)
+    generation_model: str = "gemini-3.5-flash"
+    # Model used for business analysis, structure, theme, and guardrails
+    analysis_model: str = "gemini-3.1-flash-lite"
 
     # Stripe (optional for initial setup)
     stripe_secret_key: str = ""
