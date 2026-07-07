@@ -22,9 +22,17 @@ class RateLimiter:
     def __init__(self, supabase_client):
         self.supabase = supabase_client
 
-    async def check_rate_limit(self, user_id: str) -> Tuple[bool, Dict[str, Any]]:
+    async def check_rate_limit(self, user_id: str, call_type: str = "generation") -> Tuple[bool, Dict[str, Any]]:
         """
         Check if user has exceeded either per-minute or daily rate limit.
+
+        Args:
+            user_id: User ID to check
+            call_type: 'generation' (default) uses the shared generation quota
+                (per_minute_limit + daily_generation_limit / current_period_generations).
+                'edit' uses the separate edit quota (per_minute_edit_limit +
+                daily_edit_limit), counted from ai_call_logs rows with
+                call_type='edit' over sliding 60s / rolling 24h windows.
 
         Returns:
             Tuple of (is_allowed, rate_limit_info)
@@ -61,7 +69,9 @@ class RateLimiter:
                 tier = {
                     "tier_name": "free",
                     "per_minute_limit": 1,
-                    "daily_generation_limit": 5
+                    "daily_generation_limit": 5,
+                    "per_minute_edit_limit": 2,
+                    "daily_edit_limit": 10
                 }
             else:
                 tier = subscription["subscription_tiers"]
@@ -69,6 +79,9 @@ class RateLimiter:
             tier_name = tier["tier_name"]
             per_minute_limit = tier["per_minute_limit"]
             daily_limit = tier["daily_generation_limit"]
+
+            if call_type == "edit":
+                return await self._check_edit_rate_limit(user_id, tier, now)
 
             # =====================================================
             # STEP 2: Check Per-Minute Limit (Sliding Window)
@@ -184,6 +197,100 @@ class RateLimiter:
             # On error, allow the request but log it
             return True, {"error": str(e)}
 
+    async def _check_edit_rate_limit(self, user_id: str, tier: Dict[str, Any], now: datetime) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Check the edit-specific quota: sliding 60s window + rolling 24h window,
+        both counted from ai_call_logs rows with call_type='edit'.
+
+        Edits do NOT touch users.current_period_generations — the two quotas
+        are fully independent. Uses .get() defaults so this degrades to free-tier
+        edit limits until migration 027 adds the columns.
+        """
+        tier_name = tier["tier_name"]
+        per_minute_limit = tier.get("per_minute_edit_limit", 2)
+        daily_limit = tier.get("daily_edit_limit", 10)
+
+        def count_edits_since(since: datetime) -> int:
+            response = self.supabase.table("ai_call_logs")\
+                .select("id", count="exact")\
+                .eq("user_id", user_id)\
+                .eq("call_type", "edit")\
+                .gte("created_at", since.isoformat())\
+                .execute()
+            return response.count or 0
+
+        def oldest_edit_since(since: datetime) -> Optional[datetime]:
+            response = self.supabase.table("ai_call_logs")\
+                .select("created_at")\
+                .eq("user_id", user_id)\
+                .eq("call_type", "edit")\
+                .gte("created_at", since.isoformat())\
+                .order("created_at", desc=False)\
+                .limit(1)\
+                .execute()
+            if response.data:
+                return datetime.fromisoformat(
+                    response.data[0]["created_at"].replace('Z', '+00:00')
+                ).replace(tzinfo=None)
+            return None
+
+        # Per-minute limit (sliding 60s window)
+        sixty_seconds_ago = now - timedelta(seconds=60)
+        edits_in_last_minute = count_edits_since(sixty_seconds_ago)
+
+        if edits_in_last_minute >= per_minute_limit:
+            oldest = oldest_edit_since(sixty_seconds_ago)
+            retry_after = max(1, int(60 - (now - oldest).total_seconds()) + 1) if oldest else 60
+
+            return False, {
+                "limit_type": "per_minute",
+                "quota": "edit",
+                "tier": tier_name,
+                "per_minute_limit": per_minute_limit,
+                "calls_in_last_minute": edits_in_last_minute,
+                "retry_after_seconds": retry_after,
+                "message": f"Edit rate limit exceeded. Please wait {retry_after} seconds.",
+                "countdown_message": f"You can make your next edit in {retry_after} seconds",
+                "upgrade_suggestion": "Upgrade to Pro for 5 edits per minute and 30 edits per day" if tier_name == "free" else None
+            }
+
+        # Daily limit (rolling 24h window)
+        twenty_four_hours_ago = now - timedelta(hours=24)
+        edits_in_last_day = count_edits_since(twenty_four_hours_ago)
+
+        if edits_in_last_day >= daily_limit:
+            oldest = oldest_edit_since(twenty_four_hours_ago)
+            if oldest:
+                retry_after = max(1, int((oldest + timedelta(hours=24) - now).total_seconds()) + 1)
+            else:
+                retry_after = 24 * 3600
+            resets_at = now + timedelta(seconds=retry_after)
+            hours_until_reset = int(retry_after / 3600)
+            minutes_until_reset = int((retry_after % 3600) / 60)
+
+            return False, {
+                "limit_type": "daily",
+                "quota": "edit",
+                "tier": tier_name,
+                "daily_limit": daily_limit,
+                "used_today": edits_in_last_day,
+                "retry_after_seconds": retry_after,
+                "resets_at": resets_at.isoformat(),
+                "message": f"Daily edit limit reached. Resets in {hours_until_reset}h {minutes_until_reset}m.",
+                "countdown_message": f"Your daily edit limit will reset in {hours_until_reset} hours and {minutes_until_reset} minutes",
+                "upgrade_suggestion": "Upgrade to Pro for 30 edits per day" if tier_name == "free" else None
+            }
+
+        return True, {
+            "quota": "edit",
+            "tier": tier_name,
+            "per_minute_limit": per_minute_limit,
+            "daily_limit": daily_limit,
+            "calls_in_last_minute": edits_in_last_minute,
+            "used_today": edits_in_last_day,
+            "remaining_today": daily_limit - edits_in_last_day
+        }
+
     async def log_ai_call(
         self,
         user_id: str,
@@ -197,7 +304,9 @@ class RateLimiter:
         This function:
         1. Inserts a record into ai_call_logs table (for per-minute tracking)
         2. Updates user's last_ai_call_at timestamp
-        3. Increments user's current_period_generations (daily counter)
+        3. Increments user's current_period_generations (daily counter) —
+           only for call_type='generation'; edits have their own quota
+           counted directly from ai_call_logs
 
         Args:
             user_id: User ID making the call
@@ -217,6 +326,15 @@ class RateLimiter:
                 "endpoint": endpoint,
                 "created_at": now.isoformat()
             }).execute()
+
+            if call_type != "generation":
+                # Edits/questions don't consume the generation quota
+                self.supabase.table("users")\
+                    .update({"last_ai_call_at": now.isoformat()})\
+                    .eq("id", user_id)\
+                    .execute()
+                logger.info(f"Logged AI call for user {user_id}: {call_type}")
+                return
 
             # Update user's last_ai_call_at and increment daily counter
             # First, get current count
@@ -324,6 +442,18 @@ class RateLimiter:
                     )
                     retry_after = max(1, int(60 - (now - oldest_call_time.replace(tzinfo=None)).total_seconds()) + 1)
 
+            # Edit quota usage (rolling 24h, counted from ai_call_logs)
+            daily_edit_limit = tier.get("daily_edit_limit", 10)
+            per_minute_edit_limit = tier.get("per_minute_edit_limit", 2)
+            twenty_four_hours_ago = now - timedelta(hours=24)
+            edits_response = self.supabase.table("ai_call_logs")\
+                .select("id", count="exact")\
+                .eq("user_id", user_id)\
+                .eq("call_type", "edit")\
+                .gte("created_at", twenty_four_hours_ago.isoformat())\
+                .execute()
+            edits_in_last_day = edits_response.count or 0
+
             return {
                 "tier": tier_name,
                 "tier_display_name": tier_display_name,
@@ -339,6 +469,12 @@ class RateLimiter:
                     "calls_in_last_minute": calls_in_last_minute,
                     "can_call_now": can_call_now,
                     "retry_after_seconds": retry_after
+                },
+                "edits": {
+                    "limit": daily_edit_limit,
+                    "per_minute_limit": per_minute_edit_limit,
+                    "used": edits_in_last_day,
+                    "remaining": max(0, daily_edit_limit - edits_in_last_day)
                 }
             }
 

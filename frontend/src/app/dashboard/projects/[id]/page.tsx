@@ -360,6 +360,13 @@ export default function ProjectEditorPage() {
         chatMessageId: response.chat_message_id,
       };
     } catch (error: any) {
+      if (error?.status === 429) {
+        return {
+          success: false,
+          message: error?.message || 'You have reached your edit limit.',
+          rateLimited: true,
+        };
+      }
       return {
         success: false,
         message: error?.message || 'Something went wrong applying the edit',

@@ -56,19 +56,21 @@ router = APIRouter(tags=["generation"])
 # Rate Limiting Functions - NEW DUAL RATE LIMITING
 # ============================================================================
 @log_action(action_type='READ', target_resource_type='rate_limit_check')
-async def check_user_rate_limit(user_id: str, supabase_client) -> tuple[bool, Dict[str, Any]]:
+async def check_user_rate_limit(user_id: str, supabase_client, call_type: str = "generation") -> tuple[bool, Dict[str, Any]]:
     """
     Check if user has exceeded rate limit (per-minute OR daily).
 
     Uses new dual rate limiting:
-    - Per-minute limit (sliding window): Free=1/min, Pro=2/min
-    - Daily limit: Free=5/day, Pro=30/day
+    - call_type='generation': per-minute (Free=1/min, Pro=2/min) + daily
+      (Free=5/day, Pro=30/day) via the shared generation counter
+    - call_type='edit': separate edit quota (Free=10/day+2/min, Pro=30/day+5/min,
+      Premium=10000/day+20/min) counted from ai_call_logs
 
     Returns:
         Tuple of (is_allowed, rate_limit_info)
     """
     rate_limiter = RateLimiter(supabase_client)
-    return await rate_limiter.check_rate_limit(user_id)
+    return await rate_limiter.check_rate_limit(user_id, call_type=call_type)
 
 
 async def log_ai_call(
@@ -1710,9 +1712,9 @@ async def _run_edit_pipeline(
         logger.info(f"[COMPONENT EDIT] No element selected — page-scope edit")
 
     try:
-        # Check rate limits first (dual: per-minute + daily)
+        # Check edit-specific rate limits (dual: per-minute + daily, separate from generation quota)
         logger.info(f"[COMPONENT EDIT] Checking rate limits...")
-        is_allowed, rate_info = await check_user_rate_limit(user_id, supabase)
+        is_allowed, rate_info = await check_user_rate_limit(user_id, supabase, call_type="edit")
 
         if not is_allowed:
             logger.warning(f"[COMPONENT EDIT] Rate limit exceeded for user {user_id}: {rate_info.get('limit_type')}")

@@ -13,6 +13,8 @@ export interface ChatMessage {
   content: string;
   attachments?: Attachment[];
   isError?: boolean;
+  /** Error came from the edit rate limit — render an upgrade hint */
+  rateLimited?: boolean;
   createdAt: string;
   /** Backend chat message id — enables one-click undo for edit messages */
   chatMessageId?: string;
@@ -23,6 +25,8 @@ export interface ChatSendResult {
   description?: string;
   message?: string;
   chatMessageId?: string;
+  /** True when the edit was rejected by the per-tier edit rate limit (429) */
+  rateLimited?: boolean;
 }
 
 interface ChatPanelProps {
@@ -166,6 +170,7 @@ export default function ChatPanel({
           ? result.description || result.message || 'Edit applied'
           : result.message || 'Edit failed',
         isError: !result.success,
+        rateLimited: result.rateLimited,
         createdAt: new Date().toISOString(),
         chatMessageId: result.chatMessageId,
       },
@@ -303,6 +308,17 @@ export default function ChatPanel({
                   <AlertCircle className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
                 )}
                 {message.content}
+                {message.rateLimited && (
+                  <div className="mt-1.5 pt-1.5 border-t border-red-700/40">
+                    <a
+                      href="/dashboard/profile"
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-300 hover:text-amber-200 transition-colors"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      Upgrade your plan for more edits
+                    </a>
+                  </div>
+                )}
                 {onUndo && message.id === lastUndoableId && (
                   <div className="mt-1.5 pt-1.5 border-t border-gray-700/60">
                     <button
