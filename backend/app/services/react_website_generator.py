@@ -205,7 +205,20 @@ class ReactWebsiteGenerator:
         logger.info(f"[REACT GEN] Animations enabled: {enable_animations}")
 
         files = self._generate_all_files(website_structure, business_analysis, enable_animations, cost_tracker=cost_tracker)
-        
+
+        # Deterministic nav-link repair: rewrite bad Header/Footer anchors
+        # (e.g. <a href="#features">Shop</a>) to <Link to="/shop"> so every
+        # page is reachable. Runs before build validation so the rewritten
+        # code is what gets verified.
+        try:
+            from app.services.validators.nav_link_validator import validate_and_fix_nav_links
+            fixed_nav_files, nav_changes = validate_and_fix_nav_links(files, website_structure.model_dump())
+            files.update(fixed_nav_files)
+            if nav_changes:
+                logger.info(f"[REACT GEN] Nav link validator repaired {len(nav_changes)} link(s)")
+        except Exception as e:
+            logger.warning(f"[REACT GEN] Nav link validation failed (non-fatal): {e}")
+
         # Update progress: Components created, now building pages
         if progress_callback:
             try:

@@ -1684,6 +1684,69 @@ def _find_page_file(files: Dict[str, str]) -> Optional[str]:
     return None
 
 
+async def _build_verify_with_repairs(
+    project_id: str,
+    files: Dict[str, str],
+    new_codes: Dict[str, str],
+    max_repair_attempts: int = 2,
+) -> tuple:
+    """
+    Build the candidate project (files + new_codes) via the preview service,
+    feeding build errors back to the LLM for up to `max_repair_attempts`
+    repairs. Mutates new_codes to stay in sync with any repairs.
+
+    Returns (preview_result_or_None, candidate_files).
+    """
+    candidate_files = {**files, **new_codes}
+    preview_result = None
+    build_output = ""
+    build_tester = BuildTester()
+
+    for attempt in range(max_repair_attempts + 1):
+        try:
+            preview_result = await asyncio.to_thread(
+                vite_preview_service.create_preview, project_id, candidate_files
+            )
+            break
+        except Exception as build_exc:
+            build_output = str(build_exc)
+            logger.warning(f"[BUILD VERIFY] Candidate build failed (attempt {attempt + 1}): {build_output[:500]}")
+            if attempt >= max_repair_attempts:
+                break
+
+            parsed_errors = build_tester._parse_build_errors(build_output)
+            # Keep only errors that resolve to a real project file — the parser
+            # sometimes attributes vite output to bogus paths like "build"
+            parsed_errors = [
+                e for e in parsed_errors
+                if error_fixer._find_matching_file(e.file_path, candidate_files)
+            ]
+            if not parsed_errors:
+                # Attribute errors from file paths mentioned in the build output,
+                # falling back to the files this edit touched
+                import re as _re
+                mentioned = {
+                    m for m in _re.findall(r"src/[\w\-./]+\.(?:tsx|ts|jsx|js|css)", build_output)
+                    if m in candidate_files
+                }
+                target_files = mentioned or set(new_codes.keys())
+                parsed_errors = [
+                    BuildError(file_path=f, line=None, column=None,
+                               error_type="build", message=build_output[:1500])
+                    for f in target_files
+                ]
+
+            fixed_files, _ = await asyncio.to_thread(
+                error_fixer.fix_build_errors, candidate_files, parsed_errors, build_output
+            )
+            candidate_files = fixed_files
+            # Keep edited-file contents in sync with any repairs
+            for f in new_codes:
+                new_codes[f] = candidate_files.get(f, new_codes[f])
+
+    return preview_result, candidate_files
+
+
 async def _run_edit_pipeline(
     project_id: str,
     request: ComponentEditRequest,
@@ -1731,7 +1794,7 @@ async def _run_edit_pipeline(
         # Verify project ownership and fetch business context
         logger.info(f"[COMPONENT EDIT] Fetching project {project_id} from database")
         response = supabase.table("projects")\
-            .select("id, user_id, project_type, generation_status, business_analysis, preview_id")\
+            .select("id, user_id, project_type, generation_status, business_analysis, website_structure, preview_id")\
             .eq("id", project_id)\
             .execute()
 
@@ -1973,59 +2036,44 @@ async def _run_edit_pipeline(
                 old_codes.setdefault("package.json", files["package.json"])
                 new_codes["package.json"] = updated_package
 
+        # Deterministic nav-link repair when shared components changed: keep
+        # every page reachable (bad hash/plain anchors blank the HashRouter
+        # preview). Runs before build-verify so the repaired code is verified.
+        if any(p.startswith("src/components/") for p in new_codes):
+            try:
+                from app.services.validators.nav_link_validator import (
+                    validate_and_fix_nav_links,
+                    ensure_catch_all_route,
+                )
+                fixed_nav, nav_changes = validate_and_fix_nav_links(
+                    {**files, **new_codes}, project.get("website_structure") or {}
+                )
+                for nav_path, nav_content in fixed_nav.items():
+                    old_codes.setdefault(nav_path, files.get(nav_path, ""))
+                    new_codes[nav_path] = nav_content
+                if nav_changes:
+                    logger.info(f"[COMPONENT EDIT] Nav link validator repaired {len(nav_changes)} link(s)")
+                # Older projects were generated without a catch-all route —
+                # patch App.tsx opportunistically so bad links can't blank the app
+                app_tsx = new_codes.get("src/App.tsx", files.get("src/App.tsx"))
+                if app_tsx:
+                    patched_app = ensure_catch_all_route(app_tsx)
+                    if patched_app:
+                        old_codes.setdefault("src/App.tsx", files.get("src/App.tsx", ""))
+                        new_codes["src/App.tsx"] = patched_app
+                        logger.info("[COMPONENT EDIT] Added missing catch-all route to App.tsx")
+            except Exception as e:
+                logger.warning(f"[COMPONENT EDIT] Nav link validation failed (non-fatal): {e}")
+
         # Build-verify: the edit is only saved after the project compiles.
         # On failure, feed build errors back to the LLM for up to 2 repair attempts.
         progress("building", "Building and verifying the preview")
-        candidate_files = {**files, **new_codes}
-        preview_result = None
-        build_output = ""
-        build_tester = BuildTester()
-        max_repair_attempts = 2
-
-        for attempt in range(max_repair_attempts + 1):
-            try:
-                preview_result = await asyncio.to_thread(
-                    vite_preview_service.create_preview, project_id, candidate_files
-                )
-                break
-            except Exception as build_exc:
-                build_output = str(build_exc)
-                logger.warning(f"[COMPONENT EDIT] Candidate build failed (attempt {attempt + 1}): {build_output[:500]}")
-                if attempt >= max_repair_attempts:
-                    break
-
-                parsed_errors = build_tester._parse_build_errors(build_output)
-                # Keep only errors that resolve to a real project file — the parser
-                # sometimes attributes vite output to bogus paths like "build"
-                parsed_errors = [
-                    e for e in parsed_errors
-                    if error_fixer._find_matching_file(e.file_path, candidate_files)
-                ]
-                if not parsed_errors:
-                    # Attribute errors from file paths mentioned in the build output,
-                    # falling back to the files this edit touched
-                    import re as _re
-                    mentioned = {
-                        m for m in _re.findall(r"src/[\w\-./]+\.(?:tsx|ts|jsx|js|css)", build_output)
-                        if m in candidate_files
-                    }
-                    target_files = mentioned or set(new_codes.keys())
-                    parsed_errors = [
-                        BuildError(file_path=f, line=None, column=None,
-                                   error_type="build", message=build_output[:1500])
-                        for f in target_files
-                    ]
-
-                fixed_files, _ = await asyncio.to_thread(
-                    error_fixer.fix_build_errors, candidate_files, parsed_errors, build_output
-                )
-                candidate_files = fixed_files
-                # Keep edited-file contents in sync with any repairs
-                for f in new_codes:
-                    new_codes[f] = candidate_files.get(f, new_codes[f])
+        preview_result, candidate_files = await _build_verify_with_repairs(
+            project_id, files, new_codes
+        )
 
         if preview_result is None:
-            logger.error(f"[COMPONENT EDIT] Build failed after {max_repair_attempts} repair attempts; nothing saved")
+            logger.error(f"[COMPONENT EDIT] Build failed after repair attempts; nothing saved")
             return ComponentEditResponse(
                 success=False,
                 message=(

@@ -413,6 +413,13 @@ MIT
             page_filename = page.name.lower().replace(" ", "-")
             page_imports.append(f"import {page_name} from './pages/{page_filename}'")
             routes.append(f'          <Route path="{page.path}" element={{<{page_name} />}} />')
+
+        # Catch-all: unknown routes render the home page instead of blanking
+        # the app (bad nav hrefs would otherwise unmount every route)
+        home_page = next((p for p in structure.pages if p.path == "/"), structure.pages[0] if structure.pages else None)
+        if home_page:
+            home_name = home_page.name.replace(" ", "")
+            routes.append(f'          <Route path="*" element={{<{home_name} />}} />')
         
         # App.tsx
         if enable_animations and structure.page_count == 1:

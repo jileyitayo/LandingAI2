@@ -638,7 +638,24 @@
         removeTooltip();
         hoveredElement = null;
     }
-    
+
+    // Safety net for plain-path anchors: the preview is served from a static
+    // sub-path with HashRouter, so <a href="/shop"> would full-page-load and
+    // 404 against the preview server. Convert same-origin path links to hash
+    // navigation instead. Hash-only anchors (#section) are left alone — the
+    // app's catch-all route keeps those from blanking the page.
+    document.addEventListener('click', function(event) {
+        if (selectorEnabled) return; // selection mode already intercepts clicks
+        const anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+        if (!anchor) return;
+        const href = anchor.getAttribute('href') || '';
+        if (!href.startsWith('/') || href.startsWith('//')) return;
+        if (anchor.target && anchor.target !== '_self') return;
+        event.preventDefault();
+        window.location.hash = '#' + href;
+    }, true);
+
+
     // Tailwind color values map - for inline style application
     const TAILWIND_COLOR_MAP = {
         slate: { '50': '#f8fafc', '100': '#f1f5f9', '200': '#e2e8f0', '300': '#cbd5e1', '400': '#94a3b8', '500': '#64748b', '600': '#475569', '700': '#334155', '800': '#1e293b', '900': '#0f172a', '950': '#020617' },
