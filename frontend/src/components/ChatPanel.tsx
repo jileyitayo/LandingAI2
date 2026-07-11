@@ -41,7 +41,7 @@ interface ChatPanelProps {
     scope: EditScope,
     attachments: Attachment[],
     onProgress?: (stage: string, detail: string) => void,
-    options?: { confirmedTarget?: string }
+    options?: { confirmedTarget?: string; confirmedPage?: Record<string, any> }
   ) => Promise<ChatSendResult>;
   /** Revert an edit by chat message id; returns true on success. */
   onUndo?: (chatMessageId: string) => Promise<boolean>;
@@ -224,7 +224,9 @@ export default function ChatPanel({
       pending.scope,
       pending.attachments,
       (stage, detail) => setProgressLabel(detail || stageLabels[stage] || 'Applying edit…'),
-      { confirmedTarget: pending.confirmation.target_file }
+      pending.confirmation.kind === 'create_page'
+        ? { confirmedPage: pending.confirmation.new_page }
+        : { confirmedTarget: pending.confirmation.target_file }
     );
     setMessages((prev) => [
       ...prev,
@@ -441,7 +443,7 @@ export default function ChatPanel({
                   disabled={isApplyingEdit}
                   className="px-2.5 py-1 text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors disabled:opacity-50"
                 >
-                  Apply site-wide
+                  {pendingConfirmation.confirmation.kind === 'create_page' ? 'Create page' : 'Apply site-wide'}
                 </button>
                 <button
                   onClick={handleCancelPending}

@@ -432,7 +432,7 @@ class ComponentEditorService:
 
         return None
 
-    async def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any], images: Optional[List[str]] = None, shared_components: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any], images: Optional[List[str]] = None, shared_components: Optional[List[str]] = None, existing_routes: Optional[List[str]] = None, has_selection: bool = False) -> Dict[str, Any]:
         """
         Advanced AI-powered analysis of edit requests to determine what type of changes are needed.
 
@@ -497,7 +497,9 @@ class ComponentEditorService:
         # Call AI for advanced analysis
         analysis_prompt = self._build_analysis_prompt(
             instruction, element_context, has_images=bool(images),
-            shared_components=shared_components
+            shared_components=shared_components,
+            existing_routes=existing_routes,
+            has_selection=has_selection
         )
 
         try:
@@ -540,6 +542,8 @@ class ComponentEditorService:
                     "requires_structural_rewrite": bool(ai_analysis.get("requires_structural_rewrite", False)),
                     "suggested_components": ai_analysis.get("suggested_components", []) or [],
                     "target_component_file": ai_analysis.get("target_component_file") or None,
+                    "edit_type": ai_analysis.get("edit_type", "modify"),
+                    "new_page": ai_analysis.get("new_page") or None,
                     "is_multi_element": is_multi_element,
                     "text_parts": text_parts,
                     "image_intent": ai_analysis.get("image_intent", self._heuristic_image_intent(instruction_lower) if images else None)
@@ -561,8 +565,29 @@ class ComponentEditorService:
             return "style_reference"
         return "embed_asset"
 
-    def _build_analysis_prompt(self, instruction: str, element_context: Dict[str, Any], has_images: bool = False, shared_components: Optional[List[str]] = None) -> str:
+    def _build_analysis_prompt(self, instruction: str, element_context: Dict[str, Any], has_images: bool = False, shared_components: Optional[List[str]] = None, existing_routes: Optional[List[str]] = None, has_selection: bool = False) -> str:
         """Build prompt for AI-powered edit analysis"""
+        create_page_field = ""
+        create_page_guidance = ""
+        if existing_routes is not None:
+            create_page_field = (
+                '\n  "edit_type": "modify" | "create_page",  // See PAGE CREATION below'
+                '\n  "new_page": {"name": "CaseStudyAurora", "route": "/case-study-aurora", "nav_label": "Case Study", "description": "...", "link_from_selection": false} | null,'
+            )
+            create_page_guidance = f"""
+
+PAGE CREATION: The site currently has these routes: {', '.join(existing_routes)}.
+Set "edit_type": "create_page" ONLY when the user explicitly asks to CREATE or ADD a
+NEW PAGE (e.g. "create a pricing page", "add a blog post about X", "make a case study
+page for this project"). Everything else — including adding sections/content to the
+current page — is "modify" with "new_page": null.
+For create_page, fill "new_page":
+- "name": short PascalCase page name (no spaces), unique among existing routes
+- "route": URL path like "/pricing", NOT colliding with the existing routes above
+- "nav_label": short label for the navigation menu
+- "description": 1-3 sentences describing the page's purpose and the content/sections
+  it needs, incorporating every detail from the user's instruction
+- "link_from_selection": {"true when the user wants the SELECTED element to link to the new page (e.g. 'make this card open a case study page'), false when it should go in the navigation menu" if has_selection else "always false (nothing is selected)"}"""
         retarget_field = ""
         retarget_guidance = ""
         if shared_components:
@@ -591,7 +616,7 @@ Decide their purpose from the instruction and the image content:
 - "style_reference": the image shows a design/style to imitate but must NOT be embedded
   ("make it look like this", "match this style", a screenshot of another site).
 """
-        return f"""Analyze this UI edit request and return a JSON response.{image_intent_guidance}{retarget_guidance}
+        return f"""Analyze this UI edit request and return a JSON response.{image_intent_guidance}{retarget_guidance}{create_page_guidance}
 
 INSTRUCTION: "{instruction}"
 
@@ -631,7 +656,7 @@ Analyze what changes are needed and respond with ONLY a valid JSON object (no ma
   "requires_new_elements": true | false,
   "affects_layout": true | false,
   "requires_structural_rewrite": true | false,  // TRUE when the element/section must be REBUILT as something different (e.g. "turn this image into a carousel", "redesign this section", "make these testimonials a slider", "convert this list to tabs/accordion"). FALSE for text, color, styling, or attribute tweaks.
-  "suggested_components": ["carousel" | "testimonial-slider" | "tabs" | "accordion" | "video-embed" | "pricing-table" | "stats-grid"]  // Patterns the rewrite needs; [] if none{image_intent_field}{retarget_field}
+  "suggested_components": ["carousel" | "testimonial-slider" | "tabs" | "accordion" | "video-embed" | "pricing-table" | "stats-grid"]  // Patterns the rewrite needs; [] if none{image_intent_field}{retarget_field}{create_page_field}
 }}
 
 EXAMPLES:

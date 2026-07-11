@@ -698,6 +698,7 @@ export const api = {
       attachments?: Array<{ media_id: string; url: string; media_type?: string }>;
       current_route?: string;
       confirmed_target?: string;
+      confirmed_page?: Record<string, any>;
     }) =>
       apiRequest<{
         success: boolean;
@@ -733,6 +734,7 @@ export const api = {
         attachments?: Array<{ media_id: string; url: string; media_type?: string }>;
         current_route?: string;
         confirmed_target?: string;
+        confirmed_page?: Record<string, any>;
       },
       onProgress: (stage: string, detail: string) => void
     ): Promise<{

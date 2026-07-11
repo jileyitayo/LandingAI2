@@ -327,7 +327,7 @@ export default function ProjectEditorPage() {
     scope: EditScope,
     attachments: Attachment[],
     onProgress?: (stage: string, detail: string) => void,
-    options?: { confirmedTarget?: string }
+    options?: { confirmedTarget?: string; confirmedPage?: Record<string, any> }
   ): Promise<ChatSendResult> => {
     setIsApplyingEdit(true);
     try {
@@ -348,6 +348,7 @@ export default function ProjectEditorPage() {
         })),
         current_route: currentRoute,
         confirmed_target: options?.confirmedTarget,
+        confirmed_page: options?.confirmedPage,
       };
 
       // Prefer the streaming endpoint for live stage progress; fall back to the

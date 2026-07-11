@@ -29,7 +29,7 @@ interface EditSidebarProps {
     scope: EditScope,
     attachments: Attachment[],
     onProgress?: (stage: string, detail: string) => void,
-    options?: { confirmedTarget?: string }
+    options?: { confirmedTarget?: string; confirmedPage?: Record<string, any> }
   ) => Promise<ChatSendResult>;
   // Revert an AI edit by chat message id; returns true on success
   onRevert?: (chatMessageId: string) => Promise<boolean>;

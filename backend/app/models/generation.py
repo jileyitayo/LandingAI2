@@ -111,6 +111,7 @@ class ComponentEditRequest(BaseModel):
     attachments: Optional[List[Dict[str, Any]]] = Field(None, description="Uploaded media attachments: [{media_id, url, media_type}]")
     current_route: Optional[str] = Field(None, description="Route currently shown in the preview iframe (e.g. '/about') — resolves page-scope edits to the right page file")
     confirmed_target: Optional[str] = Field(None, description="File path the user confirmed as the edit target (skips the retarget confirmation)")
+    confirmed_page: Optional[Dict[str, Any]] = Field(None, description="The new_page spec the user confirmed creating (skips the create-page confirmation and runs the generation)")
 
     @validator('instruction')
     def validate_instruction(cls, v):

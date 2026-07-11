@@ -1773,6 +1773,159 @@ async def _build_verify_with_repairs(
     return preview_result, candidate_files
 
 
+async def _run_page_creation(
+    project_id: str,
+    request: ComponentEditRequest,
+    user_id: str,
+    project: Dict[str, Any],
+    files: Dict[str, str],
+    supabase,
+    progress,
+) -> ComponentEditResponse:
+    """
+    Confirmed create-page flow (from the edit chat): generate the page with
+    the generation model, wire routing + linkage, build-verify, save, update
+    website_structure, and log one GENERATION quota unit. The rate check
+    already ran with call_type='generation' in the pipeline entry.
+    """
+    from app.services.page_creation_service import page_creation_service, PageCreationError
+
+    progress("analyzing", "Planning the new page")
+    try:
+        result = await page_creation_service.create_page(
+            project=project,
+            files=files,
+            new_page=request.confirmed_page,
+            selected_element=request.selected_element,
+            instruction=request.instruction,
+        )
+    except PageCreationError as e:
+        return ComponentEditResponse(success=False, message=str(e))
+
+    new_codes: Dict[str, str] = result["new_codes"]
+    route = result["route"]
+    nav_label = result["nav_label"]
+
+    # Element linkage: wire the selected element to the new page via a normal
+    # LLM edit on its component file (build-verified together with the page)
+    if result["linked_via"] == "element" and request.selected_element:
+        progress("editing", "Linking the selected element to the new page")
+        source_file = await component_editor_service.identify_component(request.selected_element, files)
+        if source_file and source_file in files:
+            link_instruction = (
+                f"Make the selected element navigate to the new page at \"{route}\" using a "
+                f"react-router <Link to=\"{route}\"> (or add an onClick navigate) while keeping "
+                f"its appearance unchanged. Ensure the Link import from 'react-router-dom' exists."
+            )
+            link_files = {**files, **new_codes}
+            success, _old, linked_code, error = await component_editor_service.modify_component_code(
+                file_path=source_file,
+                instruction=link_instruction,
+                element_context=request.selected_element,
+                project_id=project_id,
+                files=link_files,
+                business_context=project.get("business_analysis"),
+                scope="section",
+            )
+            if success and linked_code:
+                new_codes[source_file] = linked_code
+            else:
+                logger.warning(f"[PAGE CREATE] Element link edit failed (non-fatal): {error}")
+
+    progress("building", "Building and verifying the new page")
+    preview_result, candidate_files = await _build_verify_with_repairs(project_id, files, new_codes)
+    if preview_result is None:
+        logger.error("[PAGE CREATE] Build failed after repair attempts; nothing saved")
+        return ComponentEditResponse(
+            success=False,
+            message="The new page didn't compile, so nothing was changed. Try rephrasing the request.",
+        )
+
+    # Green build — persist changed/new files
+    files_to_save = {
+        path: content for path, content in candidate_files.items()
+        if files.get(path) != content
+    }
+    logger.info(f"[PAGE CREATE] Saving {len(files_to_save)} file(s)")
+    for file_path, file_content in files_to_save.items():
+        save_success, save_message = await component_editor_service.apply_component_edit(
+            project_id=project_id, file_path=file_path, new_code=file_content
+        )
+        if not save_success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save {file_path}: {save_message}",
+            )
+
+    # Persist the structure (pages + navigation) and swap the preview
+    new_preview_id = preview_result.get("preview_id")
+    preview_url = preview_result.get("preview_url")
+    old_preview_id = project.get("preview_id")
+    try:
+        supabase.table("projects").update({
+            "website_structure": result["updated_structure"],
+            "preview_id": new_preview_id,
+            "last_edited_at": datetime.utcnow().isoformat(),
+        }).eq("id", project_id).execute()
+    except Exception as e:
+        logger.warning(f"[PAGE CREATE] Failed to update project row: {e}")
+    if old_preview_id and old_preview_id != new_preview_id:
+        try:
+            vite_preview_service.delete_preview(old_preview_id)
+        except Exception as e:
+            logger.warning(f"[PAGE CREATE] Failed to delete old preview {old_preview_id}: {e}")
+
+    linked_note = {
+        "nav": "and added it to the navigation menu",
+        "element": "and linked it from your selected element",
+        "none": "— reachable at its URL (no nav link could be added automatically)",
+    }[result["linked_via"]]
+    edit_description = f"Created the \"{nav_label}\" page at {route} {linked_note}."
+
+    # Chat history (page creation is not revertible via edit history in v1,
+    # so no project_edit_history rows)
+    chat_message_id = str(uuid.uuid4())
+    try:
+        supabase.table("project_chat_messages").insert({
+            "id": chat_message_id,
+            "project_id": project_id,
+            "user_id": user_id,
+            "message_type": "edit",
+            "user_prompt": request.instruction,
+            "ai_response": edit_description,
+            "metadata": {
+                "kind": "create_page",
+                "page_file": result["page_file"],
+                "route": route,
+                "files_saved": sorted(files_to_save.keys()),
+            },
+        }).execute()
+    except Exception as e:
+        logger.error(f"[PAGE CREATE] Failed to save chat history: {e}")
+
+    # One generation quota unit (the rate check at pipeline entry used 'generation')
+    await log_ai_call(
+        user_id=user_id,
+        call_type="generation",
+        project_id=project_id,
+        endpoint=f"/edit/project/{project_id}",
+        supabase_client=supabase,
+    )
+
+    progress("done", "New page created")
+    logger.info(f"[PAGE CREATE] ✓ Created {result['page_file']} at {route} (linked via {result['linked_via']})")
+    return ComponentEditResponse(
+        success=True,
+        message=edit_description,
+        edit_description=edit_description,
+        updated_file=result["page_file"],
+        updated_files=sorted(files_to_save.keys()),
+        preview_url=preview_url,
+        preview_id=new_preview_id,
+        chat_message_id=chat_message_id,
+    )
+
+
 async def _run_edit_pipeline(
     project_id: str,
     request: ComponentEditRequest,
@@ -1801,9 +1954,11 @@ async def _run_edit_pipeline(
         logger.info(f"[COMPONENT EDIT] No element selected — page-scope edit")
 
     try:
-        # Check edit-specific rate limits (dual: per-minute + daily, separate from generation quota)
+        # Check rate limits: normal edits use the edit quota; a confirmed page
+        # creation is a full page generation and consumes the generation quota
         logger.info(f"[COMPONENT EDIT] Checking rate limits...")
-        is_allowed, rate_info = await check_user_rate_limit(user_id, supabase, call_type="edit")
+        rate_call_type = "generation" if request.confirmed_page else "edit"
+        is_allowed, rate_info = await check_user_rate_limit(user_id, supabase, call_type=rate_call_type)
 
         if not is_allowed:
             logger.warning(f"[COMPONENT EDIT] Rate limit exceeded for user {user_id}: {rate_info.get('limit_type')}")
@@ -1864,6 +2019,13 @@ async def _run_edit_pipeline(
         )
         scope = request.scope or "element"
         files = await project_file_manager.get_project_files(project_id)
+
+        # Confirmed page creation: skip the edit targeting/analysis entirely —
+        # the user already approved the page spec in the chat
+        if request.confirmed_page:
+            return await _run_page_creation(
+                project_id, request, user_id, project, files, supabase, progress
+            )
 
         if not selected_elements:
             # No selection: the whole page is the target (chat message without a
@@ -1979,10 +2141,45 @@ async def _run_edit_pipeline(
             if p.startswith("src/components/") and not p.startswith("src/components/ui/")
             and p.endswith((".tsx", ".jsx"))
         ]
+        website_structure = project.get("website_structure") or {}
+        existing_routes = [
+            p.get("path") for p in website_structure.get("pages", []) if p.get("path")
+        ] or ["/"]
+        has_real_selection = bool(request.selected_element or request.selected_elements)
         edit_analysis = await component_editor_service.analyze_edit_request(
             effective_instruction, selected_elements[0], images=attachment_images or None,
-            shared_components=shared_component_files or None
+            shared_components=shared_component_files or None,
+            existing_routes=existing_routes,
+            has_selection=has_real_selection
         )
+
+        # New-page intent: ask the user to confirm the page spec before running
+        # the (generation-quota) page creation. No edit/generation has run yet.
+        if edit_analysis.get("edit_type") == "create_page" and edit_analysis.get("new_page"):
+            new_page = edit_analysis["new_page"]
+            if not has_real_selection:
+                new_page["link_from_selection"] = False
+            route_hint = new_page.get("route") or ""
+            link_hint = (
+                "linked from your selected element"
+                if new_page.get("link_from_selection")
+                else "added to the navigation menu"
+            )
+            logger.info(f"[COMPONENT EDIT] Create-page intent: {new_page.get('name')} at {route_hint} — asking for confirmation")
+            # Deliberately no log_ai_call: an aborted confirm shouldn't burn quota
+            return ComponentEditResponse(
+                success=True,
+                needs_confirmation=True,
+                message=(
+                    f"I'll create a new page \"{new_page.get('nav_label') or new_page.get('name')}\" "
+                    f"at {route_hint}, {link_hint}. This counts as one website generation. Create it?"
+                ),
+                confirmation={
+                    "kind": "create_page",
+                    "new_page": new_page,
+                },
+            )
+
         is_structural = bool(edit_analysis.get("requires_structural_rewrite")) and \
             edit_analysis.get("confidence", 0) >= 0.6
 
