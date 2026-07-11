@@ -2,9 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Calendar, Edit, Trash2, Copy, ExternalLink } from 'lucide-react';
+import { Calendar, Edit, Trash2, Copy, ExternalLink, Loader2 } from 'lucide-react';
 import { Project } from '@/types/project.types';
 import { useState } from 'react';
+import { useActiveGenerations } from '@/contexts/GenerationContext';
 
 // Blur placeholder for image loading
 const shimmer = (w: number, h: number) => `
@@ -38,7 +39,19 @@ export default function ProjectCard({ project, onDelete, onDuplicate }: ProjectC
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [imageError, setImageError] = useState(false);
 
+  // Live progress for an in-flight generation (dashboard-wide tracker)
+  const generations = useActiveGenerations();
+  const liveGeneration = generations?.active.find(
+    (g) => g.projectId === project.id && g.status === 'generating'
+  );
+  const isGenerating = !!liveGeneration || project.generation_status === 'generating';
+
   const handleEdit = () => {
+    // A generating project has no files to edit yet — open the progress view
+    if (isGenerating) {
+      router.push(`/dashboard/new?project_id=${project.id}`);
+      return;
+    }
     router.push(`/dashboard/projects/${project.id}`);
   };
 
@@ -93,6 +106,14 @@ export default function ProjectCard({ project, onDelete, onDuplicate }: ProjectC
   };
 
   const getStatusBadge = () => {
+    if (isGenerating) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Generating{liveGeneration ? ` ${Math.round(liveGeneration.progress)}%` : ''}
+        </span>
+      );
+    }
     // If project has preview_url or is_published, it's completed
     if (project.is_published || project.preview_url) {
       return (
@@ -153,6 +174,23 @@ export default function ProjectCard({ project, onDelete, onDuplicate }: ProjectC
         {getStatusBadge() && (
           <div className="absolute top-3 right-3">
             {getStatusBadge()}
+          </div>
+        )}
+
+        {/* Live generation progress */}
+        {liveGeneration && (
+          <div className="absolute bottom-0 left-0 right-0">
+            <div className="h-1.5 bg-black/10">
+              <div
+                className="h-full bg-indigo-500 transition-[width] duration-500"
+                style={{ width: `${Math.max(3, Math.round(liveGeneration.progress))}%` }}
+              />
+            </div>
+            {liveGeneration.stageMessage && (
+              <div className="bg-black/50 text-white text-[11px] px-3 py-1 truncate">
+                {liveGeneration.stageMessage}
+              </div>
+            )}
           </div>
         )}
       </div>

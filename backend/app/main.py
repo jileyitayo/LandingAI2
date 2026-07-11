@@ -57,13 +57,42 @@ async def lifespan(app: FastAPI):
                 vite_preview_service.cleanup_old_previews(max_age_hours=1)
             except Exception as e:
                 logging.error(f"Preview cleanup failed: {e}")
-    
+
     cleanup_task_handle = asyncio.create_task(cleanup_task())
-    
+
+    # Sweep generations orphaned by a server restart: generation runs as an
+    # in-process asyncio task, so a project stuck in 'generating' whose row
+    # hasn't been touched in 15+ minutes is dead (progress updates stamp
+    # updated_at on every stage tick). Mark it failed so the UI stops waiting.
+    async def sweep_stuck_generations():
+        from datetime import datetime, timedelta, timezone
+        from app.utils.supabase_client import get_supabase_client
+        while True:
+            try:
+                cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+                supabase = get_supabase_client()
+                stuck = supabase.table("projects")\
+                    .select("id, name, updated_at")\
+                    .eq("generation_status", "generating")\
+                    .lt("updated_at", cutoff)\
+                    .execute()
+                for row in (stuck.data or []):
+                    supabase.table("projects").update({
+                        "generation_status": "failed",
+                        "generation_error": "Generation timed out (server interrupted)",
+                    }).eq("id", row["id"]).eq("generation_status", "generating").execute()
+                    logging.warning(f"Swept stuck generation: project {row['id']} ({row.get('name')})")
+            except Exception as e:
+                logging.error(f"Stuck-generation sweep failed: {e}")
+            await asyncio.sleep(300)  # every 5 minutes
+
+    sweeper_task_handle = asyncio.create_task(sweep_stuck_generations())
+
     yield
-    
+
     # Shutdown
     cleanup_task_handle.cancel()
+    sweeper_task_handle.cancel()
     print(f"👋 {settings.app_name} shutting down...")
 
 

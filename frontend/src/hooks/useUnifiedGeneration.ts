@@ -161,8 +161,28 @@ export const useUnifiedGeneration = () => {
     poll();
   };
 
+  /**
+   * Re-attach to a generation already running server-side (e.g. after the
+   * user navigated away and came back, or refreshed). Safe to call for a
+   * completed/failed project — the first poll settles the state.
+   */
+  const resume = (projectId: string) => {
+    setIsGenerating(true);
+    setError(null);
+    setGeneratedProject({
+      project_id: projectId,
+      status: 'generating',
+      progress: 0,
+      stage: null,
+      stage_message: null,
+      message: 'Reconnecting to your generation…',
+    });
+    pollStatus(projectId);
+  };
+
   return {
     generateWebsite,
+    resume,
     isGenerating,
     error,
     generatedProject,

@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { TemplateCard } from "@/components/TemplateCard";
 import { useUnifiedGeneration } from "@/hooks/useUnifiedGeneration";
+import { useActiveGenerations } from "@/contexts/GenerationContext";
 import DashboardHeader from "@/components/DashboardHeader";
 import GenerationStatus from "@/components/GenerationStatus";
 import AttachmentButton, { type Attachment } from "@/components/AttachmentButton";
@@ -46,7 +47,8 @@ export default function DashboardPage() {
   const { user, loading } = useAuth();
 
   // Website generation state
-  const { generateWebsite, isGenerating, error, generatedProject } = useUnifiedGeneration();
+  const { generateWebsite, resume, isGenerating, error, generatedProject } = useUnifiedGeneration();
+  const generations = useActiveGenerations();
   const [prompt, setPrompt] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#6366f1");
@@ -61,6 +63,17 @@ export default function DashboardPage() {
       router.push("/auth/login");
     }
   }, [user, loading, router]);
+
+  // Resume tracking a generation after refresh/navigation: the project id is
+  // kept in the URL (?project_id=...) so remounting re-attaches the polling
+  useEffect(() => {
+    if (!user) return;
+    const projectId = new URLSearchParams(window.location.search).get("project_id");
+    if (projectId) {
+      resume(projectId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   // Fetch templates on mount
   useEffect(() => {
@@ -102,15 +115,15 @@ export default function DashboardPage() {
     );
 
     if (result) {
-      // Website generated successfully
-      // Could navigate to the project or show success message
       setPrompt("");
       setAttachments([]);
 
-      // if (result.status === 'completed') {
-      //   router.push(`/dashboard/projects/${result.project_id}`);
-      // }
-
+      // Keep the project id in the URL so a refresh/navigation re-attaches,
+      // and register with the dashboard-wide tracker (banner + cards)
+      if (result.project_id) {
+        window.history.replaceState(null, "", `?project_id=${result.project_id}`);
+        generations?.track(result.project_id);
+      }
     }
   };
 
