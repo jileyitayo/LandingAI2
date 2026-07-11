@@ -10,6 +10,7 @@ import DeploymentHistory from '@/components/DeploymentHistory';
 import FileTree from '@/components/FileTree';
 import CodeViewer from '@/components/CodeViewer';
 import ReactPreview, { ReactPreviewHandle } from '@/components/ReactPreview';
+import EditorToolbar, { DeviceMode } from '@/components/EditorToolbar';
 import EditSidebar, { EditScope } from '@/components/EditSidebar';
 import type { ChatSendResult } from '@/components/ChatPanel';
 import type { Attachment } from '@/components/AttachmentButton';
@@ -49,6 +50,25 @@ export default function ProjectEditorPage() {
   const [selectorEnabled, setSelectorEnabled] = useState(false);
   // Route currently shown inside the preview iframe (reported by the selector script)
   const [currentRoute, setCurrentRoute] = useState<string>('/');
+  // Editor toolbar state: device width + whether Edit mode is available yet
+  const [deviceMode, setDeviceMode] = useState<DeviceMode>('desktop');
+  const [selectorReady, setSelectorReady] = useState(false);
+  // Once the user explicitly picks Browse, rebuilds must not force Edit back on
+  const userChoseBrowseRef = useRef(false);
+
+  const handleModeChange = useCallback((mode: 'edit' | 'browse') => {
+    userChoseBrowseRef.current = mode === 'browse';
+    setSelectorEnabled(mode === 'edit');
+  }, []);
+
+  const handleSelectorReadyChange = useCallback((ready: boolean) => {
+    setSelectorReady(ready);
+    // Default to Edit mode when the selector first becomes available,
+    // but respect an explicit Browse choice across rebuilds
+    if (ready && !userChoseBrowseRef.current) {
+      setSelectorEnabled(true);
+    }
+  }, []);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isApplyingEdit, setIsApplyingEdit] = useState(false);
   // Bumped after every successful save so PublishButton re-checks for unpublished changes
@@ -102,16 +122,17 @@ export default function ProjectEditorPage() {
   }, [supabase, router]);
 
   useKeyboardShortcuts({
+    // E flips Edit/Browse (recorded as an explicit choice)
     onToggleSelector: () => {
       if ((project as any)?.project_type === 'react') {
-        setSelectorEnabled(prev => !prev);
+        handleModeChange(selectorEnabled ? 'browse' : 'edit');
       }
     },
+    // Esc clears the selection but stays in the current mode
     onClearSelection: () => {
       setSelectedElement(null);
       setSelectedElements([]);
       previewRef.current?.clearSelection();
-      setSelectorEnabled(false);
       pendingRequestElementRef.current = null; // Clear pending request tracking
     },
   });
@@ -1246,28 +1267,25 @@ export default function ProjectEditorPage() {
   if (project?.project_type === 'react') {
     return (
       <div className="h-screen flex flex-col bg-gray-900">
-        {/* Header */}
-        <header className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
-          <div className="flex items-center gap-4">
+        {/* Header — slim single row; preview + chat are the stars */}
+        <header className="flex items-center justify-between h-12 px-3 bg-gray-800 border-b border-gray-700">
+          <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={() => router.push('/dashboard')}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors"
               title="Back to dashboard"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4" />
             </button>
-            <div>
-              <h1 className="text-lg font-semibold text-white">
-                {project?.name || 'Untitled Project'}
-              </h1>
-              <p className="text-sm text-gray-400">React Project</p>
-            </div>
+            <h1 className="text-sm font-semibold text-white truncate">
+              {project?.name || 'Untitled Project'}
+            </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setFeedbackModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors"
               title="Share Feedback"
             >
               <svg
@@ -1283,23 +1301,20 @@ export default function ProjectEditorPage() {
                   d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
                 />
               </svg>
-              <span className="hidden sm:inline">Feedback</span>
             </button>
             <Link
               href={`/dashboard/projects/${projectId}/settings`}
-              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors"
               title="Project settings"
             >
               <Settings className="w-4 h-4" />
-              <span className="hidden sm:inline">Settings</span>
             </Link>
             <button
               onClick={project?.project_type === 'react' ? handleReactDownload : handleDownload}
-              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors"
               title="Download project"
             >
               <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Download</span>
             </button>
             <PublishButton
               projectId={projectId}
@@ -1355,31 +1370,18 @@ export default function ProjectEditorPage() {
 
           {/* Right Panel - Code/Preview (3/4) */}
           <div className="w-3/4 flex flex-col bg-gray-900">
-            {/* Tabs */}
-            <div className="flex items-center bg-gray-800 border-b border-gray-700">
-              <button
-                onClick={() => setReactActiveTab('preview')}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                  reactActiveTab === 'preview'
-                    ? 'border-blue-500 text-white bg-gray-900'
-                    : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                <Eye className="w-4 h-4" />
-                <span className="font-medium">Preview</span>
-              </button>
-              <button
-                onClick={() => setReactActiveTab('code')}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                  reactActiveTab === 'code'
-                    ? 'border-blue-500 text-white bg-gray-900'
-                    : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                <Code className="w-4 h-4" />
-                <span className="font-medium">Code Files</span>
-              </button>
-            </div>
+            {/* Unified toolbar: view tabs + Edit/Browse + device + actions */}
+            <EditorToolbar
+              activeTab={reactActiveTab}
+              onTabChange={setReactActiveTab}
+              mode={selectorEnabled ? 'edit' : 'browse'}
+              onModeChange={handleModeChange}
+              selectorReady={selectorReady}
+              deviceMode={deviceMode}
+              onDeviceModeChange={setDeviceMode}
+              onRebuild={buildPreview}
+              previewUrl={previewUrl}
+            />
 
             {/* Tab Content */}
             <div className="flex-1 overflow-hidden">
@@ -1413,8 +1415,9 @@ export default function ProjectEditorPage() {
                     onElementSelect={setSelectedElement}
                     onElementsSelect={handleElementsSelect}
                     selectorEnabled={selectorEnabled}
-                    onSelectorEnabledChange={setSelectorEnabled}
                     onRouteChange={setCurrentRoute}
+                    deviceMode={deviceMode}
+                    onSelectorReadyChange={handleSelectorReadyChange}
                   />
                   {/* AI edit in progress — overlay without unmounting the iframe */}
                   {isApplyingEdit && (

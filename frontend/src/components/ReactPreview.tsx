@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, memo, forwardRef, useImperativeHandle } from 'react';
-import { RefreshCw, ExternalLink, AlertCircle, Eye, EyeOff, Smartphone, Tablet, Monitor } from 'lucide-react';
-
-type DeviceMode = 'mobile' | 'tablet' | 'desktop';
+import { RefreshCw, AlertCircle } from 'lucide-react';
+import type { DeviceMode } from './EditorToolbar';
 
 const DEVICE_WIDTHS: Record<DeviceMode, number | null> = {
   mobile: 390,
@@ -57,9 +56,12 @@ interface ReactPreviewProps {
   onElementSelect?: (element: SelectedElement | null) => void;
   onElementsSelect?: (elements: SelectedElement[]) => void;
   selectorEnabled?: boolean;
-  onSelectorEnabledChange?: (enabled: boolean) => void;
   /** Route currently shown inside the preview iframe (e.g. '/about') */
   onRouteChange?: (path: string) => void;
+  /** Controlled by the parent's EditorToolbar */
+  deviceMode?: DeviceMode;
+  /** Fired when the selector script handshake completes / resets */
+  onSelectorReadyChange?: (ready: boolean) => void;
 }
 
 export interface ReactPreviewHandle {
@@ -77,12 +79,12 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
   onElementSelect,
   onElementsSelect,
   selectorEnabled = false,
-  onSelectorEnabledChange,
-  onRouteChange
+  onRouteChange,
+  deviceMode = 'desktop',
+  onSelectorReadyChange
 }: ReactPreviewProps, ref) {
   const [selectorReady, setSelectorReady] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
-  const [deviceMode, setDeviceMode] = useState<DeviceMode>('desktop');
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   // Last known selection, used to restore highlights after a preview rebuild
@@ -90,8 +92,8 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
 
   // Keep latest props/state in refs so the message listener can be registered
   // exactly once — re-registering leaves gaps where iframe messages are lost
-  const callbacksRef = useRef({ onElementSelect, onElementsSelect, onSelectorEnabledChange, onRouteChange, selectorEnabled, selectorReady });
-  callbacksRef.current = { onElementSelect, onElementsSelect, onSelectorEnabledChange, onRouteChange, selectorEnabled, selectorReady };
+  const callbacksRef = useRef({ onElementSelect, onElementsSelect, onRouteChange, selectorEnabled, selectorReady });
+  callbacksRef.current = { onElementSelect, onElementsSelect, onRouteChange, selectorEnabled, selectorReady };
 
   const postToIframe = (message: Record<string, unknown>) => {
     iframeRef.current?.contentWindow?.postMessage(message, '*');
@@ -117,11 +119,8 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
       const cb = callbacksRef.current;
 
       if (event.data.type === 'SELECTOR_READY' || event.data.type === 'SELECTOR_PONG') {
+        // Mode (Edit/Browse) is owned by the parent — no auto-enable here
         setSelectorReady(true);
-        // Auto-enable selector when it's ready
-        if (cb.onSelectorEnabledChange && !cb.selectorEnabled) {
-          cb.onSelectorEnabledChange(true);
-        }
       } else if (event.data.type === 'ELEMENTS_SELECTED') {
         const elements: SelectedElement[] = Array.isArray(event.data.data) ? event.data.data : [];
         lastSelectionRef.current = elements;
@@ -136,11 +135,6 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
       } else if (event.data.type === 'ELEMENT_RIGHT_CLICKED') {
         if (cb.onElementSelect) {
           cb.onElementSelect(event.data.data);
-        }
-      } else if (event.data.type === 'PREVIEW_CLICKED') {
-        // Auto-enable selector when user clicks in preview
-        if (cb.onSelectorEnabledChange && !cb.selectorEnabled && cb.selectorReady) {
-          cb.onSelectorEnabledChange(true);
         }
       } else if (event.data.type === 'ROUTE_CHANGED') {
         if (cb.onRouteChange && typeof event.data.path === 'string') {
@@ -161,6 +155,12 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
     setIframeLoaded(false);
     setSelectorReady(false);
   }, [previewUrl]);
+
+  // Let the parent (EditorToolbar) know whether Edit mode is available
+  useEffect(() => {
+    onSelectorReadyChange?.(selectorReady);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectorReady]);
 
   // Parent-initiated handshake: ping the iframe until it answers. This
   // recovers readiness even if every SELECTOR_READY from the iframe was
@@ -260,16 +260,6 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
     };
   }, [selectorEnabled, selectorReady, iframeLoaded]);
 
-  // Toggle selector mode
-  const toggleSelector = () => {
-    if (!selectorReady) {
-      return;
-    }
-    if (onSelectorEnabledChange) {
-      onSelectorEnabledChange(!selectorEnabled);
-    }
-  };
-
   if (isBuilding) {
     return (
       <div className="h-full bg-gray-900 flex items-center justify-center">
@@ -334,74 +324,6 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
   return (
     <div className="h-full bg-gray-900 flex flex-col">
 
-        {/* Preview Header */}
-        <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-gray-300">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-sm font-medium">Live Preview</span>
-            </div>
-            {onSelectorEnabledChange && (
-              <button
-                onClick={toggleSelector}
-                disabled={!selectorReady}
-                className={`flex items-center gap-1 px-3 py-1 text-xs rounded transition-colors ${
-                  selectorEnabled
-                    ? 'bg-blue-500 text-white hover:bg-blue-600'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title={selectorEnabled ? 'Disable selector' : 'Enable selector'}
-              >
-                {selectorEnabled ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                {selectorEnabled ? 'Selector On' : 'Enable Selector'}
-              </button>
-            )}
-            {!selectorReady && selectorEnabled && (
-              <span className="text-xs text-gray-500">Loading selector...</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Device preview toggle */}
-            <div className="flex items-center gap-0.5 bg-gray-900 rounded p-0.5 mr-1">
-              {(['mobile', 'tablet', 'desktop'] as DeviceMode[]).map((mode) => {
-                const Icon = mode === 'mobile' ? Smartphone : mode === 'tablet' ? Tablet : Monitor;
-                return (
-                  <button
-                    key={mode}
-                    onClick={() => setDeviceMode(mode)}
-                    className={`flex items-center justify-center p-1.5 rounded transition-colors ${
-                      deviceMode === mode
-                        ? 'bg-blue-500 text-white'
-                        : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                    }`}
-                    title={`${mode.charAt(0).toUpperCase() + mode.slice(1)} preview`}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                  </button>
-                );
-              })}
-            </div>
-            <button
-              onClick={onRebuild}
-              className="flex items-center gap-1 px-3 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-              title="Rebuild preview"
-            >
-              <RefreshCw className="w-3 h-3" />
-              Rebuild
-            </button>
-            <a
-              href={previewUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 px-3 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-              title="Open in new tab"
-            >
-              <ExternalLink className="w-3 h-3" />
-              Open
-            </a>
-          </div>
-        </div>
-
         {/* Preview Iframe */}
         <div
           ref={previewContainerRef}
@@ -436,11 +358,8 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
         </div>
 
         {/* Preview Footer */}
-        <div className="px-4 py-2 bg-gray-800 border-t border-gray-700 text-xs text-gray-500">
-          <div className="flex items-center justify-between">
-            <span>Preview expires in 1 hour</span>
-            <span>Built with Vite</span>
-          </div>
+        <div className="px-4 py-1.5 bg-gray-800 border-t border-gray-700 text-xs text-gray-500">
+          <span>Preview expires in 1 hour</span>
         </div>
     </div>
   );
