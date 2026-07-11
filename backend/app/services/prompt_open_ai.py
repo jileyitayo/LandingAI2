@@ -4,42 +4,40 @@ from app.config import settings
 import logging
 logger = logging.getLogger(__name__)
 
-# class ModelStrategy:
-#     """Smart model selection based on task complexity"""
-    
-#     MODELS = {
-#         "business_analysis": "gpt-4-turbo-preview",  # Better reasoning
-#         "structure_generation": "claude-3-opus",      # Better planning
-#         "page_generation": "gpt-4-turbo-preview",     # Better code
-#         "component_generation": "claude-3-sonnet",    # Fast & good
-#         "validation": "gpt-4o-mini"                   # Fast for checks
-#     }
-    
-#     @classmethod
-#     def get_model_for_task(cls, task_type: str, user_tier: str = "free"):
-#         if user_tier == "pro":
-#             return cls.MODELS.get(task_type, "gpt-4-turbo-preview")
-#         return "gpt-4o-mini"  # Free tier fallback
+GOOGLE_OPENAI_COMPAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+# Model-name prefix → provider routing. Unknown names fall back to the
+# provider implied by the constructor flags, so custom base_url setups
+# keep working.
+_PROVIDER_PREFIXES = (
+    ("anthropic", ("claude-",)),
+    ("google", ("gemini-", "gemma-")),
+    ("openai", ("gpt-", "chatgpt-", "o1", "o3", "o4")),
+)
+
+# OpenAI reasoning models reject non-default temperature and require
+# max_completion_tokens instead of max_tokens.
+_OPENAI_REASONING_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
 
 class PromptOpenAI:
     def __init__(self, model: str = "gpt-4o-mini", api_key: str = settings.openai_api_key, url: str = "https://api.openai.com/v1", is_anthropic: bool = False, is_google: bool = False):
-        
-        # Initialize Claude client if anthropic_api_key is available
-        self.client = None
-        if is_anthropic and hasattr(settings, 'anthropic_api_key') and settings.anthropic_api_key:
-            self.client = Anthropic(api_key=settings.anthropic_api_key)
-        elif is_google and hasattr(settings, 'google_api_key') and settings.google_api_key:
-            self.client = OpenAI(api_key=settings.google_api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+        if is_anthropic:
+            self._default_provider = "anthropic"
+        elif is_google:
+            self._default_provider = "google"
         else:
-            self.client = OpenAI(api_key=api_key, base_url=url)
+            self._default_provider = "openai"
+        self._openai_api_key = api_key
+        self._clients = {}
         self.model = model
         self.max_retries = 3
         self.max_completion_tokens = 10000
         self.url = url
-    
+
     def set_model(self, model: str):
         self.model = model
-    
+
     def set_max_retries(self, max_retries: int):
         self.max_retries = max_retries
 
@@ -48,6 +46,56 @@ class PromptOpenAI:
 
     def set_url(self, url: str):
         self.url = url
+        # Force the OpenAI client to be rebuilt against the new base URL
+        self._clients.pop("openai", None)
+
+    @property
+    def client(self):
+        """Client for the constructor-selected provider (kept for back-compat)."""
+        return self._client_for(self._default_provider)
+
+    def _provider_for(self, model: str) -> str:
+        """Infer the provider from the model name; fall back to the
+        constructor-selected provider for unrecognized names."""
+        if model:
+            for provider, prefixes in _PROVIDER_PREFIXES:
+                if model.startswith(prefixes):
+                    return provider
+        return self._default_provider
+
+    def _client_for(self, provider: str):
+        """Lazily build and cache one client per provider."""
+        cached = self._clients.get(provider)
+        if cached is not None:
+            return cached
+
+        if provider == "anthropic":
+            if not settings.anthropic_api_key:
+                raise ValueError("A claude-* model was requested but anthropic_api_key is not set (ANTHROPIC_API_KEY).")
+            client = Anthropic(api_key=settings.anthropic_api_key)
+        elif provider == "google":
+            if not settings.google_api_key:
+                raise ValueError("A gemini-* model was requested but google_api_key is not set (GOOGLE_API_KEY).")
+            client = OpenAI(api_key=settings.google_api_key, base_url=GOOGLE_OPENAI_COMPAT_URL)
+        else:
+            api_key = self._openai_api_key or settings.openai_api_key
+            if not api_key:
+                raise ValueError("An OpenAI model was requested but openai_api_key is not set (OPENAI_API_KEY).")
+            client = OpenAI(api_key=api_key, base_url=self.url)
+
+        self._clients[provider] = client
+        return client
+
+    def _resolve_model(self, model: str) -> str:
+        """Callers that don't pass a model get the sentinel default
+        'gpt-4o-mini'; treat that as 'use the instance model'."""
+        if not model or model == "gpt-4o-mini":
+            return self.model
+        return model
+
+    @staticmethod
+    def _is_openai_reasoning_model(model: str) -> bool:
+        return model.startswith(_OPENAI_REASONING_PREFIXES)
 
     @staticmethod
     def _build_user_content(user_prompt: str, images: list = None):
@@ -60,15 +108,57 @@ class PromptOpenAI:
             + [{"type": "image_url", "image_url": {"url": data_url}} for data_url in images]
         )
 
+    @staticmethod
+    def _build_claude_user_content(user_prompt: str, images: list = None):
+        """Build Claude message content, converting base64 data URLs into
+        Anthropic image blocks."""
+        if not images:
+            return user_prompt
+        blocks = [{"type": "text", "text": user_prompt}]
+        for data_url in images:
+            if data_url.startswith("data:") and ";base64," in data_url:
+                header, data = data_url.split(";base64,", 1)
+                media_type = header[len("data:"):] or "image/png"
+                blocks.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": media_type, "data": data}
+                })
+            else:
+                blocks.append({
+                    "type": "image",
+                    "source": {"type": "url", "url": data_url}
+                })
+        return blocks
+
+    @staticmethod
+    def _normalize_schema(response_format):
+        """Extract (json_schema, name, pydantic_model_or_None) from any of the
+        response_format shapes callers use: a Pydantic model class/instance, a
+        {"type": "json_schema", "json_schema": {...}} dict, or a plain schema dict."""
+        if hasattr(response_format, 'model_json_schema'):
+            name = response_format.__name__ if isinstance(response_format, type) else response_format.__class__.__name__
+            return response_format.model_json_schema(), name, response_format
+        if isinstance(response_format, dict) and response_format.get("type") == "json_schema":
+            json_schema = response_format.get("json_schema", {})
+            return json_schema.get("schema", {}), json_schema.get("name", "response"), None
+        return response_format, "response", None
+
     def call_openai_api(self, system_prompt: str, user_prompt: str, temperature: float = 0.7, model: str = "gpt-4o-mini", images: list = None) -> str:
-        """Call OpenAI API with retry logic and return raw string content.
+        """Call the LLM API (OpenAI, Gemini, or Claude — routed by model name)
+        with retry logic and return (content, usage).
 
         images: optional list of base64 data URLs sent as multimodal input.
         """
+        model = self._resolve_model(model)
+        provider = self._provider_for(model)
+        if provider == "anthropic":
+            return self.call_claude_api(system_prompt, user_prompt, temperature=temperature, model=model, images=images)
+
+        client = self._client_for(provider)
         user_content = self._build_user_content(user_prompt, images)
         for attempt in range(self.max_retries):
             try:
-                logger.info(f"Sending request to OpenAI (attempt {attempt + 1}/{self.max_retries})" + (f" with {len(images)} image(s)" if images else ""))
+                logger.info(f"Sending request to {provider} (attempt {attempt + 1}/{self.max_retries})" + (f" with {len(images)} image(s)" if images else ""))
                 if system_prompt is None or system_prompt == "":
                     message = [
                         {"role": "user", "content": user_content}
@@ -78,21 +168,21 @@ class PromptOpenAI:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_content}
                     ]
-                if model == "gpt-5-mini" or model == "gpt-5":
-                    response = self.client.chat.completions.create(
+                if provider == "openai" and self._is_openai_reasoning_model(model):
+                    response = client.chat.completions.create(
                         model=model,
                         messages=message,
                         max_completion_tokens=self.max_completion_tokens,
                         reasoning_effort="medium"
                     )
                 else:
-                    response = self.client.chat.completions.create(
+                    response = client.chat.completions.create(
                         model=model,
                         messages=message,
                         temperature=temperature,
                         max_tokens=self.max_completion_tokens
                     )
-                logger.info("OpenAI API call successful")
+                logger.info(f"{provider} API call successful")
                 # Return raw assistant content for downstream code extraction
                 # Get actual token usage
                 usage = {
@@ -101,20 +191,27 @@ class PromptOpenAI:
                     "total_tokens": response.usage.total_tokens
                 }
                 return response.choices[0].message.content, usage
-            
-            except OpenAIError as e:
+
+            except (OpenAIError, Exception) as e:
                 if attempt < self.max_retries - 1:
-                    logger.warning(f"⚠ OpenAI API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
+                    logger.warning(f"⚠ {provider} API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
                     logger.info(f"Retrying in next attempt...")
                     continue
                 logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
                 raise
 
     def call_openai_api_structured(self, system_prompt: str, user_prompt: str, response_format: dict, model: str = "gpt-4o-mini", raw=False, images: list = None) -> tuple:
-        """Call OpenAI API with retry logic - returns (parsed_response, usage_info)
+        """Call the LLM API (OpenAI, Gemini, or Claude — routed by model name)
+        with retry logic - returns (parsed_response, usage_info)
 
         images: optional list of base64 data URLs sent as multimodal input.
         """
+        model = self._resolve_model(model)
+        provider = self._provider_for(model)
+        if provider == "anthropic":
+            return self.call_claude_api_structured(system_prompt, user_prompt, response_format, model=model, images=images)
+
+        client = self._client_for(provider)
         json_format = response_format if not raw else {
             "type": "json_schema",
             "json_schema": {
@@ -122,22 +219,11 @@ class PromptOpenAI:
                 "schema": response_format.model_json_schema()
             }
         }
-        model = model if model != "gpt-4o-mini" else self.model
         user_content = self._build_user_content(user_prompt, images)
         for attempt in range(self.max_retries):
             try:
-                if model == "gpt-5-mini" or model == "gpt-5":
-                    response = self.client.beta.chat.completions.parse(
-                        model=model,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_content}
-                        ],
-                        max_completion_tokens=self.max_completion_tokens,
-                        response_format=json_format
-                    )
-                elif model == "o4-mini" or model == "o3-mini":
-                    response = self.client.beta.chat.completions.parse(
+                if provider == "openai" and self._is_openai_reasoning_model(model):
+                    response = client.beta.chat.completions.parse(
                         model=model,
                         messages=[
                             {"role": "system", "content": system_prompt},
@@ -147,7 +233,7 @@ class PromptOpenAI:
                         response_format=json_format
                     )
                 else:
-                    response = self.client.beta.chat.completions.parse(
+                    response = client.beta.chat.completions.parse(
                         model=model,
                         messages=[
                             {"role": "system", "content": system_prompt},
@@ -157,49 +243,50 @@ class PromptOpenAI:
                         max_tokens=self.max_completion_tokens,
                         response_format=json_format
                     )
-                
+
                 # Get actual token usage
                 usage = {
                     "prompt_tokens": response.usage.prompt_tokens,
                     "completion_tokens": response.usage.completion_tokens,
                     "total_tokens": response.usage.total_tokens
                 }
-                
+
                 logger.info(
-                    f"✓ OpenAI API call successful | "
+                    f"✓ {provider} API call successful | "
                     f"Prompt: {usage['prompt_tokens']} tokens | "
                     f"Completion: {usage['completion_tokens']} tokens | "
                     f"Total: {usage['total_tokens']} tokens"
                 )
-                
+
                 return response.choices[0].message.parsed, usage
 
-            except OpenAIError as e:
+            except (OpenAIError, Exception) as e:
                 if attempt < self.max_retries - 1:
-                    logger.warning(f"⚠ OpenAI API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
+                    logger.warning(f"⚠ {provider} API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
                     logger.info(f"Retrying in next attempt...")
                     continue
                 logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
                 raise
 
-    def call_claude_api(self, system_prompt, user_prompt: str, temperature: float = 0.7, model: str = "claude-sonnet-4-5-20250929") -> tuple:
+    def call_claude_api(self, system_prompt, user_prompt: str, temperature: float = 0.7, model: str = None, images: list = None) -> tuple:
         """Call Claude API with retry logic and return raw string content and usage info.
 
         Args:
             system_prompt: Can be a string or list (for prompt caching)
             user_prompt: User message as string
             temperature: Sampling temperature
-            model: Claude model name
+            model: Claude model name (defaults to the instance model)
+            images: optional list of base64 data URLs sent as multimodal input
         """
-        if self.client is None:
-            raise ValueError("Claude client is not initialized. Please set anthropic_api_key in settings.")
+        model = model or self.model
+        client = self._client_for("anthropic")
 
         for attempt in range(self.max_retries):
             try:
-                logger.info(f"Sending request to Claude (attempt {attempt + 1}/{self.max_retries})")
+                logger.info(f"Sending request to Claude (attempt {attempt + 1}/{self.max_retries})" + (f" with {len(images)} image(s)" if images else ""))
 
                 # Prepare messages
-                messages = [{"role": "user", "content": user_prompt}]
+                messages = [{"role": "user", "content": self._build_claude_user_content(user_prompt, images)}]
 
                 # Create request parameters
                 request_params = {
@@ -217,7 +304,7 @@ class PromptOpenAI:
                     elif isinstance(system_prompt, list) and len(system_prompt) > 0:
                         request_params["system"] = system_prompt
 
-                response = self.client.messages.create(**request_params)
+                response = client.messages.create(**request_params)
 
                 logger.info("Claude API call successful")
 
@@ -236,14 +323,7 @@ class PromptOpenAI:
 
                 return content, usage
 
-            except AnthropicError as e:
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"⚠ Claude API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
-                    logger.info(f"Retrying in next attempt...")
-                    continue
-                logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
-                raise
-            except Exception as e:
+            except (AnthropicError, Exception) as e:
                 if attempt < self.max_retries - 1:
                     logger.warning(f"⚠ Claude API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
                     logger.info(f"Retrying in next attempt...")
@@ -251,25 +331,20 @@ class PromptOpenAI:
                 logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
                 raise
 
-    def call_claude_api_structured(self, system_prompt, user_prompt: str, response_format: dict, model: str = "claude-sonnet-4-5") -> tuple:
+    def call_claude_api_structured(self, system_prompt, user_prompt: str, response_format: dict, model: str = None, images: list = None) -> tuple:
         """Call Claude API with structured output using tool use - returns (parsed_response, usage_info)
 
         Args:
             system_prompt: Can be a string or list (for prompt caching)
             user_prompt: User message as string
-            response_format: Pydantic model or dict schema
-            model: Claude model name
+            response_format: Pydantic model, {"type": "json_schema", ...} dict, or plain schema dict
+            model: Claude model name (defaults to the instance model)
+            images: optional list of base64 data URLs sent as multimodal input
         """
-        if self.client is None:
-            raise ValueError("Claude client is not initialized. Please set anthropic_api_key in settings.")
+        model = model or self.model
+        client = self._client_for("anthropic")
 
-        # Check if response_format is a Pydantic model or dict
-        if hasattr(response_format, 'model_json_schema'):
-            schema = response_format.model_json_schema()
-            schema_name = response_format.__class__.__name__
-        else:
-            schema = response_format
-            schema_name = "response"
+        schema, schema_name, pydantic_model = self._normalize_schema(response_format)
 
         # Create a tool definition for structured output
         tools = [{
@@ -282,7 +357,7 @@ class PromptOpenAI:
             try:
                 logger.info(f"Sending structured request to Claude (attempt {attempt + 1}/{self.max_retries})")
 
-                messages = [{"role": "user", "content": user_prompt}]
+                messages = [{"role": "user", "content": self._build_claude_user_content(user_prompt, images)}]
 
                 # Create request parameters
                 request_params = {
@@ -301,7 +376,7 @@ class PromptOpenAI:
                     elif isinstance(system_prompt, list) and len(system_prompt) > 0:
                         request_params["system"] = system_prompt
 
-                response = self.client.messages.create(**request_params)
+                response = client.messages.create(**request_params)
 
                 # Extract tool use from response
                 tool_use_block = None
@@ -331,20 +406,13 @@ class PromptOpenAI:
                 )
 
                 # If response_format is a Pydantic model, parse the output
-                if hasattr(response_format, 'model_validate'):
-                    parsed_output = response_format.model_validate(structured_output)
+                if pydantic_model is not None and hasattr(pydantic_model, 'model_validate'):
+                    parsed_output = pydantic_model.model_validate(structured_output)
                     return parsed_output, usage
                 else:
                     return structured_output, usage
 
-            except AnthropicError as e:
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"⚠ Claude API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
-                    logger.info(f"Retrying in next attempt...")
-                    continue
-                logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
-                raise
-            except Exception as e:
+            except (AnthropicError, Exception) as e:
                 if attempt < self.max_retries - 1:
                     logger.warning(f"⚠ Claude API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
                     logger.info(f"Retrying in next attempt...")

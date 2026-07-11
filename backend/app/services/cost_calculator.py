@@ -220,6 +220,20 @@ class CostTracker:
         Returns:
             Cost in USD for this call
         """
+        try:
+            return self._track_call(service_name, model_name, usage, metadata)
+        except Exception as e:
+            # Cost tracking must never abort a generation — log and move on
+            logger.error(f"[COST TRACKER] track_call failed (bypassed): {str(e)}")
+            return Decimal(0)
+
+    def _track_call(
+        self,
+        service_name: str,
+        model_name: str,
+        usage: Dict[str, int],
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Decimal:
         input_tokens = usage.get("prompt_tokens", 0)
         output_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", input_tokens + output_tokens)

@@ -24,7 +24,10 @@ class Settings(BaseSettings):
     google_api_key: str = ""
 
     # LLM model selection (env-overridable; gemini-3.5-flash-lite does not exist
-    # on this API key — only gemini-3.5-flash and gemini-3.1-flash-lite do)
+    # on this API key — only gemini-3.5-flash and gemini-3.1-flash-lite do).
+    # The provider is inferred from the model-name prefix, so these can be
+    # swapped freely between gemini-* (google_api_key), gpt-*/o* (openai_api_key),
+    # and claude-* (anthropic_api_key) — the matching API key must be set.
     # Model used for component editing and build-error fixing
     edit_model: str = "gemini-3.1-flash-lite"
     # Model used for per-page website code generation (the expensive call)
