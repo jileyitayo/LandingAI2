@@ -27,6 +27,9 @@ export interface ChatSendResult {
   chatMessageId?: string;
   /** True when the edit was rejected by the per-tier edit rate limit (429) */
   rateLimited?: boolean;
+  /** The backend wants explicit confirmation before running the edit */
+  needsConfirmation?: boolean;
+  confirmation?: Record<string, any>;
 }
 
 interface ChatPanelProps {
@@ -37,12 +40,15 @@ interface ChatPanelProps {
     instruction: string,
     scope: EditScope,
     attachments: Attachment[],
-    onProgress?: (stage: string, detail: string) => void
+    onProgress?: (stage: string, detail: string) => void,
+    options?: { confirmedTarget?: string }
   ) => Promise<ChatSendResult>;
   /** Revert an edit by chat message id; returns true on success. */
   onUndo?: (chatMessageId: string) => Promise<boolean>;
   onClearSelection: () => void;
   isApplyingEdit: boolean;
+  /** Route currently shown in the preview iframe (e.g. '/about') */
+  currentRoute?: string;
 }
 
 /**
@@ -58,10 +64,20 @@ export default function ChatPanel({
   onUndo,
   onClearSelection,
   isApplyingEdit,
+  currentRoute = '/',
 }: ChatPanelProps) {
   const [undoingId, setUndoingId] = useState<string | null>(null);
   const [progressLabel, setProgressLabel] = useState<string>('Applying edit…');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // A backend-requested confirmation (e.g. site-wide component edit) awaiting
+  // the user's Confirm/Cancel; holds everything needed to resubmit
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    instruction: string;
+    scope: EditScope;
+    attachments: Attachment[];
+    message: string;
+    confirmation: Record<string, any>;
+  } | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -161,6 +177,20 @@ export default function ChatPanel({
     const result = await onSend(instruction, scope, sentAttachments, (stage, detail) => {
       setProgressLabel(detail || stageLabels[stage] || 'Applying edit…');
     });
+
+    // Backend wants confirmation before running (multi-page edit): render
+    // Confirm/Cancel instead of a result message — no edit has happened yet
+    if (result.needsConfirmation && result.confirmation) {
+      setPendingConfirmation({
+        instruction,
+        scope,
+        attachments: sentAttachments,
+        message: result.message || 'This edit affects multiple pages. Apply it site-wide?',
+        confirmation: result.confirmation,
+      });
+      return;
+    }
+
     setMessages((prev) => [
       ...prev,
       {
@@ -176,6 +206,54 @@ export default function ChatPanel({
       },
     ]);
   }, [input, attachments, isApplyingEdit, selectedElement, editScope, onSend]);
+
+  const handleConfirmPending = useCallback(async () => {
+    if (!pendingConfirmation || isApplyingEdit) return;
+    const pending = pendingConfirmation;
+    setPendingConfirmation(null);
+    setProgressLabel('Applying edit…');
+
+    const stageLabels: Record<string, string> = {
+      analyzing: 'Understanding your request…',
+      editing: 'Rewriting the code…',
+      building: 'Building & verifying preview…',
+      done: 'Finishing up…',
+    };
+    const result = await onSend(
+      pending.instruction,
+      pending.scope,
+      pending.attachments,
+      (stage, detail) => setProgressLabel(detail || stageLabels[stage] || 'Applying edit…'),
+      { confirmedTarget: pending.confirmation.target_file }
+    );
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `local-${Date.now()}-ai`,
+        role: 'assistant',
+        content: result.success
+          ? result.description || result.message || 'Edit applied'
+          : result.message || 'Edit failed',
+        isError: !result.success,
+        rateLimited: result.rateLimited,
+        createdAt: new Date().toISOString(),
+        chatMessageId: result.chatMessageId,
+      },
+    ]);
+  }, [pendingConfirmation, isApplyingEdit, onSend]);
+
+  const handleCancelPending = useCallback(() => {
+    setPendingConfirmation(null);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `local-${Date.now()}-cancel`,
+        role: 'assistant',
+        content: 'Cancelled — nothing was changed.',
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  }, []);
 
   const handleUndo = useCallback(async (message: ChatMessage) => {
     if (!onUndo || !message.chatMessageId) return;
@@ -212,12 +290,17 @@ export default function ChatPanel({
     return null;
   })();
 
-  // Scope chip: breadcrumb when an element is selected, "Page" otherwise
+  // Scope chip: breadcrumb when an element is selected, the current route
+  // otherwise — so you always know WHICH page a page-scope edit will touch
   const renderScopeChip = () => {
+    const routeLabel = currentRoute === '/' ? 'Home' : currentRoute;
     if (!selectedElement) {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 bg-gray-800 border border-gray-600 rounded-full text-xs text-gray-300">
-          Page
+        <span
+          className="inline-flex items-center px-2 py-0.5 bg-gray-800 border border-gray-600 rounded-full text-xs text-gray-300"
+          title={`Edits apply to the ${routeLabel} page`}
+        >
+          {routeLabel}
         </span>
       );
     }
@@ -235,8 +318,12 @@ export default function ChatPanel({
 
     return (
       <span className="inline-flex items-center gap-1 pl-1 pr-1 py-0.5 bg-gray-800 border border-gray-600 rounded-full">
-        <button onClick={() => setEditScope('page')} className={crumbClass(editScope === 'page')}>
-          Page
+        <button
+          onClick={() => setEditScope('page')}
+          className={crumbClass(editScope === 'page')}
+          title={`Scope the edit to the whole ${routeLabel} page`}
+        >
+          {routeLabel}
         </button>
         <span className="text-gray-600 text-xs">›</span>
         <button onClick={() => setEditScope('section')} className={crumbClass(editScope === 'section')}>
@@ -339,6 +426,33 @@ export default function ChatPanel({
               </div>
             </div>
           ))
+        )}
+
+        {pendingConfirmation && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] bg-amber-900/20 border border-amber-700/50 rounded-lg px-3 py-2 text-sm text-amber-100">
+              <div className="flex items-start gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-300" />
+                <span>{pendingConfirmation.message}</span>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={handleConfirmPending}
+                  disabled={isApplyingEdit}
+                  className="px-2.5 py-1 text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors disabled:opacity-50"
+                >
+                  Apply site-wide
+                </button>
+                <button
+                  onClick={handleCancelPending}
+                  disabled={isApplyingEdit}
+                  className="px-2.5 py-1 text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-200 rounded transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {isApplyingEdit && (

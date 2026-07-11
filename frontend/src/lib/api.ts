@@ -696,6 +696,8 @@ export const api = {
       scope?: 'element' | 'section' | 'page';
       instruction: string;
       attachments?: Array<{ media_id: string; url: string; media_type?: string }>;
+      current_route?: string;
+      confirmed_target?: string;
     }) =>
       apiRequest<{
         success: boolean;
@@ -708,6 +710,8 @@ export const api = {
         new_code?: string;
         edit_description?: string;
         chat_message_id?: string;
+        needs_confirmation?: boolean;
+        confirmation?: Record<string, any>;
       }>(`/api/v1/edit/project/${projectId}`, {
         method: "POST",
         body: JSON.stringify(data),
@@ -727,6 +731,8 @@ export const api = {
         scope?: 'element' | 'section' | 'page';
         instruction: string;
         attachments?: Array<{ media_id: string; url: string; media_type?: string }>;
+        current_route?: string;
+        confirmed_target?: string;
       },
       onProgress: (stage: string, detail: string) => void
     ): Promise<{
@@ -740,6 +746,8 @@ export const api = {
       new_code?: string;
       edit_description?: string;
       chat_message_id?: string;
+      needs_confirmation?: boolean;
+      confirmation?: Record<string, any>;
     }> => {
       const token = await getAccessToken();
       const response = await fetch(`${API_BASE_URL}/api/v1/edit/project/${projectId}/stream`, {

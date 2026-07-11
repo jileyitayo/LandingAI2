@@ -58,6 +58,8 @@ interface ReactPreviewProps {
   onElementsSelect?: (elements: SelectedElement[]) => void;
   selectorEnabled?: boolean;
   onSelectorEnabledChange?: (enabled: boolean) => void;
+  /** Route currently shown inside the preview iframe (e.g. '/about') */
+  onRouteChange?: (path: string) => void;
 }
 
 export interface ReactPreviewHandle {
@@ -75,7 +77,8 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
   onElementSelect,
   onElementsSelect,
   selectorEnabled = false,
-  onSelectorEnabledChange
+  onSelectorEnabledChange,
+  onRouteChange
 }: ReactPreviewProps, ref) {
   const [selectorReady, setSelectorReady] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
@@ -87,8 +90,8 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
 
   // Keep latest props/state in refs so the message listener can be registered
   // exactly once — re-registering leaves gaps where iframe messages are lost
-  const callbacksRef = useRef({ onElementSelect, onElementsSelect, onSelectorEnabledChange, selectorEnabled, selectorReady });
-  callbacksRef.current = { onElementSelect, onElementsSelect, onSelectorEnabledChange, selectorEnabled, selectorReady };
+  const callbacksRef = useRef({ onElementSelect, onElementsSelect, onSelectorEnabledChange, onRouteChange, selectorEnabled, selectorReady });
+  callbacksRef.current = { onElementSelect, onElementsSelect, onSelectorEnabledChange, onRouteChange, selectorEnabled, selectorReady };
 
   const postToIframe = (message: Record<string, unknown>) => {
     iframeRef.current?.contentWindow?.postMessage(message, '*');
@@ -138,6 +141,10 @@ const ReactPreview = forwardRef<ReactPreviewHandle, ReactPreviewProps>(function 
         // Auto-enable selector when user clicks in preview
         if (cb.onSelectorEnabledChange && !cb.selectorEnabled && cb.selectorReady) {
           cb.onSelectorEnabledChange(true);
+        }
+      } else if (event.data.type === 'ROUTE_CHANGED') {
+        if (cb.onRouteChange && typeof event.data.path === 'string') {
+          cb.onRouteChange(event.data.path);
         }
       }
     };

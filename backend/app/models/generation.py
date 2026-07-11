@@ -109,6 +109,8 @@ class ComponentEditRequest(BaseModel):
     scope: str = Field("element", description="Edit scope: element, section, or page")
     instruction: str = Field(..., min_length=5, max_length=2000, description="Natural language edit instruction")
     attachments: Optional[List[Dict[str, Any]]] = Field(None, description="Uploaded media attachments: [{media_id, url, media_type}]")
+    current_route: Optional[str] = Field(None, description="Route currently shown in the preview iframe (e.g. '/about') — resolves page-scope edits to the right page file")
+    confirmed_target: Optional[str] = Field(None, description="File path the user confirmed as the edit target (skips the retarget confirmation)")
 
     @validator('instruction')
     def validate_instruction(cls, v):
@@ -136,6 +138,8 @@ class ComponentEditResponse(BaseModel):
     new_code: Optional[str] = None
     edit_description: Optional[str] = None
     chat_message_id: Optional[str] = None
+    needs_confirmation: bool = False
+    confirmation: Optional[Dict[str, Any]] = None  # {kind, target_file, resolved_file, affected_pages, reason}
 
 
 class PropertyChange(BaseModel):

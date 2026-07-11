@@ -28,7 +28,8 @@ interface EditSidebarProps {
     instruction: string,
     scope: EditScope,
     attachments: Attachment[],
-    onProgress?: (stage: string, detail: string) => void
+    onProgress?: (stage: string, detail: string) => void,
+    options?: { confirmedTarget?: string }
   ) => Promise<ChatSendResult>;
   // Revert an AI edit by chat message id; returns true on success
   onRevert?: (chatMessageId: string) => Promise<boolean>;
@@ -40,6 +41,8 @@ interface EditSidebarProps {
   projectFiles?: Record<string, string>;
   // Project ID for media uploads and chat history
   projectId: string;
+  // Route currently shown in the preview iframe (e.g. '/about')
+  currentRoute?: string;
 }
 
 type PropertySection = 'content' | 'colors' | 'typography' | 'link' | 'image';
@@ -58,6 +61,7 @@ export default function EditSidebar({
   isAutoSaving,
   projectFiles,
   projectId,
+  currentRoute,
 }: EditSidebarProps) {
   const [expandedSections, setExpandedSections] = useState<Set<PropertySection>>(
     new Set(['content', 'colors', 'typography'])
@@ -663,6 +667,7 @@ export default function EditSidebar({
             onUndo={onRevert}
             onClearSelection={onClearSelection}
             isApplyingEdit={isApplyingEdit}
+            currentRoute={currentRoute}
           />
         </>
       )}

@@ -47,6 +47,8 @@ export default function ProjectEditorPage() {
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
   const [selectedElements, setSelectedElements] = useState<SelectedElement[]>([]);
   const [selectorEnabled, setSelectorEnabled] = useState(false);
+  // Route currently shown inside the preview iframe (reported by the selector script)
+  const [currentRoute, setCurrentRoute] = useState<string>('/');
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isApplyingEdit, setIsApplyingEdit] = useState(false);
   // Bumped after every successful save so PublishButton re-checks for unpublished changes
@@ -303,7 +305,8 @@ export default function ProjectEditorPage() {
     instruction: string,
     scope: EditScope,
     attachments: Attachment[],
-    onProgress?: (stage: string, detail: string) => void
+    onProgress?: (stage: string, detail: string) => void,
+    options?: { confirmedTarget?: string }
   ): Promise<ChatSendResult> => {
     setIsApplyingEdit(true);
     try {
@@ -322,6 +325,8 @@ export default function ProjectEditorPage() {
           url: a.url,
           media_type: a.mediaType,
         })),
+        current_route: currentRoute,
+        confirmed_target: options?.confirmedTarget,
       };
 
       // Prefer the streaming endpoint for live stage progress; fall back to the
@@ -343,6 +348,17 @@ export default function ProjectEditorPage() {
 
       if (!response.success) {
         return { success: false, message: response.message };
+      }
+
+      // The backend wants explicit confirmation before a multi-page edit
+      // (shared component retarget) — no edit ran yet
+      if (response.needs_confirmation) {
+        return {
+          success: true,
+          needsConfirmation: true,
+          message: response.message,
+          confirmation: response.confirmation,
+        };
       }
 
       // Swap the iframe to the freshly built, verified preview
@@ -374,7 +390,7 @@ export default function ProjectEditorPage() {
     } finally {
       setIsApplyingEdit(false);
     }
-  }, [projectId, selectedElement, selectedElements, loadReactFiles]);
+  }, [projectId, selectedElement, selectedElements, currentRoute, loadReactFiles]);
 
   // Revert (undo) an AI edit: backend restores pre-edit code and rebuilds the
   // preview; we swap the iframe and re-sync files just like after an edit.
@@ -1333,6 +1349,7 @@ export default function ProjectEditorPage() {
               isAutoSaving={isAutoSaving}
               projectFiles={reactFiles}
               projectId={projectId}
+              currentRoute={currentRoute}
             />
           </div>
 
@@ -1397,6 +1414,7 @@ export default function ProjectEditorPage() {
                     onElementsSelect={handleElementsSelect}
                     selectorEnabled={selectorEnabled}
                     onSelectorEnabledChange={setSelectorEnabled}
+                    onRouteChange={setCurrentRoute}
                   />
                   {/* AI edit in progress — overlay without unmounting the iframe */}
                   {isApplyingEdit && (

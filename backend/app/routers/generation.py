@@ -11,6 +11,7 @@ import uuid
 import json
 import logging
 import asyncio
+import re
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import ActionLogger, log_action
 from app.utils.auth import get_current_user
@@ -1684,6 +1685,31 @@ def _find_page_file(files: Dict[str, str]) -> Optional[str]:
     return None
 
 
+def _page_file_for_route(route, website_structure: dict, files: Dict[str, str]):
+    """
+    Resolve the preview's current route to its page file via
+    website_structure.pages (same kebab naming rule as generate_app_files).
+    """
+    if not route:
+        return None
+    for page in (website_structure or {}).get("pages", []) or []:
+        if page.get("path") == route and page.get("name"):
+            candidate = f"src/pages/{page['name'].lower().replace(' ', '-')}.tsx"
+            if candidate in files:
+                return candidate
+    return None
+
+
+def _pages_importing(component_file: str, files: Dict[str, str]) -> List[str]:
+    """Page files that import the given component (blast radius of a component edit)."""
+    name = component_file.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    pattern = re.compile(rf"from\s+['\"](?:@/components/|\./components/|\.\./components/){name}['\"]")
+    return [
+        p for p, content in files.items()
+        if p.startswith("src/pages/") and pattern.search(content)
+    ]
+
+
 async def _build_verify_with_repairs(
     project_id: str,
     files: Dict[str, str],
@@ -1840,9 +1866,14 @@ async def _run_edit_pipeline(
         files = await project_file_manager.get_project_files(project_id)
 
         if not selected_elements:
-            # No selection: the whole page is the target (chat message without a selection)
+            # No selection: the whole page is the target (chat message without a
+            # selection). Prefer the page currently shown in the preview iframe.
             scope = "page"
-            page_file = _find_page_file(files)
+            page_file = _page_file_for_route(
+                request.current_route, project.get("website_structure") or {}, files
+            ) or _find_page_file(files)
+            if page_file:
+                logger.info(f"[COMPONENT EDIT] Page-scope target resolved to {page_file} (route: {request.current_route})")
             if not page_file:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -1943,11 +1974,67 @@ async def _run_edit_pipeline(
         # a carousel") escalate element scope to section, drop containment, and
         # pull vetted patterns (+ their npm deps) from the component library.
         progress("analyzing", "Understanding your request")
+        shared_component_files = [
+            p for p in files
+            if p.startswith("src/components/") and not p.startswith("src/components/ui/")
+            and p.endswith((".tsx", ".jsx"))
+        ]
         edit_analysis = await component_editor_service.analyze_edit_request(
-            effective_instruction, selected_elements[0], images=attachment_images or None
+            effective_instruction, selected_elements[0], images=attachment_images or None,
+            shared_components=shared_component_files or None
         )
         is_structural = bool(edit_analysis.get("requires_structural_rewrite")) and \
             edit_analysis.get("confidence", 0) >= 0.6
+
+        # Retargeting: the instruction implies a shared component beyond the
+        # selection ("the header", "all buttons"). Editing it changes every
+        # page that imports it, so ask the user to confirm before running the
+        # edit. confirmed_target on resubmit applies the retarget directly.
+        if request.confirmed_target:
+            if request.confirmed_target not in files:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Confirmed target file not found: {request.confirmed_target}"
+                )
+            if list(targets_by_file.keys()) != [request.confirmed_target]:
+                logger.info(f"[COMPONENT EDIT] Retargeting confirmed: {list(targets_by_file.keys())} -> {request.confirmed_target}")
+                targets_by_file = {request.confirmed_target: selected_elements}
+                if scope == "element":
+                    scope = "section"  # containment against the original element no longer applies
+        else:
+            suggested_file = edit_analysis.get("target_component_file")
+            if (
+                suggested_file
+                and suggested_file in files
+                and suggested_file.startswith("src/components/")
+                and suggested_file not in targets_by_file
+                and edit_analysis.get("confidence", 0) >= 0.6
+            ):
+                affected_pages = _pages_importing(suggested_file, files)
+                if len(affected_pages) > 1:
+                    component_name = suggested_file.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                    page_names = [p.rsplit("/", 1)[-1].rsplit(".", 1)[0] for p in affected_pages]
+                    logger.info(
+                        f"[COMPONENT EDIT] Retarget suggested: {suggested_file} "
+                        f"(affects {len(affected_pages)} pages) — asking for confirmation"
+                    )
+                    # Deliberately no log_ai_call: an aborted confirm shouldn't burn quota
+                    return ComponentEditResponse(
+                        success=True,
+                        needs_confirmation=True,
+                        message=(
+                            f"This edit targets the shared {component_name} component, "
+                            f"which appears on {len(affected_pages)} pages "
+                            f"({', '.join(page_names)}). Apply it site-wide?"
+                        ),
+                        confirmation={
+                            "kind": "retarget",
+                            "target_file": suggested_file,
+                            "resolved_file": next(iter(targets_by_file), None),
+                            "affected_pages": affected_pages,
+                            "reason": f"The instruction refers to the {component_name} component, which is shared across pages.",
+                        },
+                    )
         matched_library = []
         library_note = None
         if is_structural:

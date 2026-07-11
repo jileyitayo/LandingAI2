@@ -972,6 +972,40 @@
         }
     }
 
+    // Route awareness: tell the parent which route the preview is showing so
+    // the editor can display it (breadcrumb) and scope page edits correctly.
+    // The preview app uses HashRouter, so the route lives in location.hash.
+    let lastReportedRoute = null;
+    function postRoute() {
+        try {
+            const hash = window.location.hash || '';
+            const path = hash.startsWith('#/') ? hash.slice(1) : '/';
+            if (path === lastReportedRoute) return;
+            lastReportedRoute = path;
+            window.parent.postMessage({
+                type: 'ROUTE_CHANGED',
+                path: path,
+                title: document.title
+            }, '*');
+        } catch (error) {
+            console.error('Failed to send ROUTE_CHANGED:', error);
+        }
+    }
+    window.addEventListener('hashchange', postRoute);
+    window.addEventListener('popstate', postRoute);
+    const originalPushState = history.pushState.bind(history);
+    history.pushState = function() {
+        originalPushState.apply(history, arguments);
+        postRoute();
+    };
+    const originalReplaceState = history.replaceState.bind(history);
+    history.replaceState = function() {
+        originalReplaceState.apply(history, arguments);
+        postRoute();
+    };
+    window.addEventListener('load', postRoute);
+    postRoute();
+
     // Send immediately
     sendReadySignal();
 

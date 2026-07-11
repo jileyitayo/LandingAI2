@@ -432,7 +432,7 @@ class ComponentEditorService:
 
         return None
 
-    async def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any], images: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any], images: Optional[List[str]] = None, shared_components: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Advanced AI-powered analysis of edit requests to determine what type of changes are needed.
 
@@ -495,7 +495,10 @@ class ComponentEditorService:
                                        element_text, element_classes, is_multi_element, text_parts)
 
         # Call AI for advanced analysis
-        analysis_prompt = self._build_analysis_prompt(instruction, element_context, has_images=bool(images))
+        analysis_prompt = self._build_analysis_prompt(
+            instruction, element_context, has_images=bool(images),
+            shared_components=shared_components
+        )
 
         try:
             response, usage = self.prompt_service.call_openai_api(
@@ -536,6 +539,7 @@ class ComponentEditorService:
                     "affects_layout": ai_analysis.get("affects_layout", False),
                     "requires_structural_rewrite": bool(ai_analysis.get("requires_structural_rewrite", False)),
                     "suggested_components": ai_analysis.get("suggested_components", []) or [],
+                    "target_component_file": ai_analysis.get("target_component_file") or None,
                     "is_multi_element": is_multi_element,
                     "text_parts": text_parts,
                     "image_intent": ai_analysis.get("image_intent", self._heuristic_image_intent(instruction_lower) if images else None)
@@ -557,8 +561,23 @@ class ComponentEditorService:
             return "style_reference"
         return "embed_asset"
 
-    def _build_analysis_prompt(self, instruction: str, element_context: Dict[str, Any], has_images: bool = False) -> str:
+    def _build_analysis_prompt(self, instruction: str, element_context: Dict[str, Any], has_images: bool = False, shared_components: Optional[List[str]] = None) -> str:
         """Build prompt for AI-powered edit analysis"""
+        retarget_field = ""
+        retarget_guidance = ""
+        if shared_components:
+            component_list = "\n".join(f"  - {p}" for p in shared_components)
+            retarget_field = '\n  "target_component_file": "src/components/X.tsx" | null,  // See RETARGETING below'
+            retarget_guidance = f"""
+
+RETARGETING: This project has these shared component files (used across pages):
+{component_list}
+Set "target_component_file" ONLY when the instruction clearly refers to one of these
+shared components as a whole, beyond the selected element — e.g. "the header",
+"the footer on every page", "all the buttons across the site", "the navigation menu".
+Use the exact file path from the list. When the instruction is about the selected
+element itself (even if that element happens to live inside a shared component),
+set it to null."""
         image_intent_field = ""
         image_intent_guidance = ""
         if has_images:
@@ -572,7 +591,7 @@ Decide their purpose from the instruction and the image content:
 - "style_reference": the image shows a design/style to imitate but must NOT be embedded
   ("make it look like this", "match this style", a screenshot of another site).
 """
-        return f"""Analyze this UI edit request and return a JSON response.{image_intent_guidance}
+        return f"""Analyze this UI edit request and return a JSON response.{image_intent_guidance}{retarget_guidance}
 
 INSTRUCTION: "{instruction}"
 
@@ -612,7 +631,7 @@ Analyze what changes are needed and respond with ONLY a valid JSON object (no ma
   "requires_new_elements": true | false,
   "affects_layout": true | false,
   "requires_structural_rewrite": true | false,  // TRUE when the element/section must be REBUILT as something different (e.g. "turn this image into a carousel", "redesign this section", "make these testimonials a slider", "convert this list to tabs/accordion"). FALSE for text, color, styling, or attribute tweaks.
-  "suggested_components": ["carousel" | "testimonial-slider" | "tabs" | "accordion" | "video-embed" | "pricing-table" | "stats-grid"]  // Patterns the rewrite needs; [] if none{image_intent_field}
+  "suggested_components": ["carousel" | "testimonial-slider" | "tabs" | "accordion" | "video-embed" | "pricing-table" | "stats-grid"]  // Patterns the rewrite needs; [] if none{image_intent_field}{retarget_field}
 }}
 
 EXAMPLES:
