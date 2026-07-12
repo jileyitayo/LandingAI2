@@ -616,7 +616,17 @@ Decide their purpose from the instruction and the image content:
 - "style_reference": the image shows a design/style to imitate but must NOT be embedded
   ("make it look like this", "match this style", a screenshot of another site).
 """
-        return f"""Analyze this UI edit request and return a JSON response.{image_intent_guidance}{retarget_guidance}{create_page_guidance}
+        clarify_guidance = f"""
+
+CLARIFICATION (high bar — almost always null): Set "clarification_question" to ONE short
+user-facing question ONLY when the edit depends on something missing or inaccessible:
+- The instruction requires a specific user asset (e.g. "use our logo", "add my photo") and
+  {"images ARE attached to this request, so this case does NOT apply — leave it null" if has_images else "no image is attached — ask for the asset and set clarification_wants_attachment to true"}.
+- The instruction is self-contradictory or impossible to act on.
+NEVER ask because an instruction is vague or stylistic ("make it pop", "improve this") —
+interpret those and proceed. When in doubt, leave it null."""
+
+        return f"""Analyze this UI edit request and return a JSON response.{image_intent_guidance}{retarget_guidance}{create_page_guidance}{clarify_guidance}
 
 INSTRUCTION: "{instruction}"
 
@@ -656,7 +666,9 @@ Analyze what changes are needed and respond with ONLY a valid JSON object (no ma
   "requires_new_elements": true | false,
   "affects_layout": true | false,
   "requires_structural_rewrite": true | false,  // TRUE when the element/section must be REBUILT as something different (e.g. "turn this image into a carousel", "redesign this section", "make these testimonials a slider", "convert this list to tabs/accordion"). FALSE for text, color, styling, or attribute tweaks.
-  "suggested_components": ["carousel" | "testimonial-slider" | "tabs" | "accordion" | "video-embed" | "pricing-table" | "stats-grid"]  // Patterns the rewrite needs; [] if none{image_intent_field}{retarget_field}{create_page_field}
+  "suggested_components": ["carousel" | "testimonial-slider" | "tabs" | "accordion" | "video-embed" | "pricing-table" | "stats-grid"],  // Patterns the rewrite needs; [] if none
+  "clarification_question": "one short question" | null,  // See CLARIFICATION above — almost always null
+  "clarification_wants_attachment": true | false  // true when the question asks the user to attach an image{image_intent_field}{retarget_field}{create_page_field}
 }}
 
 EXAMPLES:

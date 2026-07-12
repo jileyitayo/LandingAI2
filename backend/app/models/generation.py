@@ -31,6 +31,15 @@ class GenerateWebsiteRequest(BaseModel):
         None,
         description="Uploaded media attachments: [{media_id, url, media_type}]"
     )
+    skip_clarification: bool = Field(
+        False,
+        description="Set on resubmit after a clarification round — bypasses the clarify gate (max one round)"
+    )
+    clarification_response: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="The user's answer to a pre-flight clarification question"
+    )
 
     @validator('prompt')
     def validate_prompt(cls, v):
@@ -55,9 +64,13 @@ class GenerationStatusResponse(BaseModel):
 
 class GenerateWebsiteResponse(BaseModel):
     """Response model for website generation"""
-    project_id: str
-    status: str
+    project_id: Optional[str] = None  # None when status == "needs_clarification"
+    status: str  # "generating" | "needs_clarification"
     message: str
+    clarification: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Present when status == 'needs_clarification': {question, wants_attachment, reason, url}"
+    )
     html_preview_url: Optional[str] = None
 
 
@@ -112,6 +125,8 @@ class ComponentEditRequest(BaseModel):
     current_route: Optional[str] = Field(None, description="Route currently shown in the preview iframe (e.g. '/about') — resolves page-scope edits to the right page file")
     confirmed_target: Optional[str] = Field(None, description="File path the user confirmed as the edit target (skips the retarget confirmation)")
     confirmed_page: Optional[Dict[str, Any]] = Field(None, description="The new_page spec the user confirmed creating (skips the create-page confirmation and runs the generation)")
+    skip_clarification: bool = Field(False, description="Set on resubmit after a clarify round — bypasses the clarify gate (max one round)")
+    clarification_response: Optional[str] = Field(None, max_length=1000, description="The user's answer to a clarifying question")
 
     @validator('instruction')
     def validate_instruction(cls, v):

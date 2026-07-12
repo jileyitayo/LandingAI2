@@ -17,19 +17,29 @@ import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { toast } from "sonner";
 
+export interface GenerationClarification {
+  question: string;
+  wants_attachment: boolean;
+  reason: string;
+  url?: string | null;
+}
+
 export const useUnifiedGeneration = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedProject, setGeneratedProject] = useState<any>(null);
+  const [clarification, setClarification] = useState<GenerationClarification | null>(null);
 
   const generateWebsite = async (
     prompt: string,
     projectName?: string,
     stylePreferences?: any,
-    attachments?: Array<{ media_id: string; url: string; media_type?: string }>
+    attachments?: Array<{ media_id: string; url: string; media_type?: string }>,
+    options?: { skipClarification?: boolean; clarificationResponse?: string }
   ) => {
     setIsGenerating(true);
     setError(null);
+    setClarification(null);
 
     try {
       const result = await api.generation.generateWebsite({
@@ -37,7 +47,17 @@ export const useUnifiedGeneration = () => {
         project_name: projectName,
         style_preferences: stylePreferences,
         attachments,
+        skip_clarification: options?.skipClarification,
+        clarification_response: options?.clarificationResponse,
       });
+
+      // Pre-flight asked a question instead of generating: no project was
+      // created and no quota was used — surface the question and stop.
+      if (result.status === 'needs_clarification' && result.clarification) {
+        setClarification(result.clarification);
+        setIsGenerating(false);
+        return result;
+      }
 
       // console.log('[Generation] Initial response:', result);
 
@@ -52,7 +72,7 @@ export const useUnifiedGeneration = () => {
 
       // Start polling for status immediately
       // console.log('[Generation] Starting polling for project:', result.project_id);
-      pollStatus(result.project_id);
+      pollStatus(result.project_id!);
 
       return result;
     } catch (err) {
@@ -186,6 +206,8 @@ export const useUnifiedGeneration = () => {
     isGenerating,
     error,
     generatedProject,
+    clarification,
+    clearClarification: () => setClarification(null),
     clearError: () => setError(null)
   };
 };

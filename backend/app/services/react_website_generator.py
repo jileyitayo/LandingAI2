@@ -120,7 +120,10 @@ class ReactWebsiteGenerator:
         enable_animations: Optional[bool] = None,
         cost_tracker=None,
         progress_callback=None,
-        media_context: Optional[str] = None
+        media_context: Optional[str] = None,
+        design_context: Optional[str] = None,
+        design_extraction=None,
+        design_fidelity: str = "none",
     ) -> Dict[str, Any]:
         """
         Main entry point: Generate complete React website from prompt with validation
@@ -155,19 +158,25 @@ class ReactWebsiteGenerator:
         
         # Step 1: Analyze business requirements
         logger.info("[REACT GEN] Analyzing business requirements...")
-        analysis_prompt = f"{prompt}\n\n{media_context}" if media_context else prompt
+        analysis_prompt = prompt
+        if media_context:
+            analysis_prompt = f"{analysis_prompt}\n\n{media_context}"
+        if design_context:
+            analysis_prompt = f"{analysis_prompt}\n\n{design_context}"
         business_analysis = self.business_analyzer.generate_business_analysis(analysis_prompt, cost_tracker=cost_tracker)
         # print(f"Business analysis: \n{business_analysis.model_dump_json(indent=2)}")
 
-        # Re-attach the media block verbatim: business analysis SUMMARIZES the prompt,
-        # which would mangle the exact asset URLs that must reach page generation
-        # (page prompts include analysis.prompt).
+        # Re-attach the media/design blocks verbatim: business analysis SUMMARIZES
+        # the prompt, which would mangle the exact asset URLs, hex colors and font
+        # names that must reach page generation (page prompts include analysis.prompt).
         if media_context:
             business_analysis.prompt = f"{business_analysis.prompt}\n\n{media_context}"
-        
+        if design_context:
+            business_analysis.prompt = f"{business_analysis.prompt}\n\n{design_context}"
+
         # Step 2: Generate website structure
         logger.info("[REACT GEN] Generating website structure...")
-        website_structure = self.structure_generator.generate_structure(business_analysis, cost_tracker=cost_tracker)
+        website_structure = self.structure_generator.generate_structure(business_analysis, cost_tracker=cost_tracker, design_context=design_context)
 
         # print(f"Website structure: \n{website_structure.model_dump_json(indent=2)}")
         
@@ -204,7 +213,10 @@ class ReactWebsiteGenerator:
         logger.info("[REACT GEN] Generating React files...")
         logger.info(f"[REACT GEN] Animations enabled: {enable_animations}")
 
-        files = self._generate_all_files(website_structure, business_analysis, enable_animations, cost_tracker=cost_tracker)
+        files = self._generate_all_files(
+            website_structure, business_analysis, enable_animations, cost_tracker=cost_tracker,
+            design_extraction=design_extraction, design_fidelity=design_fidelity
+        )
 
         # Deterministic nav-link repair: rewrite bad Header/Footer anchors
         # (e.g. <a href="#features">Shop</a>) to <Link to="/shop"> so every
@@ -390,7 +402,7 @@ class ReactWebsiteGenerator:
         logger.info(f"[STRUCTURE VALIDATION] Pages: {', '.join(page_list)}")
         logger.info(f"[STRUCTURE VALIDATION] Navigation: {', '.join(nav_list)}")
     
-    def _generate_initial_files_parallel(self, structure: WebsiteStructure, analysis: BusinessAnalysis, enable_animations: bool = False, cost_tracker=None) -> tuple[Dict[str, str], Any]:
+    def _generate_initial_files_parallel(self, structure: WebsiteStructure, analysis: BusinessAnalysis, enable_animations: bool = False, cost_tracker=None, extracted_colors=None, is_ground_truth: bool = False, google_fonts_urls=None) -> tuple[Dict[str, str], Any]:
         """Generate initial project files in parallel (config, UI components, app files, theme)
 
         This runs independent file generation operations concurrently for faster initial setup.
@@ -415,7 +427,7 @@ class ReactWebsiteGenerator:
         # Define worker functions for each independent operation
         def generate_config():
             logger.info("[PARALLEL GEN] Generating config files...")
-            return ('config', react_file_manager.generate_config_files(structure))
+            return ('config', react_file_manager.generate_config_files(structure, google_fonts_urls=google_fonts_urls))
 
         def generate_ui_components():
             logger.info("[PARALLEL GEN] Generating UI components...")
@@ -441,7 +453,9 @@ class ReactWebsiteGenerator:
                 theme_obj = theme_generator.generate_theme_with_fallback(
                     business_analysis=analysis,
                     color_scheme=structure.color_scheme,
-                    cost_tracker=cost_tracker
+                    cost_tracker=cost_tracker,
+                    extracted_colors=extracted_colors,
+                    is_ground_truth=is_ground_truth
                 )
                 logger.info(f"[PARALLEL GEN] ✓ Theme generated: primary={theme_obj.primary}")
                 return ('theme', theme_obj)
@@ -500,7 +514,7 @@ class ReactWebsiteGenerator:
         logger.info(f"[PARALLEL GEN] ✓ Initial files generated in parallel ({len(files)} files total)")
         return files, theme
 
-    def _generate_all_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, enable_animations: bool = False, cost_tracker=None) -> Dict[str, str]:
+    def _generate_all_files(self, structure: WebsiteStructure, analysis: BusinessAnalysis, enable_animations: bool = False, cost_tracker=None, design_extraction=None, design_fidelity: str = "none") -> Dict[str, str]:
         """Generate all React project files
 
         Args:
@@ -512,15 +526,31 @@ class ReactWebsiteGenerator:
 
         files = {}
 
+        # Reference-site design data (URL ingestion): exact colors steer the
+        # theme; fonts/Google Fonts links are injected only for replicas.
+        is_ground_truth = design_fidelity == "replica"
+        extracted_colors = None
+        replica_fonts = None
+        replica_google_fonts = None
+        if design_extraction is not None and getattr(design_extraction, "ok", False):
+            extracted_colors = [c.value for c in design_extraction.colors] or None
+            if is_ground_truth:
+                replica_fonts = design_extraction.fonts or None
+                replica_google_fonts = design_extraction.google_fonts_urls or None
+
         # Generate initial files (config, UI components, app files, theme)
         # Use parallel generation if enabled
         if settings.enable_parallel_generation:
             logger.info("[REACT GEN] Using parallel generation for initial files...")
-            files, theme = self._generate_initial_files_parallel(structure, analysis, enable_animations, cost_tracker)
+            files, theme = self._generate_initial_files_parallel(
+                structure, analysis, enable_animations, cost_tracker,
+                extracted_colors=extracted_colors, is_ground_truth=is_ground_truth,
+                google_fonts_urls=replica_google_fonts
+            )
         else:
             # Sequential generation (original approach)
             # Core config files (package.json, vite.config, etc.)
-            files.update(react_file_manager.generate_config_files(structure))
+            files.update(react_file_manager.generate_config_files(structure, google_fonts_urls=replica_google_fonts))
 
             # UI components (shadcn/ui primitives - base set)
             files.update(react_file_manager.generate_ui_components())
@@ -536,7 +566,9 @@ class ReactWebsiteGenerator:
                 theme = theme_generator.generate_theme_with_fallback(
                     business_analysis=analysis,
                     color_scheme=structure.color_scheme,
-                    cost_tracker=cost_tracker
+                    cost_tracker=cost_tracker,
+                    extracted_colors=extracted_colors,
+                    is_ground_truth=is_ground_truth
                 )
                 logger.info(f"[REACT GEN] ✓ Theme generated: primary={theme.primary}")
             except Exception as e:
@@ -544,7 +576,7 @@ class ReactWebsiteGenerator:
                 # theme will remain None, generate_style_files will handle fallback
 
         # Style files (index.css) with custom theme (depends on theme, so runs after)
-        files.update(react_file_manager.generate_style_files(structure, theme))
+        files.update(react_file_manager.generate_style_files(structure, theme, fonts=replica_fonts))
         
         # Animation files (if enabled)
         # if enable_animations:

@@ -4,7 +4,7 @@ API endpoints for AI website content generation and rendering.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from typing import Dict, Any, Optional, List, Union, Tuple
 from datetime import datetime, timedelta
 import uuid
@@ -31,6 +31,8 @@ from app.services.validators.build_tester import BuildError, BuildTester
 from app.services.direct_code_editor import direct_code_editor
 from app.services.component_relationship_tracker import ComponentRelationshipTracker
 from app.services.property_edit_queue_service import get_queue_service
+from app.services.intent_checker import check_generation_intent, URL_RE
+from app.services.site_ingestion import extract_site_design, to_prompt_block, WEAK_CONFIDENCE, DesignExtraction
 from app.config import settings
 from app.models.generation import (
     GenerateWebsiteRequest,
@@ -623,12 +625,108 @@ async def generate_react_website_from_prompt(
                 }
             )
 
+        # Step 2.5: Pre-flight intent check + URL ingestion (before project
+        # creation and before log_ai_call, so a clarification return creates
+        # no orphan project and burns no quota — same precedent as the edit
+        # pipeline's confirm-first responses). Fails open: any error here
+        # degrades to normal generation.
+        design_extraction = None
+        design_fidelity = "none"
+        preflight_usage = None
+        if settings.intent_preflight_enabled:
+            try:
+                async def _preflight():
+                    intent, usage = await asyncio.to_thread(
+                        check_generation_intent,
+                        request.prompt,
+                        bool(request.attachments),
+                        settings.url_ingestion_enabled,
+                    )
+                    extraction = None
+                    if intent.url_refs and settings.url_ingestion_enabled:
+                        extraction = await extract_site_design(intent.url_refs[0])
+                    return intent, extraction, usage
+
+                intent, design_extraction, preflight_usage = await asyncio.wait_for(
+                    _preflight(), timeout=20.0
+                )
+                design_fidelity = intent.fidelity
+                logger.info(
+                    f"[PREFLIGHT] clarify={intent.needs_clarification} urls={len(intent.url_refs)} "
+                    f"fidelity={intent.fidelity} extraction_ok={getattr(design_extraction, 'ok', None)} "
+                    f"confidence={getattr(design_extraction, 'confidence', None)}"
+                )
+
+                if not request.skip_clarification:
+                    weak_extraction = design_extraction is not None and (
+                        not design_extraction.ok or design_extraction.confidence < WEAK_CONFIDENCE
+                    )
+                    clarification = None
+                    if weak_extraction:
+                        url = intent.url_refs[0]
+                        clarification = {
+                            "question": (
+                                f"I couldn't read enough of {url} to copy its design — could you "
+                                "attach a screenshot of the site, or describe its colors, fonts "
+                                "and sections?"
+                            ),
+                            "wants_attachment": True,
+                            "reason": design_extraction.failure_reason or "weak_extraction",
+                            "url": url,
+                        }
+                    elif intent.needs_clarification and intent.question:
+                        # Guardrail: a successful site fetch already supplies the
+                        # design assets (logo, colors, fonts) — don't ask the user
+                        # for an attachment the reference site just provided.
+                        asset_covered_by_site = (
+                            intent.wants_attachment
+                            and design_extraction is not None
+                            and design_extraction.ok
+                            and design_extraction.confidence >= WEAK_CONFIDENCE
+                        )
+                        if asset_covered_by_site:
+                            logger.info("[PREFLIGHT] guardrail: asset clarification covered by fetched site, proceeding")
+                        else:
+                            clarification = {
+                                "question": intent.question,
+                                "wants_attachment": intent.wants_attachment,
+                                "reason": "intent",
+                                "url": intent.url_refs[0] if intent.url_refs else None,
+                            }
+                    if clarification:
+                        # Deliberately no create_project and no log_ai_call —
+                        # a clarification round is free.
+                        logger.info(f"[PREFLIGHT] returning clarification: {clarification['reason']}")
+                        return JSONResponse(
+                            status_code=status.HTTP_200_OK,
+                            content=GenerateWebsiteResponse(
+                                project_id=None,
+                                status="needs_clarification",
+                                message=clarification["question"],
+                                clarification=clarification,
+                            ).dict(),
+                        )
+                # Weak/failed extractions never feed the pipeline.
+                if design_extraction is not None and (
+                    not design_extraction.ok or design_extraction.confidence < WEAK_CONFIDENCE
+                ):
+                    design_extraction = None
+            except Exception as e:
+                logger.warning(f"[PREFLIGHT] failed, proceeding with normal generation: {e}")
+                design_extraction = None
+
+        # The clarification answer rides with the prompt from here on (project
+        # row, business analysis, page prompts).
+        effective_prompt = request.prompt
+        if request.clarification_response:
+            effective_prompt = f"{request.prompt}\n\nUser clarification: {request.clarification_response.strip()}"
+
         # Step 3: Create project
         logger.info("Creating project...")
         project_id = await create_project(
             user_id=user_id,
             project_name=request.project_name or f"React Website - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
-            prompt=request.prompt,
+            prompt=effective_prompt,
             template_id=None,
             supabase_client=supabase
         )
@@ -668,9 +766,12 @@ async def generate_react_website_from_prompt(
         asyncio.create_task(
             process_react_generation(
                 project_id=project_id,
-                prompt=request.prompt,
+                prompt=effective_prompt,
                 user_id=user_id,
-                attachments=request.attachments
+                attachments=request.attachments,
+                design_extraction=design_extraction,
+                design_fidelity=design_fidelity,
+                preflight_usage=preflight_usage,
             )
         )
 
@@ -691,7 +792,15 @@ async def generate_react_website_from_prompt(
         )
 
 
-async def process_react_generation(project_id: str, prompt: str, user_id: str, attachments: Optional[List[Dict[str, Any]]] = None):
+async def process_react_generation(
+    project_id: str,
+    prompt: str,
+    user_id: str,
+    attachments: Optional[List[Dict[str, Any]]] = None,
+    design_extraction: Optional[DesignExtraction] = None,
+    design_fidelity: str = "none",
+    preflight_usage: Optional[Dict[str, Any]] = None,
+):
     """Background task that actually does the generation with live progress updates"""
     supabase = get_supabase_client()
 
@@ -708,15 +817,38 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str, a
                 logger.info(f"[BG] Media context built for project {project_id}")
         except Exception as e:
             logger.warning(f"[BG] Media classification failed, generating without media context: {e}")
-    
+
+    # Reference-site design data from the pre-flight, injected verbatim like
+    # media_context so exact hexes/font names/logo URLs survive summarization.
+    design_context = None
+    if design_extraction is not None:
+        try:
+            design_context = to_prompt_block(
+                design_extraction,
+                design_fidelity if design_fidelity in ("replica", "inspired") else "inspired",
+            )
+            if design_context:
+                logger.info(f"[BG] Design context built for project {project_id} (fidelity={design_fidelity})")
+        except Exception as e:
+            logger.warning(f"[BG] Design context build failed, generating without it: {e}")
+
     # Import CostTracker
     from app.services.cost_calculator import CostTracker
-    
+
     # Initialize cost tracker
     cost_tracker = CostTracker(
         generation_type="website",
         endpoint="/generate_website"
     )
+    if preflight_usage:
+        try:
+            cost_tracker.track_call(
+                service_name="preflight_intent_check",
+                model_name=settings.analysis_model,
+                usage=preflight_usage,
+            )
+        except Exception as e:
+            logger.warning(f"[BG] Failed to track preflight usage: {e}")
 
     try:
         logger.info(f"[BG] Starting React generation for project {project_id}")
@@ -819,7 +951,10 @@ async def process_react_generation(project_id: str, prompt: str, user_id: str, a
                     enable_animations=enable_animations,
                     cost_tracker=cost_tracker,
                     progress_callback=sync_progress_callback,
-                    media_context=media_context
+                    media_context=media_context,
+                    design_context=design_context,
+                    design_extraction=design_extraction,
+                    design_fidelity=design_fidelity,
                 )
             )
         # await asyncio.sleep(10)
@@ -2132,6 +2267,48 @@ async def _run_edit_pipeline(
                 )
                 logger.info(f"[COMPONENT EDIT] {len(attachment_urls)} attachment URL(s) added to instruction context")
 
+        # URL references in the edit instruction ("make the hero look like
+        # https://stripe.com"): fetch the referenced site's design and append it
+        # verbatim — same mechanism as the attachment-URL block above — so it
+        # feeds both analyze_edit_request and the code edit. A weak/failed fetch
+        # asks for a screenshot via the confirm channel instead of guessing.
+        if settings.url_ingestion_enabled:
+            instruction_urls = [u.rstrip(").,;\"'") for u in URL_RE.findall(request.instruction)]
+            if instruction_urls:
+                ref_url = instruction_urls[0]
+                extraction = await extract_site_design(ref_url)
+                if extraction.ok and extraction.confidence >= WEAK_CONFIDENCE:
+                    from app.services.intent_checker import _keyword_fidelity
+                    design_block = to_prompt_block(extraction, _keyword_fidelity(request.instruction))
+                    if design_block:
+                        effective_instruction = f"{effective_instruction}\n\n{design_block}"
+                        logger.info(f"[COMPONENT EDIT] Design context from {ref_url} added to instruction (confidence={extraction.confidence})")
+                elif settings.edit_clarify_enabled and not request.skip_clarification \
+                        and not request.attachments:
+                    question = (
+                        f"I couldn't read enough of {ref_url} to copy its design — could you "
+                        "attach a screenshot of it, or describe the colors, fonts and layout "
+                        "you want?"
+                    )
+                    logger.info(f"[COMPONENT EDIT] Weak URL extraction ({extraction.failure_reason or extraction.confidence}) — asking for clarification")
+                    # Deliberately no log_ai_call: a clarification round is free
+                    return ComponentEditResponse(
+                        success=True,
+                        needs_confirmation=True,
+                        message=question,
+                        confirmation={
+                            "kind": "clarify",
+                            "question": question,
+                            "wants_attachment": True,
+                        },
+                    )
+
+        # The user's answer from a previous clarify round rides with the instruction.
+        if request.clarification_response:
+            effective_instruction = (
+                f"{effective_instruction}\nClarification from user: {request.clarification_response.strip()}"
+            )
+
         # Analyze the request once up front: structural rewrites ("turn this into
         # a carousel") escalate element scope to section, drop containment, and
         # pull vetted patterns (+ their npm deps) from the component library.
@@ -2152,6 +2329,30 @@ async def _run_edit_pipeline(
             existing_routes=existing_routes,
             has_selection=has_real_selection
         )
+
+        # Clarify-first: the analysis flagged a missing resource or contradiction
+        # ("use our logo" with nothing attached). Ask instead of guessing — max
+        # one round (skip_clarification on resubmit bypasses this gate).
+        if (
+            settings.edit_clarify_enabled
+            and edit_analysis.get("clarification_question")
+            and not request.skip_clarification
+            and not (request.confirmed_target or request.confirmed_page)
+        ):
+            question = str(edit_analysis["clarification_question"]).strip()
+            if question:
+                logger.info(f"[COMPONENT EDIT] Clarification requested: {question}")
+                # Deliberately no log_ai_call: a clarification round is free
+                return ComponentEditResponse(
+                    success=True,
+                    needs_confirmation=True,
+                    message=question,
+                    confirmation={
+                        "kind": "clarify",
+                        "question": question,
+                        "wants_attachment": bool(edit_analysis.get("clarification_wants_attachment")),
+                    },
+                )
 
         # New-page intent: ask the user to confirm the page spec before running
         # the (generation-quota) page creation. No edit/generation has run yet.

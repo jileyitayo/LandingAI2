@@ -20,13 +20,17 @@ class ThemeGenerator:
     def __init__(self):
         self.google_client = PromptOpenAI(is_google=True)
 
-    def generate_theme(self, business_analysis: BusinessAnalysis, cost_tracker=None) -> ThemeColors:
+    def generate_theme(self, business_analysis: BusinessAnalysis, cost_tracker=None,
+                       extracted_colors: Optional[list] = None, is_ground_truth: bool = False) -> ThemeColors:
         """
         Generate a custom theme based on business analysis
 
         Args:
             business_analysis: Business analysis data
             cost_tracker: Optional CostTracker instance to track AI costs
+            extracted_colors: Hex colors extracted from a user-referenced site
+            is_ground_truth: True when the user asked for a replica — extracted
+                colors are used verbatim, not as inspiration
 
         Returns:
             ThemeColors object with AI-generated or fallback theme
@@ -39,6 +43,19 @@ class ThemeGenerator:
 
             # Create user prompt with business context
             user_prompt = self._create_theme_user_prompt(business_analysis)
+            if extracted_colors:
+                if is_ground_truth:
+                    user_prompt += f"""
+
+REFERENCE SITE COLORS (GROUND TRUTH — the user asked for a replica of an existing site):
+{', '.join(extracted_colors[:10])}
+These are the EXACT brand colors. Convert them to HSL and use them VERBATIM as primary/accent/background — do NOT substitute an industry-standard palette. Only adjust a color when required to meet WCAG contrast, and keep the adjustment minimal."""
+                else:
+                    user_prompt += f"""
+
+REFERENCE SITE COLORS (style inspiration from a site the user likes):
+{', '.join(extracted_colors[:10])}
+Draw the palette's mood from these colors while keeping accessibility and harmony."""
 
             # Call AI to generate theme
             self.google_client.set_max_completion_tokens(4000)
@@ -190,7 +207,9 @@ Generate the theme now in the exact JSON format specified, with all HSL values i
         self,
         business_analysis: Optional[BusinessAnalysis] = None,
         color_scheme: Optional[str] = None,
-        cost_tracker=None
+        cost_tracker=None,
+        extracted_colors: Optional[list] = None,
+        is_ground_truth: bool = False
     ) -> ThemeColors:
         """
         Generate theme with multiple fallback levels
@@ -199,6 +218,8 @@ Generate the theme now in the exact JSON format specified, with all HSL values i
             business_analysis: Business analysis for AI generation
             color_scheme: Fallback color scheme name
             cost_tracker: Optional CostTracker instance to track AI costs
+            extracted_colors: Hex colors from a user-referenced site
+            is_ground_truth: Use extracted colors verbatim (replica request)
 
         Returns:
             ThemeColors object (AI-generated, variant, or default)
@@ -206,7 +227,10 @@ Generate the theme now in the exact JSON format specified, with all HSL values i
         # Level 1: Try AI generation
         if business_analysis:
             try:
-                return self.generate_theme(business_analysis, cost_tracker=cost_tracker)
+                return self.generate_theme(
+                    business_analysis, cost_tracker=cost_tracker,
+                    extracted_colors=extracted_colors, is_ground_truth=is_ground_truth
+                )
             except Exception as e:
                 logger.warning(f"[THEME GEN] AI generation failed, trying fallback: {str(e)}")
 

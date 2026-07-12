@@ -41,7 +41,12 @@ interface ChatPanelProps {
     scope: EditScope,
     attachments: Attachment[],
     onProgress?: (stage: string, detail: string) => void,
-    options?: { confirmedTarget?: string; confirmedPage?: Record<string, any> }
+    options?: {
+      confirmedTarget?: string;
+      confirmedPage?: Record<string, any>;
+      skipClarification?: boolean;
+      clarificationResponse?: string;
+    }
   ) => Promise<ChatSendResult>;
   /** Revert an edit by chat message id; returns true on success. */
   onUndo?: (chatMessageId: string) => Promise<boolean>;
@@ -78,6 +83,10 @@ export default function ChatPanel({
     message: string;
     confirmation: Record<string, any>;
   } | null>(null);
+  // Clarify-kind confirmations carry the user's typed answer and any newly
+  // attached images (e.g. a screenshot the AI asked for)
+  const [clarifyAnswer, setClarifyAnswer] = useState('');
+  const [clarifyAttachments, setClarifyAttachments] = useState<Attachment[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -207,10 +216,14 @@ export default function ChatPanel({
     ]);
   }, [input, attachments, isApplyingEdit, selectedElement, editScope, onSend]);
 
-  const handleConfirmPending = useCallback(async () => {
+  const handleConfirmPending = useCallback(async (skipAnswer = false) => {
     if (!pendingConfirmation || isApplyingEdit) return;
     const pending = pendingConfirmation;
+    const answer = skipAnswer ? '' : clarifyAnswer.trim();
+    const extraAttachments = skipAnswer ? [] : clarifyAttachments;
     setPendingConfirmation(null);
+    setClarifyAnswer('');
+    setClarifyAttachments([]);
     setProgressLabel('Applying edit…');
 
     const stageLabels: Record<string, string> = {
@@ -219,14 +232,20 @@ export default function ChatPanel({
       building: 'Building & verifying preview…',
       done: 'Finishing up…',
     };
+    const kind = pending.confirmation.kind;
+    const options =
+      kind === 'create_page'
+        ? { confirmedPage: pending.confirmation.new_page }
+        : kind === 'clarify'
+          ? { skipClarification: true, clarificationResponse: answer || undefined }
+          : { confirmedTarget: pending.confirmation.target_file };
     const result = await onSend(
       pending.instruction,
       pending.scope,
-      pending.attachments,
+      // Clarify answers may add a screenshot the AI asked for — merge it in
+      kind === 'clarify' ? [...pending.attachments, ...extraAttachments] : pending.attachments,
       (stage, detail) => setProgressLabel(detail || stageLabels[stage] || 'Applying edit…'),
-      pending.confirmation.kind === 'create_page'
-        ? { confirmedPage: pending.confirmation.new_page }
-        : { confirmedTarget: pending.confirmation.target_file }
+      options
     );
     setMessages((prev) => [
       ...prev,
@@ -242,10 +261,12 @@ export default function ChatPanel({
         chatMessageId: result.chatMessageId,
       },
     ]);
-  }, [pendingConfirmation, isApplyingEdit, onSend]);
+  }, [pendingConfirmation, isApplyingEdit, onSend, clarifyAnswer, clarifyAttachments]);
 
   const handleCancelPending = useCallback(() => {
     setPendingConfirmation(null);
+    setClarifyAnswer('');
+    setClarifyAttachments([]);
     setMessages((prev) => [
       ...prev,
       {
@@ -437,14 +458,56 @@ export default function ChatPanel({
                 <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-300" />
                 <span>{pendingConfirmation.message}</span>
               </div>
+              {pendingConfirmation.confirmation.kind === 'clarify' && (
+                <div className="flex items-end gap-1.5 mt-2 bg-gray-900/40 border border-amber-700/30 rounded px-2 py-1.5">
+                  {pendingConfirmation.confirmation.wants_attachment && (
+                    <AttachmentButton
+                      attachments={clarifyAttachments}
+                      onAttachmentsChange={setClarifyAttachments}
+                      disabled={isApplyingEdit}
+                    />
+                  )}
+                  <textarea
+                    value={clarifyAnswer}
+                    onChange={(e) => setClarifyAnswer(e.target.value)}
+                    placeholder={
+                      pendingConfirmation.confirmation.wants_attachment
+                        ? 'Attach a screenshot and/or describe it…'
+                        : 'Type your answer…'
+                    }
+                    rows={2}
+                    maxLength={1000}
+                    disabled={isApplyingEdit}
+                    className="flex-1 bg-transparent border-0 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-0 resize-none"
+                  />
+                </div>
+              )}
               <div className="flex gap-2 mt-2">
                 <button
-                  onClick={handleConfirmPending}
-                  disabled={isApplyingEdit}
+                  onClick={() => handleConfirmPending()}
+                  disabled={
+                    isApplyingEdit ||
+                    (pendingConfirmation.confirmation.kind === 'clarify' &&
+                      !clarifyAnswer.trim() &&
+                      clarifyAttachments.length === 0)
+                  }
                   className="px-2.5 py-1 text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors disabled:opacity-50"
                 >
-                  {pendingConfirmation.confirmation.kind === 'create_page' ? 'Create page' : 'Apply site-wide'}
+                  {pendingConfirmation.confirmation.kind === 'create_page'
+                    ? 'Create page'
+                    : pendingConfirmation.confirmation.kind === 'clarify'
+                      ? 'Send answer'
+                      : 'Apply site-wide'}
                 </button>
+                {pendingConfirmation.confirmation.kind === 'clarify' && (
+                  <button
+                    onClick={() => handleConfirmPending(true)}
+                    disabled={isApplyingEdit}
+                    className="px-2.5 py-1 text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-200 rounded transition-colors disabled:opacity-50"
+                  >
+                    Skip & try anyway
+                  </button>
+                )}
                 <button
                   onClick={handleCancelPending}
                   disabled={isApplyingEdit}

@@ -19,14 +19,16 @@ class StructureGenerator:
         """Initialize the structure generator with Google AI client"""
         self.google_client = PromptOpenAI(is_google=True)
 
-    def generate_structure(self, analysis: BusinessAnalysis, cost_tracker=None) -> WebsiteStructure:
+    def generate_structure(self, analysis: BusinessAnalysis, cost_tracker=None, design_context: str = None) -> WebsiteStructure:
         """
         Convert business analysis into website structure
-        
+
         Args:
             analysis: Business analysis data
             cost_tracker: Optional CostTracker instance to track AI costs
-        
+            design_context: Optional reference-site design block (nav labels,
+                section order) that pages/navigation must follow
+
         Returns:
             WebsiteStructure object
         """
@@ -107,6 +109,13 @@ Value Propositions:
 {chr(10).join(f"- {vp}" for vp in analysis.value_propositions)}
 
 Create a website structure with appropriate pages and components for each page."""
+
+        if design_context:
+            user_prompt += f"""
+
+{design_context}
+
+The structure MUST follow the reference site above: use its navigation items as the pages/nav (mapped to valid paths), and mirror its section order within the matching pages."""
         
         self.google_client.set_max_completion_tokens(8000)
         response, usage = self.google_client.call_openai_api_structured(

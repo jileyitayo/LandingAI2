@@ -16,6 +16,7 @@ import { useActiveGenerations } from "@/contexts/GenerationContext";
 import DashboardHeader from "@/components/DashboardHeader";
 import GenerationStatus from "@/components/GenerationStatus";
 import AttachmentButton, { type Attachment } from "@/components/AttachmentButton";
+import ClarificationCard from "@/components/ClarificationCard";
 
 interface Template {
   id: string;
@@ -47,7 +48,7 @@ export default function DashboardPage() {
   const { user, loading } = useAuth();
 
   // Website generation state
-  const { generateWebsite, resume, isGenerating, error, generatedProject } = useUnifiedGeneration();
+  const { generateWebsite, resume, isGenerating, error, generatedProject, clarification, clearClarification } = useUnifiedGeneration();
   const generations = useActiveGenerations();
   const [prompt, setPrompt] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
@@ -97,7 +98,10 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  const handleGenerate = async (e?: React.FormEvent) => {
+  const handleGenerate = async (
+    e?: React.FormEvent,
+    options?: { skipClarification?: boolean; clarificationResponse?: string }
+  ) => {
     e?.preventDefault();
     if (prompt.trim().length < 20) return;
 
@@ -111,20 +115,28 @@ export default function DashboardPage() {
         media_id: a.id,
         url: a.url,
         media_type: a.mediaType,
-      }))
+      })),
+      options
     );
 
-    if (result) {
+    // On a clarification response the prompt/attachments must survive so the
+    // user can answer and resubmit — only clear once generation really starts.
+    if (result?.project_id) {
       setPrompt("");
       setAttachments([]);
 
       // Keep the project id in the URL so a refresh/navigation re-attaches,
       // and register with the dashboard-wide tracker (banner + cards)
-      if (result.project_id) {
-        window.history.replaceState(null, "", `?project_id=${result.project_id}`);
-        generations?.track(result.project_id);
-      }
+      window.history.replaceState(null, "", `?project_id=${result.project_id}`);
+      generations?.track(result.project_id);
     }
+  };
+
+  // Resubmit after the user answers (or dismisses) the pre-flight question.
+  // skipClarification guarantees max one clarification round.
+  const handleClarificationAnswer = (answer?: string) => {
+    clearClarification();
+    handleGenerate(undefined, { skipClarification: true, clarificationResponse: answer });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -201,7 +213,7 @@ export default function DashboardPage() {
                 placeholder="e.g., 'A modern coffee shop in downtown Seattle'"
                 rows={1}
                 className="flex-1 px-2 py-2 text-base text-gray-900 placeholder-gray-400 bg-transparent border-0 focus:outline-none focus:ring-0 resize-none"
-                maxLength={500}
+                maxLength={1000}
                 disabled={isGenerating}
               />
               <button
@@ -240,11 +252,23 @@ export default function DashboardPage() {
             </div>
             <div className="absolute -bottom-6 right-0 text-xs">
               <span className={prompt.trim().length < 20 ? "text-gray-500" : "text-gray-400"}>
-                {prompt.length}/500 {prompt.trim().length < 20 && `(min. 20 characters)`}
+                {prompt.length}/1000 {prompt.trim().length < 20 && `(min. 20 characters)`}
               </span>
             </div>
           </div>
         </div>
+
+        {/* Pre-flight clarification (response-driven: only when the backend asks) */}
+        {clarification && (
+          <ClarificationCard
+            clarification={clarification}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+            onAnswer={handleClarificationAnswer}
+            onGenerateAnyway={() => handleClarificationAnswer(undefined)}
+            disabled={isGenerating}
+          />
+        )}
 
         {/* Error Display */}
         {error && (

@@ -72,6 +72,14 @@ class Settings(BaseSettings):
     enable_parallel_generation: bool = False  # Enable parallel page and component generation (faster but uses more resources)
     max_parallel_pages: int = 5  # Maximum number of pages to generate in parallel
 
+    # Pre-flight intent check + URL ingestion kill switches (all fail open:
+    # any pre-flight error degrades to normal generation, never blocks it)
+    intent_preflight_enabled: bool = True  # Intent check + clarification gate on /generate_website
+    url_ingestion_enabled: bool = True  # Outbound fetching of user-referenced sites (generation + edits)
+    edit_clarify_enabled: bool = True  # Clarifying questions in the edit chat
+    site_ingest_timeout_s: float = 15.0  # Overall cap for one site extraction
+    site_ingest_max_html_bytes: int = 2 * 1024 * 1024  # Byte cap for the index HTML fetch
+
     # LangGraph settings
     enable_langgraph_checkpoints: bool = True
     langgraph_max_retries: int = 3

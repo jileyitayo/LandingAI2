@@ -23,7 +23,7 @@ class ReactFileManager:
     allowed_components = {"button", "card", "input", "textarea", "label", "select", "sheet", "dialog", "badge", "alert", "avatar", "separator", "switch", "progress", "skeleton", "accordion", "tabs", "tooltip", "popover", "dropdown-menu", "toggle", "radio-group", "table", "sonner"}
         
     
-    def generate_config_files(self, structure: WebsiteStructure) -> Dict[str, str]:
+    def generate_config_files(self, structure: WebsiteStructure, google_fonts_urls: list = None) -> Dict[str, str]:
         """Generate configuration files (package.json, tsconfig, etc.)
         
         Args:
@@ -242,14 +242,27 @@ export default {
 }
 """
         
-        # index.html
+        # index.html — replica requests inject the reference site's Google Fonts
+        font_links = ""
+        if google_fonts_urls:
+            preconnect = (
+                '\n    <link rel="preconnect" href="https://fonts.googleapis.com" />'
+                '\n    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />'
+            )
+            stylesheet_links = "".join(
+                f'\n    <link rel="stylesheet" href="{url}" />'
+                for url in google_fonts_urls[:2]
+                if url.startswith("https://fonts.googleapis.com/")
+            )
+            if stylesheet_links:
+                font_links = preconnect + stylesheet_links
         files["index.html"] = f"""<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{structure.name}</title>
+    <title>{structure.name}</title>{font_links}
   </head>
   <body>
     <div id="root"></div>
@@ -477,12 +490,14 @@ createRoot(document.getElementById('root')!).render(
         
         return files
     
-    def generate_style_files(self, structure: WebsiteStructure, theme: 'ThemeColors' = None) -> Dict[str, str]:
+    def generate_style_files(self, structure: WebsiteStructure, theme: 'ThemeColors' = None, fonts: list = None) -> Dict[str, str]:
         """Generate CSS files
 
         Args:
             structure: Website structure
             theme: Optional ThemeColors object (AI-generated or fallback)
+            fonts: Optional font families from a reference site (replica requests);
+                the first becomes the body font-family
         """
 
         files = {}
@@ -531,7 +546,16 @@ createRoot(document.getElementById('root')!).render(
   }}
 }}
 '''
-        
+
+        if fonts:
+            primary_font = str(fonts[0]).replace('"', "").replace("'", "").strip()
+            if primary_font:
+                files["src/index.css"] += f'''
+body {{
+  font-family: '{primary_font}', sans-serif;
+}}
+'''
+
         return files
     
     def generate_animation_files(self) -> Dict[str, str]:

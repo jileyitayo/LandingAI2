@@ -633,11 +633,19 @@ export const api = {
       project_name?: string;
       style_preferences?: Record<string, any>;
       attachments?: Array<{ media_id: string; url: string; media_type?: string }>;
+      skip_clarification?: boolean;
+      clarification_response?: string;
     }) =>
       apiRequest<{
-        project_id: string;
-        status: string;
+        project_id: string | null;
+        status: string; // "generating" | "needs_clarification"
         message: string;
+        clarification?: {
+          question: string;
+          wants_attachment: boolean;
+          reason: string;
+          url?: string | null;
+        };
       }>("/api/v1/generate_website", {
         method: "POST",
         body: JSON.stringify(data),
@@ -699,6 +707,8 @@ export const api = {
       current_route?: string;
       confirmed_target?: string;
       confirmed_page?: Record<string, any>;
+      skip_clarification?: boolean;
+      clarification_response?: string;
     }) =>
       apiRequest<{
         success: boolean;
@@ -735,6 +745,8 @@ export const api = {
         current_route?: string;
         confirmed_target?: string;
         confirmed_page?: Record<string, any>;
+        skip_clarification?: boolean;
+        clarification_response?: string;
       },
       onProgress: (stage: string, detail: string) => void
     ): Promise<{
