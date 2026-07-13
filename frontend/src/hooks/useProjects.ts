@@ -19,6 +19,7 @@ export interface Project {
   published: boolean;
   subdomain: string | null;
   deployment_url: string | null;
+  thumbnail_url: string | null;
   generation_status: string;
   created_at: string;
   updated_at: string;

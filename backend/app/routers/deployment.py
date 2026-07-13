@@ -6,12 +6,14 @@ API endpoints for deploying projects to Vercel.
 from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
+import asyncio
 import logging
 
 from app.utils.auth import get_current_user
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import log_action
 from app.services.deployments.vercel_deployer import VercelDeployer, VercelDeploymentError
+from app.services.thumbnail_service import capture_thumbnail
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["deployment"])
@@ -85,12 +87,17 @@ async def perform_deployment(project_id: str, user_id: str):
     """
     try:
         deployment_service = VercelDeployer()
-        await deployment_service.deploy_website(
+        result = await deployment_service.deploy_website(
             project_id,
             progress_cb=lambda stage, detail: _set_deploy_status(project_id, stage, detail),
         )
         _set_deploy_status(project_id, "ready", "Deployment live")
         logger.info(f"Background deployment succeeded for project {project_id}")
+
+        # Fire-and-forget dashboard thumbnail capture; never blocks the deploy
+        deployment_url = (result or {}).get("deployment_url")
+        if deployment_url:
+            asyncio.create_task(capture_thumbnail(project_id, user_id, deployment_url))
     except Exception as e:
         logger.error(f"Background deployment failed for project {project_id}: {str(e)}")
         _set_deploy_status(project_id, "error", None, error=str(e)[:1000])

@@ -37,6 +37,7 @@ class ProjectListItem(BaseModel):
     published: bool
     subdomain: Optional[str]
     deployment_url: Optional[str]
+    thumbnail_url: Optional[str] = None
     generation_status: str
     created_at: str
     updated_at: str
@@ -63,6 +64,7 @@ class ProjectDetail(BaseModel):
     seo_title: Optional[str]
     seo_description: Optional[str]
     favicon_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     last_deployed_at: Optional[str] = None
     last_edited_at: Optional[str] = None
     generation_status: str
@@ -135,7 +137,7 @@ async def list_projects(
         # Build query
         query = supabase.table("projects").select(
             "id, user_id, name, description, prompt, template_id, published, "
-            "subdomain, deployment_url, generation_status, created_at, updated_at"
+            "subdomain, deployment_url, thumbnail_url, generation_status, created_at, updated_at"
         ).eq("user_id", user_id)
 
         if deleted:

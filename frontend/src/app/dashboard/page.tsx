@@ -260,6 +260,7 @@ export default function DashboardPage() {
                   updated_at: project.updated_at,
                   is_published: project.published,
                   preview_url: project.deployment_url || undefined,
+                  thumbnail_url: project.thumbnail_url || undefined,
                 }}
                 onDelete={handleDeleteProject}
                 onDuplicate={handleDuplicateProject}

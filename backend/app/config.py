@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     vercel_api_token: str = ""
     vercel_team_id: str = ""
 
+    # ScreenshotOne (optional): dashboard thumbnails are skipped when unset
+    screenshotone_access_key: str = ""
+
     # Backend URL (for generating absolute URLs in Railway/production)
     backend_url: str = "http://localhost:8000"
 

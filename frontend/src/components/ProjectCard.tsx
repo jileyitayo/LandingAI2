@@ -133,10 +133,10 @@ export default function ProjectCard({ project, onDelete, onDuplicate }: ProjectC
     >
       {/* Preview Thumbnail */}
       <div className="h-48 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 relative overflow-hidden">
-        {project.preview_url && !imageError ? (
+        {project.thumbnail_url && !imageError ? (
           <>
             <Image
-              src={project.preview_url}
+              src={project.thumbnail_url}
               alt={project.name}
               fill
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
