@@ -9,6 +9,13 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.services.prompt_open_ai import PromptOpenAI
+from app.services.edit_patcher import (
+    PATCH_FORMAT_SPEC,
+    PatchApplyError,
+    PatchFormatError,
+    apply_blocks,
+    parse_blocks,
+)
 from app.services.validators.code_validator import CodeValidationError
 from app.services.validators.build_tester import BuildError
 
@@ -38,12 +45,76 @@ class ErrorFixer:
         self.openai_client = PromptOpenAI()
         self.google_client = PromptOpenAI(is_google=True)
         self.max_retries = 3
-    
+
+    def _llm_fix_with_patch_fallback(
+        self,
+        system_prompt: str,
+        user_prompt_base: str,
+        original_content: str,
+        file_path: str,
+        max_tokens: int,
+        call_label: str,
+        cost_tracker=None,
+    ) -> Optional[str]:
+        """
+        Run a fix prompt in patch mode first (SEARCH/REPLACE blocks — output
+        tokens scale with the fix, not the file), falling back to one
+        full-file attempt when the patch can't be parsed or applied.
+        """
+        self.google_client.set_max_completion_tokens(max_tokens)
+
+        patch_user_prompt = (
+            f"{user_prompt_base}\n\n"
+            f"OUTPUT FORMAT — SEARCH/REPLACE BLOCKS:\n{PATCH_FORMAT_SPEC}"
+        )
+        try:
+            response, usage = self.google_client.call_openai_api(
+                system_prompt,
+                patch_user_prompt,
+                model=settings.edit_model
+            )
+            logger.info(f"Usage for {call_label} (patch mode): {usage}")
+            if cost_tracker:
+                cost_tracker.track_call("validation", settings.edit_model, usage, metadata={"call": call_label, "file": file_path, "mode": "patch"})
+            blocks = parse_blocks(response or "")
+            fixed = apply_blocks(original_content, blocks)
+            logger.info(f"[ERROR FIXER] Applied {len(blocks)} patch block(s) to {file_path}")
+            return fixed
+        except (PatchFormatError, PatchApplyError) as e:
+            logger.warning(f"[ERROR FIXER] Patch-mode fix failed for {file_path} ({e}); falling back to full-file rewrite")
+        except Exception as e:
+            logger.error(f"[ERROR FIXER] Error calling LLM: {e}")
+            return None
+
+        full_user_prompt = (
+            f"{user_prompt_base}\n\n"
+            "Return the complete fixed file content, nothing else."
+        )
+        try:
+            response, usage = self.google_client.call_openai_api(
+                system_prompt,
+                full_user_prompt,
+                model=settings.edit_model
+            )
+            logger.info(f"Usage for {call_label} (full-file fallback): {usage}")
+            if cost_tracker:
+                cost_tracker.track_call("validation", settings.edit_model, usage, metadata={"call": call_label, "file": file_path, "mode": "full_file_fallback"})
+            fixed_content = self._extract_code_from_response(response)
+            if fixed_content:
+                return fixed_content
+            logger.error(f"[ERROR FIXER] Failed to extract fixed code from LLM response")
+            return None
+        except Exception as e:
+            logger.error(f"[ERROR FIXER] Error calling LLM: {e}")
+            return None
+
+
     def fix_validation_errors(
         self,
         files: Dict[str, str],
         errors: List[CodeValidationError],
-        warnings: List[CodeValidationError]
+        warnings: List[CodeValidationError],
+        cost_tracker=None
     ) -> Tuple[Dict[str, str], bool]:
         """
         Fix validation errors in generated files
@@ -80,7 +151,8 @@ class ErrorFixer:
                 file_path=file_path,
                 original_content=fixed_files[file_path],
                 errors=file_errors,
-                all_files=fixed_files
+                all_files=fixed_files,
+                cost_tracker=cost_tracker
             )
             
             if fixed_content:
@@ -96,7 +168,8 @@ class ErrorFixer:
         self,
         files: Dict[str, str],
         errors: List[BuildError],
-        build_output: str
+        build_output: str,
+        cost_tracker=None
     ) -> Tuple[Dict[str, str], bool]:
         """
         Fix build errors in generated files
@@ -148,7 +221,8 @@ class ErrorFixer:
                 original_content=fixed_files[matching_file],
                 errors=file_errors,
                 build_output=build_output,
-                all_files=fixed_files
+                all_files=fixed_files,
+                cost_tracker=cost_tracker
             )
             
             if fixed_content:
@@ -192,7 +266,8 @@ class ErrorFixer:
         file_path: str,
         original_content: str,
         errors: List[CodeValidationError],
-        all_files: Dict[str, str]
+        all_files: Dict[str, str],
+        cost_tracker=None
     ) -> Optional[str]:
         """Fix errors in a single file using LLM"""
 
@@ -227,7 +302,7 @@ CRITICAL RULES:
 - Use exact prop names from component interfaces
 - Ensure all imports match exports
 - Remove unused imports
-- Return the COMPLETE fixed file content"""
+- Follow the OUTPUT FORMAT instructions exactly"""
 
         user_prompt = f"""Fix the following errors in this file:
 
@@ -243,38 +318,27 @@ CURRENT FILE CONTENT:
 
 {related_files}
 
-Return the complete fixed file content. Make sure to fix ALL the errors listed above."""
+Make sure to fix ALL the errors listed above."""
 
-        try:
-            self.google_client.set_max_completion_tokens(8000)
-            logger.info(f"Fixing validation errors in {file_path}")
-            # Call LLM to fix the code
-            response, usage = self.google_client.call_openai_api(
-                system_prompt,
-                user_prompt,
-                model=settings.edit_model
-            )
-            print(f"Usage for validation error fixing: {usage}")
-            # Extract code from response
-            fixed_content = self._extract_code_from_response(response)
-            
-            if fixed_content:
-                return fixed_content
-            else:
-                logger.error(f"[ERROR FIXER] Failed to extract fixed code from LLM response")
-                return None
-                
-        except Exception as e:
-            logger.error(f"[ERROR FIXER] Error calling LLM: {e}")
-            return None
-    
+        logger.info(f"Fixing validation errors in {file_path}")
+        return self._llm_fix_with_patch_fallback(
+            system_prompt=system_prompt,
+            user_prompt_base=user_prompt,
+            original_content=original_content,
+            file_path=file_path,
+            max_tokens=8000,
+            call_label="validation_fix",
+            cost_tracker=cost_tracker,
+        )
+
     def _fix_file_build_errors(
         self,
         file_path: str,
         original_content: str,
         errors: List[BuildError],
         build_output: str,
-        all_files: Dict[str, str]
+        all_files: Dict[str, str],
+        cost_tracker=None
     ) -> Optional[str]:
         """Fix build errors in a single file using LLM"""
         
@@ -306,7 +370,7 @@ CRITICAL RULES:
 - Keep the same component structure
 - Add missing type definitions if needed
 - Fix import paths if incorrect
-- Return the COMPLETE fixed file content"""
+- Follow the OUTPUT FORMAT instructions exactly"""
 
         user_prompt = f"""Fix the following build errors in this file:
 
@@ -327,31 +391,19 @@ RELEVANT BUILD OUTPUT:
 {build_output[:500]}
 ```
 
-Return the complete fixed file content. Make sure to fix ALL the build errors listed above."""
+Make sure to fix ALL the build errors listed above."""
 
-        try:
-            self.google_client.set_max_completion_tokens(6000)
-            logger.info(f"Fixing build errors in {file_path}")
-            # Call LLM to fix the code
-            response, usage = self.google_client.call_openai_api(
-                system_prompt,
-                user_prompt,
-                model=settings.edit_model
-            )
-            logger.info(f"Usage for build error fixing: {usage}")
-            # Extract code from response
-            fixed_content = self._extract_code_from_response(response)
-            
-            if fixed_content:
-                return fixed_content
-            else:
-                logger.error(f"[ERROR FIXER] Failed to extract fixed code from LLM response")
-                return None
-                
-        except Exception as e:
-            logger.error(f"[ERROR FIXER] Error calling LLM: {e}")
-            return None
-    
+        logger.info(f"Fixing build errors in {file_path}")
+        return self._llm_fix_with_patch_fallback(
+            system_prompt=system_prompt,
+            user_prompt_base=user_prompt,
+            original_content=original_content,
+            file_path=file_path,
+            max_tokens=6000,
+            call_label="build_fix",
+            cost_tracker=cost_tracker,
+        )
+
     def _get_related_files(self, file_path: str, all_files: Dict[str, str], max_files: int = 3) -> str:
         """Get related files for context"""
         related = []

@@ -1,7 +1,10 @@
-from openai import OpenAI, OpenAIError
-from anthropic import Anthropic, AnthropicError
+import openai
+import anthropic
+from openai import OpenAI
+from anthropic import Anthropic
 from app.config import settings
 import logging
+import time
 logger = logging.getLogger(__name__)
 
 GOOGLE_OPENAI_COMPAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -18,6 +21,28 @@ _PROVIDER_PREFIXES = (
 # OpenAI reasoning models reject non-default temperature and require
 # max_completion_tokens instead of max_tokens.
 _OPENAI_REASONING_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
+def _is_transient(e: Exception) -> bool:
+    """True only for errors a blind retry can plausibly fix: network/timeout,
+    429 rate limits, and 5xx (incl. Anthropic 529 overloaded). Everything else
+    (400s, schema/validation errors, missing tool-use blocks) is deterministic
+    for the same request — replaying the full prompt only burns tokens, so
+    those raise immediately to the caller's smarter retry (e.g. the edit
+    router's strict-note retry)."""
+    if isinstance(e, (openai.APIConnectionError, openai.RateLimitError,
+                      anthropic.APIConnectionError, anthropic.RateLimitError)):
+        return True
+    if isinstance(e, (openai.APIStatusError, anthropic.APIStatusError)):
+        return e.status_code >= 500
+    return False
+
+
+def _cached_tokens_openai(usage) -> int:
+    """cached_tokens from an OpenAI-shape usage object (also populated by the
+    Gemini OpenAI-compat endpoint when implicit caching hits)."""
+    details = getattr(usage, "prompt_tokens_details", None)
+    return getattr(details, "cached_tokens", 0) or 0
 
 
 class PromptOpenAI:
@@ -182,22 +207,29 @@ class PromptOpenAI:
                         temperature=temperature,
                         max_tokens=self.max_completion_tokens
                     )
-                logger.info(f"{provider} API call successful")
                 # Return raw assistant content for downstream code extraction
                 # Get actual token usage
                 usage = {
                     "prompt_tokens": response.usage.prompt_tokens,
                     "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens
+                    "total_tokens": response.usage.total_tokens,
+                    "cached_tokens": _cached_tokens_openai(response.usage)
                 }
+                logger.info(
+                    f"✓ {provider} API call successful | "
+                    f"Prompt: {usage['prompt_tokens']} tokens "
+                    f"(cached: {usage['cached_tokens']}) | "
+                    f"Completion: {usage['completion_tokens']} tokens"
+                )
                 return response.choices[0].message.content, usage
 
-            except (OpenAIError, Exception) as e:
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"⚠ {provider} API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
-                    logger.info(f"Retrying in next attempt...")
+            except Exception as e:
+                if attempt < self.max_retries - 1 and _is_transient(e):
+                    delay = 1.5 ** attempt
+                    logger.warning(f"⚠ {provider} API call failed with transient error (attempt {attempt + 1}/{self.max_retries}), retrying in {delay:.1f}s: {str(e)}")
+                    time.sleep(delay)
                     continue
-                logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
+                logger.error(f"✗ {provider} API call failed: {str(e)}")
                 raise
 
     def call_openai_api_structured(self, system_prompt: str, user_prompt: str, response_format: dict, model: str = "gpt-4o-mini", raw=False, images: list = None) -> tuple:
@@ -248,24 +280,27 @@ class PromptOpenAI:
                 usage = {
                     "prompt_tokens": response.usage.prompt_tokens,
                     "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens
+                    "total_tokens": response.usage.total_tokens,
+                    "cached_tokens": _cached_tokens_openai(response.usage)
                 }
 
                 logger.info(
                     f"✓ {provider} API call successful | "
-                    f"Prompt: {usage['prompt_tokens']} tokens | "
+                    f"Prompt: {usage['prompt_tokens']} tokens "
+                    f"(cached: {usage['cached_tokens']}) | "
                     f"Completion: {usage['completion_tokens']} tokens | "
                     f"Total: {usage['total_tokens']} tokens"
                 )
 
                 return response.choices[0].message.parsed, usage
 
-            except (OpenAIError, Exception) as e:
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"⚠ {provider} API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
-                    logger.info(f"Retrying in next attempt...")
+            except Exception as e:
+                if attempt < self.max_retries - 1 and _is_transient(e):
+                    delay = 1.5 ** attempt
+                    logger.warning(f"⚠ {provider} API call failed with transient error (attempt {attempt + 1}/{self.max_retries}), retrying in {delay:.1f}s: {str(e)}")
+                    time.sleep(delay)
                     continue
-                logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
+                logger.error(f"✗ {provider} API call failed: {str(e)}")
                 raise
 
     def call_claude_api(self, system_prompt, user_prompt: str, temperature: float = 0.7, model: str = None, images: list = None) -> tuple:
@@ -318,17 +353,19 @@ class PromptOpenAI:
                 usage = {
                     "prompt_tokens": response.usage.input_tokens,
                     "completion_tokens": response.usage.output_tokens,
-                    "total_tokens": response.usage.input_tokens + response.usage.output_tokens
+                    "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+                    "cached_tokens": getattr(response.usage, "cache_read_input_tokens", 0) or 0
                 }
 
                 return content, usage
 
-            except (AnthropicError, Exception) as e:
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"⚠ Claude API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
-                    logger.info(f"Retrying in next attempt...")
+            except Exception as e:
+                if attempt < self.max_retries - 1 and _is_transient(e):
+                    delay = 1.5 ** attempt
+                    logger.warning(f"⚠ Claude API call failed with transient error (attempt {attempt + 1}/{self.max_retries}), retrying in {delay:.1f}s: {str(e)}")
+                    time.sleep(delay)
                     continue
-                logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
+                logger.error(f"✗ Claude API call failed: {str(e)}")
                 raise
 
     def call_claude_api_structured(self, system_prompt, user_prompt: str, response_format: dict, model: str = None, images: list = None) -> tuple:
@@ -395,12 +432,14 @@ class PromptOpenAI:
                 usage = {
                     "prompt_tokens": response.usage.input_tokens,
                     "completion_tokens": response.usage.output_tokens,
-                    "total_tokens": response.usage.input_tokens + response.usage.output_tokens
+                    "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+                    "cached_tokens": getattr(response.usage, "cache_read_input_tokens", 0) or 0
                 }
 
                 logger.info(
                     f"✓ Claude API call successful | "
-                    f"Prompt: {usage['prompt_tokens']} tokens | "
+                    f"Prompt: {usage['prompt_tokens']} tokens "
+                    f"(cached: {usage['cached_tokens']}) | "
                     f"Completion: {usage['completion_tokens']} tokens | "
                     f"Total: {usage['total_tokens']} tokens"
                 )
@@ -412,10 +451,11 @@ class PromptOpenAI:
                 else:
                     return structured_output, usage
 
-            except (AnthropicError, Exception) as e:
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"⚠ Claude API call failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
-                    logger.info(f"Retrying in next attempt...")
+            except Exception as e:
+                if attempt < self.max_retries - 1 and _is_transient(e):
+                    delay = 1.5 ** attempt
+                    logger.warning(f"⚠ Claude API call failed with transient error (attempt {attempt + 1}/{self.max_retries}), retrying in {delay:.1f}s: {str(e)}")
+                    time.sleep(delay)
                     continue
-                logger.error(f"✗ All retry attempts exhausted. Final error: {str(e)}")
+                logger.error(f"✗ Claude API call failed: {str(e)}")
                 raise

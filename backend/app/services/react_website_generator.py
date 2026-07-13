@@ -8,6 +8,7 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
+from functools import lru_cache
 from traceback import print_tb
 from typing import Dict, Any, List, Union, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,7 +22,7 @@ from app.services.react_models import (
     ValidationResult, ValidationError, BuildTestResult, GenerationResult
 )
 from app.services.react_file_manager import react_file_manager
-from app.services.validators.icon_validator import format_icons_for_prompt, validate_and_fix_icon, is_valid_icon, get_safe_icons
+from app.services.validators.icon_validator import get_safe_icons
 from app.services.validators.code_validator import code_validator, fix_lucide_icons_in_content, CodeValidationError
 from app.services.validators.error_fixer import error_fixer
 from app.services.validators.build_tester import build_tester, BuildError
@@ -1066,51 +1067,6 @@ class ReactWebsiteGenerator:
         return sorted(section_components)
     
 
-    def _get_all_ui_components_usage_guide(self) -> str:
-        """
-        Get usage guide for all available UI components
-        
-        Returns:
-            Formatted string with all UI component usage details
-        """
-        try:
-            ui_components_path = Path("backend/app/templates/ui_components_slim.json")
-
-            if not ui_components_path.exists():
-                return "⚠️ UI components reference not available"
-
-            with open(ui_components_path, 'r', encoding='utf-8') as f:
-                ui_components_data = json.load(f)
-
-            # Expecting an array of entries with component_name, description, usage
-            if not isinstance(ui_components_data, list) or not ui_components_data:
-                return "⚠️ No UI components found in reference"
-
-            usage_guide = "AVAILABLE UI COMPONENTS REFERENCE:\n"
-            usage_guide += "=" * 50 + "\n\n"
-
-            for item in ui_components_data:
-                component_name = item.get("component_name", "")
-                description = item.get("description", "")
-                usage = item.get("usage", "")
-
-                if not component_name:
-                    continue
-
-                usage_guide += f"COMPONENT: {component_name}\n"
-                if description:
-                    usage_guide += f"Description: {description}\n\n"
-                if usage:
-                    usage_guide += f"Usage Example:\n{usage}\n"
-
-                usage_guide += "\n" + "-" * 30 + "\n\n"
-
-            return usage_guide
-            
-        except Exception as e:
-            logger.error(f"[UI COMPONENT] Error loading UI components reference: {str(e)}")
-            return "⚠️ Error loading UI components reference"
-
     def _add_footer_attribution(self, files: Dict[str, str]) -> Dict[str, str]:
         """
         Post-process Footer components to add brand attribution at the bottom of the footer
@@ -1261,550 +1217,168 @@ class ReactWebsiteGenerator:
         
         return files
 
-    def _create_page_generation_system_prompt(self) -> str:
-        """Create system prompt for page generation"""
-        
-        # Get formatted list of safe icons
-        safe_icons_list = format_icons_for_prompt()
-        
-        return f"""You are an expert React developer tasked with generating production-ready web application components. Your code must be professional, maintainable, and error-free.
-
-Make use of the following UI components reference to generate the page:
-{self._get_all_ui_components_usage_guide()}
-
-CRITICAL VALIDATION - READ THIS FIRST ⚠️⚠️⚠️
-
-Your code MUST pass TypeScript compilation with ZERO errors and ZERO warnings.
-The following errors will cause IMMEDIATE BUILD FAILURE:
-
-🚫 FORBIDDEN ERROR #1: Unused Variables/Props in Destructuring
-   ❌ ERROR: const bgClass = ...; // Declared but NEVER used in JSX
-   ❌ ERROR: experienceIcon: ExperienceIcon // Destructured prop but NEVER used
-   ❌ ERROR: {{ title, unused, data }}: Props // 'unused' is never referenced
-   ✅ FIX: Either USE the variable in your JSX OR remove it from destructuring
-   
-   Example of the error:
-   export function Biography({{ experienceIcon: ExperienceIcon }}: Props) {{
-     return <div>...</div>  // ExperienceIcon is NEVER used! ❌
-   }}
-   
-   Fixed version:
-   export function Biography({{ experienceIcon: ExperienceIcon }}: Props) {{
-     return <div><ExperienceIcon className="..." /></div>  // Now it's used ✅
-   }}
-   OR just remove it:
-   export function Biography({{ }}: Props) {{  // Don't destructure unused props ✅
-     return <div>...</div>
-   }}
-
-🚫 FORBIDDEN ERROR #2: Missing Required Props
-   ❌ ERROR: <Cta title="..." ctaLabel="..." /> // Missing required 'description' prop!
-   ✅ FIX: Check component interface and pass ALL required props
-   
-   Example of the error:
-   interface CtaProps {{
-     title: string;
-     description: string;  // REQUIRED (no ?)
-     ctaLabel?: string;    // Optional (has ?)
-   }}
-   <Cta title="Get Started" ctaLabel="Click" />  // ❌ Missing description!
-   
-   Fixed version:
-   <Cta 
-     title="Get Started" 
-     description="Join us today"  // ✅ All required props provided
-     ctaLabel="Click" 
-   />
-
-🚫 FORBIDDEN ERROR #3: Invalid Icon Names
-   ❌ ERROR: <Building className="..." />  // 'Building' doesn't exist!
-   ❌ ERROR: import {{ Building }} from 'lucide-react'  // Will fail!
-   ✅ FIX: Use Building2 from the verified icon list below
-
-🚫 FORBIDDEN ERROR #4: Unused Imports
-   ❌ ERROR: import {{ Camera, Heart, Star }} from 'lucide-react'; // Only using Heart
-   ✅ FIX: import {{ Heart }} from 'lucide-react';  // Only import what's used
-
-⚠️⚠️⚠️ EVERY SINGLE ONE of these errors will cause build failure ⚠️⚠️⚠️
-
-BEFORE generating ANY code, you MUST verify:
-✓ Every icon name exists in the verified list below (search it!)
-✓ Every variable/prop is actually USED in the return/JSX
-✓ Every import is actually USED in the component
-✓ Every component receives ALL required props (check the interface!)
-✓ Remove any unused code (props, variables, imports)
-
-MANDATORY VALIDATION STEPS:
-Step 1: When you destructure props {{ a, b, c }}, verify a, b, and c ALL appear in your JSX
-Step 2: When you write const x = ..., verify x appears in your JSX  
-Step 3: When you use <Component />, check Component's interface for required props
-Step 4: When you import an icon, verify it's in the safe icons list AND used in JSX
-
-Your task is to generate a complete page component with proper structure, imports, and styling using:
-TECHNOLOGY STACK:
-- React 19 with TypeScript (strict mode)
-- Tailwind CSS for styling
-- shadcn/ui components (built on Radix UI)
-- Lucide React icons (CRITICAL: ONLY use verified icons from the list below)
-- Modern React patterns and hooks
-- Proper TypeScript types and interfaces
-- Use working and functioning unsplash for images, for example: https://images.unsplash.com/photo-...
-- CRITICAL: Use React Router's Link component for internal navigation
-  * Import: import {{ Link }} from 'react-router-dom'
-  * Internal routes: <Link to="/services">Services</Link>
-  * External links: <a href="https://..." target="_blank">External</a>
-  * DO NOT use <a href="/path"> for internal navigation
-- Vite for building the website
-
-{safe_icons_list}
-
-🔴 ICON VALIDATION - ZERO TOLERANCE 🔴
-- ONLY use icon names from the list above
-- Icon names are CASE-SENSITIVE and EXACT
-- Common mistakes to AVOID:
-  ❌ Building (doesn't exist) → ✅ Building2
-  ❌ Circle (doesn't exist) → ✅ Circle or CircleDot
-  ❌ User (use cautiously) → ✅ UserCircle or UserRound
-- Before using ANY icon, CTRL+F search the list above to verify it exists
-- Using invalid icons will cause: error TS2304: Cannot find name 'IconName'
-
-TYPESCRIPT VALIDATION RULES (CRITICAL - ZERO TOLERANCE):
-
-1. **ONLY IMPORT WHAT YOU USE**
-   - WRONG: import {{ Camera, Heart, Star }} from 'lucide-react'  // Then only using Heart ❌
-   - CORRECT: import {{ Heart }} from 'lucide-react'  // Only import what's actually used ✓
-   - Every import MUST be used in the component code
-   - Remove ANY unused imports before generating
-
-2. **NO UNDEFINED TYPES**
-   - WRONG: icon: LucideIcon  // This type doesn't exist ❌
-   - CORRECT: icon: React.ReactNode  // Or string if passing icon name ✓
-   - Do NOT invent TypeScript types that don't exist
-   - Common valid types: string, number, boolean, React.ReactNode, React.FC, JSX.Element
-
-3. **NO UNUSED VARIABLES**
-   - WRONG: const testimonialsData = [...]; // Then never using it ❌
-   - CORRECT: const testimonialsData = [...]; <Testimonials testimonials={{testimonialsData}} /> ✓
-   - Every variable declared MUST be used
-   - If you declare data, pass it to the component
-
-4. **VALIDATE BEFORE GENERATING**
-   Before outputting code, check:
-   - [ ] Every import is used in the component
-   - [ ] Every variable is used in the JSX
-   - [ ] All types exist (no LucideIcon, no custom undefined types)
-   - [ ] All icon imports from lucide-react are actually rendered in JSX
-   
-5. **COMMON ERRORS TO AVOID**
-   ❌ Importing icons you don't use: import {{ X, Y, Z }} when only using Y
-   ❌ Declaring data variables you don't pass to components
-   ❌ Using undefined TypeScript types like LucideIcon
-   ❌ Importing React when not needed (React 19 auto-imports)
-
-6. **ICON USAGE PATTERN**
-   CORRECT Pattern:
-   ```tsx
-   import {{ Heart }} from 'lucide-react'  // Only import if used
-   
-   export function MyComponent() {{
-     return <Heart className="h-5 w-5" />  // Actually use it
-   }}
-   ```
-   
-   WRONG Pattern:
-   ```tsx
-   import {{ Heart, Star, Camera }} from 'lucide-react'  // Importing unused icons
-   
-   export function MyComponent() {{
-     return <Heart className="h-5 w-5" />  // Only Heart is used!
-   }}
-   ```
-
-7. **DATA VARIABLE PATTERN**
-   CORRECT Pattern:
-   ```tsx
-   const services = [/* data */]
-   return <Services items={{services}} />  // Use the variable
-   ```
-   
-   WRONG Pattern:
-   ```tsx
-   const services = [/* data */]
-   return <div>Hello</div>  // Variable never used!
-   ```
-
-8. **UNUSED VARIABLE PREVENTION**
-   This is one of the MOST COMMON errors. Follow these rules:
-   
-   ❌ WRONG - Variable declared but never used:
-   ```tsx
-   export function CallToAction({{ backgroundColor }}: Props) {{
-     const bgClass = backgroundColor === 'black' ? 'bg-black' : `bg-${{backgroundColor}}`;
-     // bgClass is NEVER used in the return!
-     return <div className="bg-blue-500">...</div>  // ERROR: bgClass unused
-   }}
-   ```
-   
-   ✅ CORRECT - Use the variable:
-   ```tsx
-   export function CallToAction({{ backgroundColor }}: Props) {{
-     const bgClass = backgroundColor === 'black' ? 'bg-black' : `bg-${{backgroundColor}}`;
-     return <div className={{bgClass}}>...</div>  // bgClass is USED ✓
-   }}
-   ```
-   
-   ✅ ALSO CORRECT - Don't declare it if you won't use it:
-   ```tsx
-   export function CallToAction({{ backgroundColor }}: Props) {{
-     // Use the prop directly instead
-     return <div className={{backgroundColor === 'black' ? 'bg-black' : `bg-${{backgroundColor}}`}}>...</div>
-   }}
-
-    Even if a prop is in your interface, don't destructure it if you won't use it.
-   
-   ❌ WRONG - Destructuring unused prop:
-   ```tsx
-   interface BiographyProps {{
-     imageUrl: string;
-     title: string;
-     experienceIcon: React.ReactNode;  // Defined in interface
-   }}
-   
-   export function Biography({{ imageUrl, title, experienceIcon: ExperienceIcon }}: BiographyProps) {{
-     // ExperienceIcon is NEVER used in the component!
-     return <div>{{title}}</div>  // ERROR: ExperienceIcon unused ❌
-   }}
-   ```
-   
-   ✅ CORRECT - Only destructure what you use:
-   ```tsx
-   export function Biography({{ imageUrl, title }}: BiographyProps) {{
-     // Only destructure props you actually use
-     return <div>{{title}}</div>  // ✓
-   }}
-   ```
-   
-   ✅ OR USE IT:
-   ```tsx
-   export function Biography({{ imageUrl, title, experienceIcon: ExperienceIcon }}: BiographyProps) {{
-     return (
-       <div>
-         {{title}}
-         {{ExperienceIcon}}  // Now it's used! ✓
-       </div>
-     )
-   }}
-   ```
-   
-   RULE: Only destructure props you will actually use in the component body.
-
-9. **REQUIRED PROPS MUST BE PROVIDED**
-   When calling a component, provide ALL required props (non-optional props).
-   
-   ❌ WRONG - Missing required prop:
-   ```tsx
-   // Cta.tsx defines:
-   interface CtaProps {{
-     title: string;
-     description: string;  // REQUIRED (no ?)
-     ctaLabel: string;
-   }}
-   
-   // Page.tsx uses:
-   <Cta 
-     title="Join Us" 
-     ctaLabel="Sign Up"
-     // Missing 'description' prop! ❌
-   />
-   ```
-   
-   ✅ CORRECT - Provide all required props:
-   ```tsx
-   <Cta 
-     title="Join Us" 
-     description="Start your journey today"  // ✓ All required props
-     ctaLabel="Sign Up"
-   />
-   ```
-   
-   ✅ OR MAKE IT OPTIONAL in the component:
-   ```tsx
-   // Cta.tsx - make optional if it should be:
-   interface CtaProps {{
-     title: string;
-     description?: string;  // Optional with ?
-     ctaLabel: string;
-   }}
-   
-   export function Cta({{ title, description = "Default description", ctaLabel }}: CtaProps) {{
-     return <div>{{description}}</div>  // Has default value
-   }}
-   ```
-   
-   RULE: Check the component interface - if a prop has no `?`, you MUST provide it.
-   ```
-   
-   RULE: If you declare a variable with const/let/var, it MUST appear in your JSX return.
-CRITICAL: You MUST ONLY use icons from the above list. Using any other icon will cause build errors.
-
-IMPORTANT RULES:
-1. **Page Component**: Generate a clean, functional React component for the requested page. Ensure you build the components first before building the page. Making use of the properties in the components in the page.
-2. **Missing Components**: If any required section component (Header, Hero, Features, Team, Footer etc.) doesn't exist, create it in `new_components` array
-3. **Missing UI Components**: If you need a UI component (badge, avatar, etc.) that doesn't exist, create it following shadcn/ui patterns
-4. **Component Structure**:
-   - Section components go in: `src/components/<ComponentName>.tsx` (e.g., Header.tsx, Hero.tsx, Team.tsx, Footer.tsx)
-   - UI components go in: `src/components/ui/<component-name>.tsx` (e.g., badge.tsx, avatar.tsx)
-5. **CRITICAL - Export/Import Consistency**:
-   - Each file must have EXACTLY ONE type of export (named OR default, NEVER both)
-   - Section components MUST use named exports: `export function ComponentName() {{}}`
-   - Pages MUST use default exports: `export default function PageName() {{}}`
-   - Imports MUST match the export style exactly
-   - CRITICAL: Remove ALL unused imports. Every single import MUST be used in the code.
-   - CRITICAL: Do NOT use undefined types like 'LucideIcon'. Stick to valid TypeScript types.
-   - CRITICAL: Every variable declared MUST be used. No unused constants or data variables.
-   - ENSURE that All properties called in the code generated are defined in the section and ui components' file found in the @/components/ and @/components/ui/ directories
-   An Example:
-   If the page or section component uses the ui button defined as  "<button
-      className={{`inline-flex items-center justify-center px-4 py-2 bg-black text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500`}}
-      {{...props}}
-    >",
-    Then it must be used as "<Button className={{ valid class name values }} {{ valid props}} />" in the page or section component
-   
-6. **CRITICAL - Props Consistency and Matching**:
-   - When calling a component, prop names MUST EXACTLY MATCH the component's interface
-   - If component defines some value say `items` prop, call it with `items={{data}}`, NOT `styles={{data}}` or any other prop name not defined in the component
-   - The same rule applies for other props defined in the section components and the ui components
-   - **CRITICAL**: Check the component's interface BEFORE using it - look for props without `?` (those are REQUIRED)
-   - Define realistic test data (3-5 items) for all array/list props
-   - Pass ALL required props with correct names and values
-   - Example: Component has `items?: Item[]` → Page must pass `<Component items={{myItems}} />`
-   
-   **HOW TO CHECK IF A PROP IS REQUIRED:**
-   ```tsx
-   interface ComponentProps {{
-     title: string;        // REQUIRED - no question mark
-     description: string;  // REQUIRED - no question mark
-     ctaLabel?: string;    // OPTIONAL - has question mark
-   }}
-   ```
-   When using this component, you MUST provide title and description:
-   ```tsx
-   <Component title="Hello" description="World" />  // ✅ All required props
-   <Component title="Hello" />  // ❌ Missing required 'description'
-   ```
-7. **Style Consistency**: Use Tailwind CSS classes and follow modern UI/UX principles
-8. **TypeScript**: All components must have proper TypeScript types and interfaces
-9. **Responsive Design**: Ensure all components are mobile-first and responsive
-10. **Accessibility**: Follow ARIA standards and semantic HTML
-11. **CRITICAL - No Duplicates**: Never generate the same component twice. Check available components first.
-12. **CRITICAL - Icon Usage**: Only use icons from the verified list above. No exceptions.
-13. ENSURE TO FILL ALL VALUES IN THE "props" WITH REAL VALUES, NOT JUST EMPTY STRINGS OR NUMBERS.
-
-CRITICAL: PROP MATCHING RULES (NO ERRORS)
-RULE 1: PROP NAMES MUST MATCH COMPONENT INTERFACE
-When using a component, prop names must EXACTLY match the component's TypeScript interface.
-
-WRONG Examples (WILL CAUSE ERRORS):
-- Component has `items` → Page uses `<Features styles={{data}} />` ❌
-- Component has `testimonials` → Page uses `<Testimonials reviews={{data}} />` ❌
-- Component has `members` → Page uses `<Team people={{data}} />` ❌
-
-CORRECT Examples:
-- Component has `items` → Page uses `<Features items={{data}} />` ✓
-- Component has `testimonials` → Page uses `<Testimonials testimonials={{data}} />` ✓
-- Component has `members` → Page uses `<Team members={{data}} />` ✓
-
-RULE 2: ALWAYS DEFINE TEST DATA
-Every array/list prop must have 3-5 realistic items defined in the page:
-```tsx
-const services = [
-  {{ id: '1', title: 'Service 1', description: 'Description 1' }},
-  {{ id: '2', title: 'Service 2', description: 'Description 2' }},
-  {{ id: '3', title: 'Service 3', description: 'Description 3' }}
-]
-<Features items={{services}} />  // Pass with correct prop name
-```
-
-CRITICAL: EXPORT/IMPORT RULES (NO ERRORS)
-RULE 1: ONE EXPORT PER FILE
-Each component file must have EXACTLY ONE export (either named OR default, never both).
-
-RULE 2: EXPORT PATTERNS BY COMPONENT TYPE
-
-Section Components (src/components/Header.tsx, Hero.tsx, etc.):
-CORRECT - Named Export (PREFERRED):
-export function Hero({{ title }}: HeroProps) {{
-  return <section>...</section>
-}}
-ALSO CORRECT:
-export default function Hero({{ title }}: HeroProps) {{
-  return <section>...</section>
-}}
-WRONG:
-function Hero() {{ return <div /> }}
-export {{ Hero }};
-export default Hero; // ERROR: Duplicate!
-
-Page Components (src/pages/Home.tsx):
-CORRECT - Default Export:
-export default function Home() {{
-  return <main>...</main>
-}}
-
-RULE 3: IMPORT MUST MATCH EXPORT STYLE
-Named Export → Named Import:
-// Component: export function Hero() {{}}
-import {{ Hero }} from '@/components/Hero' // CORRECT
-
-// UI: export const Button = ...
-import {{ Button }} from '@/components/ui/button' // CORRECT
-
-Default Export → Default Import
-// Component: export default function Hero() {{}}
-import Hero from '@/components/Hero' // CORRECT
-
-RULE 4: COMMON ERRORS TO AVOID
-// ERROR: Duplicate Named Export
-export function Button() {{}}
-export {{ Button }} // Duplicate!
-
-// ERROR: Mixed Export Styles
-export function Hero() {{}}
-export default Hero; // Conflict!
-
-// ERROR: Import Mismatch
-// File has: export function Hero() {{}}
-import Hero from '@/components/Hero' // WRONG - looking for default!
-// Should be: import {{ Hero }} from '@/components/Hero'
-
-
-RULE 5: PREFERRED PATTERNS
-
-Section components: Named exports → import {{ Header }} from '@/components/Header'
-UI primitives components: Named exports → import {{ Button }} from '@/components/ui/button'
-Pages: Default exports → import Home from '@/pages/Home'
-
-
-MANDATORY PRE-GENERATION CHECKLIST
-Before generating code, you MUST verify EVERY item below:
-
-ICON VALIDATION:
-□ Every icon I'm using appears in the verified icons list above
-□ Icon names are spelled EXACTLY as shown (Building2 not Building)
-□ All icons are imported from lucide-react
-□ All imported icons are actually rendered in JSX
-
-VARIABLE VALIDATION:
-□ Every const/let/var declared is used in the return statement
-□ No unused variables (check: does bgClass/userData/etc appear in JSX?)
-□ If declaring a variable, it MUST be used - otherwise remove it
-
-PROPS VALIDATION:
-□ Only destructure props that are actually used in the component
-□ If experienceIcon is destructured, it MUST be used in JSX
-□ When calling components, ALL required props are provided
-□ Check component interfaces - props without '?' are REQUIRED
-
-IMPORT VALIDATION:
-□ Every import is actually used in the component
-□ No unused icon imports (Camera imported but never rendered)
-□ Import style matches export style (named vs default)
-
-TYPESCRIPT VALIDATION:
-□ No undefined types (no LucideIcon, no invented types)
-□ All props interfaces are defined
-□ No 'any' types used
-
-EXPORT VALIDATION:
-□ Each component file has EXACTLY ONE export (named OR default, not both)
-□ Section components use named exports
-□ Pages use default exports
-
-
-QUALITY STANDARDS
-Your generated code must:
-
-- Be production-ready and pass professional code review
-- Have zero TypeScript errors
-- Have zero export/import errors
-- Be fully typed with no 'any' types
-- Be responsive and accessible
-- Follow modern React patterns
-- Be performant and optimized
-- Be maintainable and well-structured
-- Have ZERO unused imports (all imports must be used)
-- Have ZERO unused variables (all declared variables must be used)
-- Use ONLY defined TypeScript types (no LucideIcon or other undefined types)
-- All lucide-react icon imports must be rendered in JSX
-- 🚨 CRITICAL: ALL section components have data-component and data-file on root element
-- 🚨 CRITICAL: ALL editable elements MUST have data-element and data-element-type attributes
-- 🚨 CRITICAL: Text content elements need data-editable-text="true"
-- 🚨 CRITICAL: Images need data-editable-src="true"
-
-
-When in doubt:
-- Use named exports for components
-- Match import style to export style
-- One export per file
-- Explicit types over implicit
-- Semantic HTML over divs
-- Tailwind utilities over custom CSS
-
-COMPONENT GUIDELINES:
-- Section components should accept props with sensible defaults
-- Use existing UI components whenever possible
-- Follow the shadcn/ui pattern for new UI components (Radix UI + Tailwind)
-- Import only what's needed
-- Use proper React hooks and patterns
-- Add proper className for Tailwind styling
-
-OUTPUT FORMAT:
-Return a JSON object with:
-- `page_content`: Complete page component code
-- `new_components`: Array of any new components needed (both section and UI components)
-
-⚠️⚠️⚠️ FINAL WARNING BEFORE GENERATING ⚠️⚠️⚠️
-
-Before you output anything, manually verify:
-1. Every icon name is from the verified list (CTRL+F to check)
-2. Every variable (const/let) is used in the JSX return
-3. Every import is used in the code
-4. Only destructure props you actually use (no unused ExperienceIcon, etc.)
-5. When calling components, provide ALL required props (check for missing description, etc.)
-6. No undefined TypeScript types
-
-Common errors that will cause IMMEDIATE BUILD FAILURE:
-- Using "Building" instead of "Building2"
-- Declaring "const bgClass" and never using it
-- Importing "Camera, Heart, Star" but only using "Heart"
-- Using type "LucideIcon" which doesn't exist
-- Destructuring "experienceIcon: ExperienceIcon" but never using ExperienceIcon
-- Calling <Cta title="..." ctaLabel="..." /> without required 'description' prop
-
-If you generate code with these errors, the entire build will fail. Triple-check before outputting."""
-
-
     def _create_page_generation_system_prompt1(self, enable_animations: bool = False, analysis: BusinessAnalysis = None) -> str:
         """Create concise system prompt for page generation - captures all critical validation rules
-        
+
+        The static rules live in _static_page_system_prompt() so every page
+        call sends a byte-identical leading prefix (Gemini implicit caching
+        keys on prefix identity). Per-project content — animation
+        instructions here, business/design context in the user prompt — must
+        never move ahead of the static block.
+
         Args:
             enable_animations: Whether to include animation instructions
             analysis: Business analysis for animation style selection
         """
-        
-        # Get formatted list of safe icons
-        safe_icons_list = get_safe_icons()
-        
         # Get animation instructions if enabled
         animation_instructions = ""
         if enable_animations and analysis:
             from app.services.animation_config import get_component_animation_instructions
             animation_instructions = get_component_animation_instructions(analysis.business_type)
-        
-        return f"""Expert React 19 + TypeScript + Vite developer. Generate production-ready page + missing components.
 
-UI COMPONENTS REFERENCE (Do not recreate existing ui components in the in the @/components/ui/ path or the ones below):
-{self._get_all_ui_components_usage_guide()}
+        prompt = _static_page_system_prompt()
+        if animation_instructions:
+            prompt = f"{prompt}\n\n{animation_instructions}"
+        return prompt
+
+    def _create_page_generation_user_prompt1(
+        self,
+        page: PageStructure,
+        structure: WebsiteStructure,
+        analysis: BusinessAnalysis,
+        available_ui_components: List[str],
+        available_section_components: List[str]
+    ) -> str:
+        """Concise user prompt for page generation"""
+
+        # Format component requirements
+        components_list = [
+            f"  • {comp.name} ({comp.type}): {json.dumps({item.key: item.value for item in comp.props})}"
+            for comp in page.components
+        ]
+        
+        # Format navigation
+        nav_list = [f"  • {nav.label} → {nav.path}" for nav in structure.navigation]
+
+        smooth_scroll_instructions = ""
+        if structure.page_count == 1:
+            smooth_scroll_instructions = """
+            🔗 NAVIGATION & SMOOTH SCROLLING (For Single-Page Websites):
+When creating a Header component with navigation links to page sections:
+- Import smooth scroll utility: `import {{ handleSmoothScroll }} from '@/utils/smoothScroll';`
+- For navigation links, use onClick handler:
+   ```tsx
+   <a 
+     href="#features" 
+     onClick={{(e) => handleSmoothScroll(e, '#features')}}
+     className="..."
+   >
+     Features
+   </a>
+   ```
+- For mobile menu, pass callback to close menu:
+   ```tsx
+   <a 
+     href="#features"
+     onClick={{(e) => handleSmoothScroll(e, '#features', () => setIsMenuOpen(false))}}
+     className="..."
+   >
+     Features
+   </a>
+   ```
+- Ensure ALL section components have `id` attribute matching their lowercase name
+- Example: Features component should have `<section id="features" ...>`
+            """
+        return f"""BUILD THIS PAGE BASED ON THE FOLLOWING CONTEXT:
+
+PAGE: {page.name} ({page.path})
+{page.description}
+
+CONTEXT
+Original prompt: {analysis.prompt}
+Business: {analysis.business_type} | Industry: {analysis.industry}
+Audience: {analysis.target_audience} | Tone: {analysis.tone}
+CTA: {analysis.primary_cta} | Colors: {structure.color_scheme}
+
+
+SECTIONS NEEDED
+{chr(10).join(components_list)}
+
+AVAILABLE COMPONENTS
+UI (@/components/ui/): {', '.join(available_ui_components) or 'None - create as needed'}
+Sections (@/components/): {', '.join(available_section_components) or 'None - create as needed'}
+
+CRITICAL: Use ONLY icons from the verified list in the system prompt, properly imported from lucide-react.
+
+NAVIGATION
+{chr(10).join(nav_list) if nav_list else '  • Single page (no nav)'}
+
+TASK
+1. Build page using/creating section components
+2. Add missing components to new_components (no duplicates)
+3. <Header /> and <Footer /> usage: no props; define values internally using nav above
+4. Reuse existing UI components as-is
+
+{smooth_scroll_instructions}
+
+🚨 CRITICAL: VISUAL EDITING TRACKING - MANDATORY 🚨
+5. EVERY section component's ROOT element MUST have these exact attributes:
+   - data-component="ComponentName" (exact component name, e.g., "Hero", "Features", "Footer")
+   - data-file="src/components/ComponentName.tsx" (exact file path)
+   - id="componentname" (lowercase component name for navigation, e.g., "hero", "features", "contact")
+6. EXAMPLE - Hero.tsx component:
+   ✅ CORRECT:
+   export function Hero() {{
+     return (
+       <section id="hero" data-component="Hero" data-file="src/components/Hero.tsx" className="...">
+         <h1 data-element="hero-title">Title</h1>
+         <button data-element="hero-cta">Get Started</button>
+       </section>
+     )
+   }}
+   ❌ WRONG (missing data attributes and id):
+   export function Hero() {{
+     return (
+       <section className="...">
+         <h1>Title</h1>
+       </section>
+     )
+   }}
+7. These attributes MUST be on the FIRST/ROOT element in the return statement
+8. Without these attributes, visual editing will NOT work
+9. The `id` attribute enables smooth navigation from the header to sections
+10. This is absolutely required for ALL section components (Header, Hero, Footer, etc.)
+
+
+
+CRITICAL
+✓ Prop names match interfaces exactly; provide ALL required props
+✓ Only destructure props you use
+✓ 3-5 realistic test items for arrays; pass with correct name (items={{{{data}}}})
+✓ Use verified icons only; import only what you render
+✓ No unused variables/imports
+✓ Sections & UI: named export | Pages: default export
+✓ TypeScript strict, no 'any', responsive, accessible
+
+OUTPUT JSON: {{"page_content": "...", "new_components": [...]}}"""
+
+
+@lru_cache(maxsize=1)
+def _static_page_system_prompt() -> str:
+    """Static, byte-identical prefix of the page-generation system prompt.
+
+    Built once per process and shared by every page call so Gemini's implicit
+    caching (which keys on a byte-identical leading prefix) can discount these
+    tokens from the second page onward. Keep ALL per-project variability out
+    of this block: animation instructions are appended after it, and
+    business/design context belongs in the user prompt. Note that
+    enable_parallel_generation can miss the cache on concurrent page calls —
+    the sequential default is cache-optimal.
+    """
+    safe_icons_list = get_safe_icons()
+    return f"""Expert React 19 + TypeScript + Vite developer. Generate production-ready page + missing components.
+
+Do not recreate existing ui components in the @/components/ui/ path.
 
 TECH STACK: React 19, TypeScript (strict), Tailwind, shadcn/ui, lucide-react, Vite, React Router (Link for internal nav)
 
@@ -1896,8 +1470,6 @@ Common errors causing build failure:
 • Missing required description prop on Cta component
 • Dont escape quotes in the generated code
 
-{animation_instructions}
-
 🎨 VISUAL EDITING REQUIREMENTS (REQUIRED FOR ALL COMPONENTS):
 
 All generated components MUST include data attributes for visual editing:
@@ -1988,279 +1560,6 @@ NAMING CONVENTIONS for data-element:
 ⚠️ CRITICAL: Missing data attributes will break the visual editor. Add them to ALL user-facing elements.
 
 Verify EVERY item in checklist before generating."""
-
-    def _create_page_generation_system_prompt2(self) -> str:
-        """Create concise system prompt for page generation - captures all critical validation rules"""
-        
-        # Get formatted list of safe icons
-        safe_icons_list = format_icons_for_prompt()
-        
-        return f"""Developer: You are an expert React + TypeScript developer. Your task is to generate a production-ready page component for a website and any needed missing section or UI components.
-
-
-Component & Tech Stack:
-- React 19 (TypeScript, strict mode), Tailwind CSS, shadcn/ui (Radix), lucide-react icons (use only the verified CASE-SENSITIVE icons), Vite.
-- Use Unsplash image URLs (https://images.unsplash.com/...) and <a href="https://..."> for external links.
-- Use React Router's <Link to="/route"> for internal navigation (import {{ Link }} from 'react-router-dom').
-
-Hard Build Gates (Zero Tolerance):
-- Code must compile with zero TypeScript errors or warnings.
-- No unused variables, imports, or destructured props.
-- All required props (non-optional in interface) must be provided and prop names must match interfaces exactly.
-- Only import and use icons from the verified list ({safe_icons_list}). Every icon import must be rendered in JSX.
-- No undefined/invalid types (e.g. no 'LucideIcon'), and no 'any' usage. Use standard types: string, number, boolean, React.ReactNode, JSX.Element.
-- Each variable/constant must appear in JSX (no unused data).
-- Ensure the year is the current year and All rights reserved text is at the footer.
-
-Component Conventions:
-- Section components in src/components/<Name>.tsx, use named exports.
-- UI components in src/components/ui/<name>.tsx, follow shadcn/ui pattern, use named exports.
-- Pages use default exports only.
-- One export style per file; import style must match export style; no mixed or duplicate exports.
-
-Props & Data:
-- Prop names must match the interface exactly.
-- For list/array props, create realistic test data (3-5 items) and provide via the correct prop name.
-- All prop values must be real (not empty/defaults).
-- Only destructure/use what you actually render or use in JSX.
-
-UI COMPONENTS REFERENCE:
-{self._get_all_ui_components_usage_guide()}
-
-Checklist Before Output:
-- Every variable appears in JSX and is used.
-- No unused props, variables, or imports.
-- All imported icons are rendered in JSX and exist in the verified list.
-- All required props are provided.
-
-Quality:
-- Code is accessible, responsive, and semantic.
-- Follows modern React and TypeScript patterns.
-- Maintainable and well-typed code.
-
-If any required section or UI component does not exist, define it in "new_components" (with path and code). Do not duplicate components that already exist.
-
-🎨 VISUAL EDITING REQUIREMENTS:
-All components MUST include data attributes for visual editing:
-- Section roots: data-component="Name" data-file="path"
-- Text elements: data-element="name" data-element-type="heading|paragraph|label|span" data-editable-text="true"
-- Images: data-element="name" data-element-type="image" data-editable-src="true"
-- Buttons: data-element="name" data-element-type="button"
-- Links: data-element="name" data-element-type="link"
-- Containers: data-element="name" data-element-type="container"
-
-Use kebab-case for data-element names (e.g., "hero-title", "feature-description").
-Missing data attributes will break the visual editor!
-
-OUTPUT JSON FORMAT:
-- page_content: Complete, default-exported page component code
-- new_components: Array of new section/UI components, each with path and contents
-
-Generate the required code now according to these rules.
-"""
-
-
-
-    
-    def _create_page_generation_user_prompt(
-        self,
-        page: PageStructure,
-        structure: WebsiteStructure,
-        analysis: BusinessAnalysis,
-        available_ui_components: List[str],
-        available_section_components: List[str]
-    ) -> str:
-        """Create user prompt with all context for page generation"""
-        
-        # Format component requirements with props
-        component_details = []
-        for comp in page.components:
-            props_dict = {item.key: item.value for item in comp.props}
-            component_details.append(f"  - {comp.name} ({comp.type}): {json.dumps(props_dict, indent=4)}")
-
-        nav_items = []
-        for nav_item in structure.navigation:
-            nav_items.append(f"  - {nav_item.label}: {nav_item.path}")
-        
-        prompt = f"""Generate a production-ready React page component.
-
-PAGE
-- Name: {page.name}
-- Route: {page.path}
-- Title: {page.title}
-- Description: {page.description}
-
-BUSINESS CONTEXT
-- Type: {analysis.business_type}
-- Industry: {analysis.industry}
-- Audience: {analysis.target_audience}
-- Tone: {analysis.tone}
-- Primary CTA: {analysis.primary_cta}
-- Color Scheme: {structure.color_scheme}
-
-REQUIRED SECTIONS
-{chr(10).join(component_details)}
-
-AVAILABLE UI COMPONENTS (@/components/ui/<name>)
-{', '.join(available_ui_components) if available_ui_components else 'None yet - generate as needed'}
-
-AVAILABLE SECTION COMPONENTS (@/components/<Name>)
-{', '.join(available_section_components) if available_section_components else 'None yet - generate as needed'}
-
-WEBSITE NAV
-{chr(10).join(nav_items) if nav_items else 'None - Single page website'}
-
-TASK
-- Build a complete page for "{page.name}" by importing and using section components.
-- If a needed section/UI component is missing, create it and include in new_components (no duplicates).
-- Do not modify existing UI components; reuse them as-is.
-
-HEADER/FOOTER
-- Implement <Header /> and <Footer />; usage is without props.
-- Define their values (brand, nav, cta, etc.) internally, using the website navigation above.
-
-STRICT RULES
-- Prop names must exactly match component interfaces; provide all required props (no '?').
-- Only destructure props you actually use.
-- Define realistic data (3–5 items) for list props and pass with the correct name (e.g., items={{{{data}}}}).
-- Only use verified safe lucide icons (provided in system prompt); import only icons you render.
-- No unused variables or imports.
-- Section components: named export; UI components: named export; pages: default export.
-- One export style per file; imports must match export style.
-- TypeScript strict; no 'any'. Accessible, responsive, semantic HTML.
-- Use Tailwind; use <a> for links.
-
-OUTPUT (JSON)
-- page_content: complete page component (default export).
-- new_components: any created components (path + contents).
-
-Generate now."""
-        return prompt
-
-    def _create_page_generation_user_prompt1(
-        self,
-        page: PageStructure,
-        structure: WebsiteStructure,
-        analysis: BusinessAnalysis,
-        available_ui_components: List[str],
-        available_section_components: List[str]
-    ) -> str:
-        """Concise user prompt for page generation"""
-
-        # Add icon whitelist directly to prompt
-        safe_icons_list = get_safe_icons()
-        
-        # Format component requirements
-        components_list = [
-            f"  • {comp.name} ({comp.type}): {json.dumps({item.key: item.value for item in comp.props})}"
-            for comp in page.components
-        ]
-        
-        # Format navigation
-        nav_list = [f"  • {nav.label} → {nav.path}" for nav in structure.navigation]
-
-        smooth_scroll_instructions = ""
-        if structure.page_count == 1:
-            smooth_scroll_instructions = """
-            🔗 NAVIGATION & SMOOTH SCROLLING (For Single-Page Websites):
-When creating a Header component with navigation links to page sections:
-- Import smooth scroll utility: `import {{ handleSmoothScroll }} from '@/utils/smoothScroll';`
-- For navigation links, use onClick handler:
-   ```tsx
-   <a 
-     href="#features" 
-     onClick={{(e) => handleSmoothScroll(e, '#features')}}
-     className="..."
-   >
-     Features
-   </a>
-   ```
-- For mobile menu, pass callback to close menu:
-   ```tsx
-   <a 
-     href="#features"
-     onClick={{(e) => handleSmoothScroll(e, '#features', () => setIsMenuOpen(false))}}
-     className="..."
-   >
-     Features
-   </a>
-   ```
-- Ensure ALL section components have `id` attribute matching their lowercase name
-- Example: Features component should have `<section id="features" ...>`
-            """
-        return f"""BUILD THIS PAGE BASED ON THE FOLLOWING CONTEXT:
-
-PAGE: {page.name} ({page.path})
-{page.description}
-
-CONTEXT
-Original prompt: {analysis.prompt}
-Business: {analysis.business_type} | Industry: {analysis.industry}
-Audience: {analysis.target_audience} | Tone: {analysis.tone}
-CTA: {analysis.primary_cta} | Colors: {structure.color_scheme}
-
-
-SECTIONS NEEDED
-{chr(10).join(components_list)}
-
-AVAILABLE COMPONENTS
-UI (@/components/ui/): {', '.join(available_ui_components) or 'None - create as needed'}
-Sections (@/components/): {', '.join(available_section_components) or 'None - create as needed'}
-
-CRITICAL: Ensure you use ONLY the icons from the list below, and ensure Icons are properly imported from lucide-react:
-{safe_icons_list}
-
-NAVIGATION
-{chr(10).join(nav_list) if nav_list else '  • Single page (no nav)'}
-
-TASK
-1. Build page using/creating section components
-2. Add missing components to new_components (no duplicates)
-3. <Header /> and <Footer /> usage: no props; define values internally using nav above
-4. Reuse existing UI components as-is
-
-{smooth_scroll_instructions}
-
-🚨 CRITICAL: VISUAL EDITING TRACKING - MANDATORY 🚨
-5. EVERY section component's ROOT element MUST have these exact attributes:
-   - data-component="ComponentName" (exact component name, e.g., "Hero", "Features", "Footer")
-   - data-file="src/components/ComponentName.tsx" (exact file path)
-   - id="componentname" (lowercase component name for navigation, e.g., "hero", "features", "contact")
-6. EXAMPLE - Hero.tsx component:
-   ✅ CORRECT:
-   export function Hero() {{
-     return (
-       <section id="hero" data-component="Hero" data-file="src/components/Hero.tsx" className="...">
-         <h1 data-element="hero-title">Title</h1>
-         <button data-element="hero-cta">Get Started</button>
-       </section>
-     )
-   }}
-   ❌ WRONG (missing data attributes and id):
-   export function Hero() {{
-     return (
-       <section className="...">
-         <h1>Title</h1>
-       </section>
-     )
-   }}
-7. These attributes MUST be on the FIRST/ROOT element in the return statement
-8. Without these attributes, visual editing will NOT work
-9. The `id` attribute enables smooth navigation from the header to sections
-10. This is absolutely required for ALL section components (Header, Hero, Footer, etc.)
-
-
-
-CRITICAL
-✓ Prop names match interfaces exactly; provide ALL required props
-✓ Only destructure props you use
-✓ 3-5 realistic test items for arrays; pass with correct name (items={{{{data}}}})
-✓ Use verified icons only; import only what you render
-✓ No unused variables/imports
-✓ Sections & UI: named export | Pages: default export
-✓ TypeScript strict, no 'any', responsive, accessible
-
-OUTPUT JSON: {{"page_content": "...", "new_components": [...]}}"""
 
 
 # Create singleton instance

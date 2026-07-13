@@ -9,6 +9,13 @@ import re
 from typing import Dict, Any, List, Optional, Tuple
 from app.services.project_file_manager import project_file_manager
 from app.services.prompt_open_ai import PromptOpenAI
+from app.services.edit_patcher import (
+    PATCH_FORMAT_SPEC,
+    PatchApplyError,
+    PatchFormatError,
+    apply_blocks,
+    parse_blocks,
+)
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -432,7 +439,7 @@ class ComponentEditorService:
 
         return None
 
-    async def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any], images: Optional[List[str]] = None, shared_components: Optional[List[str]] = None, existing_routes: Optional[List[str]] = None, has_selection: bool = False) -> Dict[str, Any]:
+    async def analyze_edit_request(self, instruction: str, element_info: Dict[str, Any], images: Optional[List[str]] = None, shared_components: Optional[List[str]] = None, existing_routes: Optional[List[str]] = None, has_selection: bool = False, cost_tracker=None) -> Dict[str, Any]:
         """
         Advanced AI-powered analysis of edit requests to determine what type of changes are needed.
 
@@ -511,6 +518,8 @@ class ComponentEditorService:
             )
 
             logger.info(f"[COMPONENT EDITOR] AI analysis usage: {usage}")
+            if cost_tracker:
+                cost_tracker.track_call("edit", settings.edit_model, usage, metadata={"call": "analysis"})
 
             # Parse AI response
             ai_analysis = self._parse_analysis_response(response)
@@ -643,24 +652,10 @@ Analyze what changes are needed and respond with ONLY a valid JSON object (no ma
   "categories": ["structure" | "content" | "style"],  // All applicable categories
   "primary_type": "structure" | "content" | "style",  // Main category
   "confidence": 0.0-1.0,  // Your confidence in this analysis
-  "specific_changes": {{
-    "structure": {{
-      "add_elements": ["element types to add"],
-      "remove_elements": ["element types to remove"],
-      "reorder": false,
-      "change_hierarchy": false
-    }},
-    "content": {{
-      "text_changes": ["description of text changes"],
-      "replace_text": "new text if specified",
-      "modify_attributes": ["attributes to change"]
-    }},
-    "style": {{
-      "colors": ["color properties to change"],
-      "typography": ["font/text properties to change"],
-      "layout": ["spacing/positioning properties to change"],
-      "visual_effects": ["effects like borders, shadows, etc."]
-    }}
+  "specific_changes": {{  // Include only the applicable categories; values are short change descriptions
+    "structure": {{"add_elements": [...], "remove_elements": [...], "reorder": false, "change_hierarchy": false}},
+    "content": {{"text_changes": [...], "replace_text": "new text if specified", "modify_attributes": [...]}},
+    "style": {{"colors": [...], "typography": [...], "layout": [...], "visual_effects": [...]}}
   }},
   "scope": "element" | "component" | "multiple",  // How many things affected
   "requires_new_elements": true | false,
@@ -674,16 +669,10 @@ Analyze what changes are needed and respond with ONLY a valid JSON object (no ma
 EXAMPLES:
 
 Instruction: "make the text red"
-Response: {{"categories": ["style"], "primary_type": "style", "confidence": 0.95, "specific_changes": {{"style": {{"colors": ["text color to red"]}}}}, "scope": "element", "requires_new_elements": false, "affects_layout": false}}
+Response: {{"categories": ["style"], "primary_type": "style", "confidence": 0.95, "specific_changes": {{"style": {{"colors": ["text color to red"]}}}}, "scope": "element", "requires_new_elements": false, "affects_layout": false, "requires_structural_rewrite": false, "suggested_components": []}}
 
-Instruction: "change this to say 'Welcome'"
-Response: {{"categories": ["content"], "primary_type": "content", "confidence": 0.98, "specific_changes": {{"content": {{"text_changes": ["change text to Welcome"], "replace_text": "Welcome"}}}}, "scope": "element", "requires_new_elements": false, "affects_layout": false}}
-
-Instruction: "add a button below this"
-Response: {{"categories": ["structure"], "primary_type": "structure", "confidence": 0.9, "specific_changes": {{"structure": {{"add_elements": ["button"]}}}}, "scope": "component", "requires_new_elements": true, "affects_layout": true}}
-
-Instruction: "make this heading larger and bold with a blue color"
-Response: {{"categories": ["style", "content"], "primary_type": "style", "confidence": 0.92, "specific_changes": {{"style": {{"typography": ["increase size", "make bold"], "colors": ["text color to blue"]}}}}, "scope": "element", "requires_new_elements": false, "affects_layout": false}}
+Instruction: "turn these testimonials into a slider"
+Response: {{"categories": ["structure"], "primary_type": "structure", "confidence": 0.9, "specific_changes": {{"structure": {{"add_elements": ["slider"], "change_hierarchy": true}}}}, "scope": "component", "requires_new_elements": true, "affects_layout": true, "requires_structural_rewrite": true, "suggested_components": ["testimonial-slider"]}}
 
 Respond with ONLY the JSON object for the given instruction:"""
 
@@ -932,7 +921,8 @@ Respond with ONLY the JSON object for the given instruction:"""
         images: Optional[List[str]] = None,
         analysis: Optional[Dict[str, Any]] = None,
         library_note: Optional[str] = None,
-        conversation_context: Optional[str] = None
+        conversation_context: Optional[str] = None,
+        cost_tracker=None
     ) -> Tuple[bool, str, str, Optional[str]]:
         """
         Use AI to modify component code based on user instruction.
@@ -962,20 +952,24 @@ Respond with ONLY the JSON object for the given instruction:"""
             # Analyze the edit request unless the caller already did (the router
             # precomputes it to decide scope escalation before this call)
             if analysis is None:
-                analysis = await self.analyze_edit_request(instruction, element_context, images=images)
+                analysis = await self.analyze_edit_request(instruction, element_context, images=images, cost_tracker=cost_tracker)
             if images and not analysis.get("image_intent"):
                 analysis["image_intent"] = self._heuristic_image_intent(instruction.lower())
 
-            # Build AI prompt with business context
+            # Patch-first: ask for SEARCH/REPLACE blocks (output tokens scale
+            # with the change, not the file). Any parse/apply/validation
+            # failure falls back to one full-file rewrite — the containment
+            # check and build-verify downstream operate on the materialized
+            # full code either way.
+            modified_code = None
+            patch_failure = None
             prompt = self._build_edit_prompt(
                 current_code, instruction, element_context, analysis, business_context,
                 additional_contexts=additional_contexts, scope=scope, strict_note=strict_note,
-                library_note=library_note, conversation_context=conversation_context
+                library_note=library_note, conversation_context=conversation_context,
+                output_mode="patch"
             )
-            logger.info(f"[COMPONENT EDITOR] Enhanced prompt built with analysis and business context")
-
-            # Call AI service
-            logger.info(f"[COMPONENT EDITOR] Calling AI to modify {file_path}")
+            logger.info(f"[COMPONENT EDITOR] Calling AI to modify {file_path} (patch mode)")
             response, usage = self.prompt_service.call_openai_api(
                 system_prompt="",
                 user_prompt=prompt,
@@ -984,18 +978,56 @@ Respond with ONLY the JSON object for the given instruction:"""
             )
             logger.info(f"[COMPONENT EDITOR] Response from AI: {response}")
             logger.info(f"[COMPONENT EDITOR] Usage for component edit: {usage}")
-            if not response or not response.strip():
-                return False, current_code, "", "AI did not return any code"
+            if cost_tracker:
+                cost_tracker.track_call("edit", settings.edit_model, usage, metadata={"call": "modify", "file": file_path, "mode": "patch"})
 
-            # Extract code from response (handle markdown code blocks)
-            modified_code = self._extract_code_from_response(response)
+            if response and response.strip():
+                try:
+                    blocks = parse_blocks(response)
+                    candidate = apply_blocks(current_code, blocks)
+                    if self._validate_component_code(candidate):
+                        modified_code = candidate
+                        analysis["edit_mode"] = "patch"
+                        analysis["patch_blocks"] = len(blocks)
+                        logger.info(f"[COMPONENT EDITOR] Applied {len(blocks)} patch block(s) to {file_path}")
+                    else:
+                        patch_failure = "patched code failed validation"
+                except (PatchFormatError, PatchApplyError) as e:
+                    patch_failure = str(e)
+            else:
+                patch_failure = "empty response"
 
-            if not modified_code:
-                return False, current_code, "", "Could not extract valid code from AI response"
+            if modified_code is None:
+                logger.warning(f"[COMPONENT EDITOR] Patch mode failed for {file_path} ({patch_failure}); falling back to full-file rewrite")
+                prompt = self._build_edit_prompt(
+                    current_code, instruction, element_context, analysis, business_context,
+                    additional_contexts=additional_contexts, scope=scope, strict_note=strict_note,
+                    library_note=library_note, conversation_context=conversation_context,
+                    output_mode="full_file"
+                )
+                response, usage = self.prompt_service.call_openai_api(
+                    system_prompt="",
+                    user_prompt=prompt,
+                    model=settings.edit_model,
+                    images=images
+                )
+                logger.info(f"[COMPONENT EDITOR] Usage for component edit (full-file fallback): {usage}")
+                if cost_tracker:
+                    cost_tracker.track_call("edit", settings.edit_model, usage, metadata={"call": "modify", "file": file_path, "mode": "full_file_fallback"})
+                if not response or not response.strip():
+                    return False, current_code, "", "AI did not return any code"
 
-            # Basic validation
-            if not self._validate_component_code(modified_code):
-                return False, current_code, "", "Generated code appears to be invalid"
+                # Extract code from response (handle markdown code blocks)
+                modified_code = self._extract_code_from_response(response)
+
+                if not modified_code:
+                    return False, current_code, "", "Could not extract valid code from AI response"
+
+                # Basic validation
+                if not self._validate_component_code(modified_code):
+                    return False, current_code, "", "Generated code appears to be invalid"
+                analysis["edit_mode"] = "full_file_fallback"
+                analysis["patch_blocks"] = 0
 
             logger.info(f"[COMPONENT EDITOR] Successfully modified {file_path}")
             return True, current_code, modified_code, None
@@ -1171,9 +1203,14 @@ Respond with ONLY the JSON object for the given instruction:"""
         scope: str = "element",
         strict_note: Optional[str] = None,
         library_note: Optional[str] = None,
-        conversation_context: Optional[str] = None
+        conversation_context: Optional[str] = None,
+        output_mode: str = "full_file"
     ) -> str:
-        """Build the AI prompt for component editing using enhanced analysis and business context"""
+        """Build the AI prompt for component editing using enhanced analysis and business context
+
+        output_mode: "patch" asks for SEARCH/REPLACE blocks (cheap output);
+        "full_file" asks for the complete rewritten file (fallback).
+        """
 
         target_element = analysis.get('target_element', 'unknown')
         component_name = analysis.get('component_name', 'Unknown')
@@ -1341,10 +1378,15 @@ the instruction applies to ALL of them, including the primary target above):
 
         # Scope enforcement — element scope must not touch anything outside the selection
         if scope == "element":
-            scope_enforcement = """
+            untouched_rule = (
+                "- Do NOT emit any SEARCH/REPLACE block that touches code outside the selected element(s)."
+                if output_mode == "patch"
+                else "- Reproduce every other line of the file EXACTLY as it appears in the original — byte-for-byte."
+            )
+            scope_enforcement = f"""
 STRICT SCOPE ENFORCEMENT:
 - Change ONLY the selected element(s) enumerated in the target information.
-- Reproduce every other line of the file EXACTLY as it appears in the original — byte-for-byte.
+{untouched_rule}
 - Do NOT reformat, reorder imports, rename variables, adjust whitespace, or "improve" unrelated code.
 - If the instruction seems to imply broader changes, still restrict your changes to the selected element(s) only."""
         elif scope == "section":
@@ -1396,6 +1438,19 @@ references it (e.g. "like before", "the same as last time", "make it darker" mea
 element you JUST changed). Always target ONLY the element described in TARGET INFORMATION
 below — never redirect this edit to something mentioned only in the history."""
 
+        if output_mode == "patch":
+            output_instructions = f"""OUTPUT FORMAT — SEARCH/REPLACE BLOCKS:
+{PATCH_FORMAT_SPEC}"""
+        else:
+            output_instructions = """IMPORTANT:
+- Return ONLY the complete modified code
+- Do not include explanations or markdown formatting
+- The code should be ready to use as-is
+- Keep all existing imports and structure intact
+- Make precise, targeted changes based on the analysis above
+
+Return the complete modified code:"""
+
         prompt = f"""You are a React component editor. Modify the following code based on the user's instruction.
 
 {context_note}
@@ -1441,14 +1496,7 @@ REQUIREMENTS:
 9. Maintain all data attributes (data-component, data-file, data-element)
 10. Follow React best practices and hooks rules
 
-IMPORTANT:
-- Return ONLY the complete modified code
-- Do not include explanations or markdown formatting
-- The code should be ready to use as-is
-- Keep all existing imports and structure intact
-- Make precise, targeted changes based on the analysis above
-
-Return the complete modified code:"""
+{output_instructions}"""
 
         return prompt
 

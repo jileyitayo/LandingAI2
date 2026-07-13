@@ -133,6 +133,7 @@ class PageCreationService:
         new_page: Dict[str, Any],
         selected_element: Optional[Dict[str, Any]] = None,
         instruction: str = "",
+        cost_tracker=None,
     ) -> Dict[str, Any]:
         """
         Generate the new page + route wiring + nav/element linkage.
@@ -191,7 +192,8 @@ class PageCreationService:
         files_copy = dict(files)
         page_content = await asyncio.to_thread(
             self.generator._generate_page_component,
-            page, structure_for_gen, analysis, files_copy
+            page, structure_for_gen, analysis, files_copy,
+            cost_tracker=cost_tracker,
         )
 
         new_codes: Dict[str, str] = {

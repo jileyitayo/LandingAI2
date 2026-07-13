@@ -1850,6 +1850,7 @@ async def _build_verify_with_repairs(
     files: Dict[str, str],
     new_codes: Dict[str, str],
     max_repair_attempts: int = 2,
+    cost_tracker=None,
 ) -> tuple:
     """
     Build the candidate project (files + new_codes) via the preview service,
@@ -1898,7 +1899,8 @@ async def _build_verify_with_repairs(
                 ]
 
             fixed_files, _ = await asyncio.to_thread(
-                error_fixer.fix_build_errors, candidate_files, parsed_errors, build_output
+                error_fixer.fix_build_errors, candidate_files, parsed_errors, build_output,
+                cost_tracker
             )
             candidate_files = fixed_files
             # Keep edited-file contents in sync with any repairs
@@ -1916,6 +1918,7 @@ async def _run_page_creation(
     files: Dict[str, str],
     supabase,
     progress,
+    cost_tracker=None,
 ) -> ComponentEditResponse:
     """
     Confirmed create-page flow (from the edit chat): generate the page with
@@ -1933,6 +1936,7 @@ async def _run_page_creation(
             new_page=request.confirmed_page,
             selected_element=request.selected_element,
             instruction=request.instruction,
+            cost_tracker=cost_tracker,
         )
     except PageCreationError as e:
         return ComponentEditResponse(success=False, message=str(e))
@@ -1961,6 +1965,7 @@ async def _run_page_creation(
                 files=link_files,
                 business_context=project.get("business_analysis"),
                 scope="section",
+                cost_tracker=cost_tracker,
             )
             if success and linked_code:
                 new_codes[source_file] = linked_code
@@ -1968,7 +1973,9 @@ async def _run_page_creation(
                 logger.warning(f"[PAGE CREATE] Element link edit failed (non-fatal): {error}")
 
     progress("building", "Building and verifying the new page")
-    preview_result, candidate_files = await _build_verify_with_repairs(project_id, files, new_codes)
+    preview_result, candidate_files = await _build_verify_with_repairs(
+        project_id, files, new_codes, cost_tracker=cost_tracker
+    )
     if preview_result is None:
         logger.error("[PAGE CREATE] Build failed after repair attempts; nothing saved")
         return ComponentEditResponse(
@@ -2080,6 +2087,13 @@ async def _run_edit_pipeline(
     progress = progress or (lambda *a, **k: None)
     supabase = get_supabase_client()
 
+    # Edit-path token accounting: one generation_cost_tracking row per edit
+    # request (analysis + modify + build-fix calls). Persisted in the finally
+    # block so early confirm/clarify returns that already burned an analysis
+    # call are counted too; requests that never reached an LLM save nothing.
+    from app.services.cost_calculator import CostTracker
+    cost_tracker = CostTracker(generation_type="edit", endpoint=f"/edit/project/{project_id}")
+
     logger.info(f"[COMPONENT EDIT] Starting edit request for project {project_id} by user {user_id}")
     logger.info(f"[COMPONENT EDIT] Instruction: '{request.instruction}' (length: {len(request.instruction)})")
     if request.selected_element:
@@ -2159,7 +2173,8 @@ async def _run_edit_pipeline(
         # the user already approved the page spec in the chat
         if request.confirmed_page:
             return await _run_page_creation(
-                project_id, request, user_id, project, files, supabase, progress
+                project_id, request, user_id, project, files, supabase, progress,
+                cost_tracker=cost_tracker
             )
 
         if not selected_elements:
@@ -2327,7 +2342,8 @@ async def _run_edit_pipeline(
             effective_instruction, selected_elements[0], images=attachment_images or None,
             shared_components=shared_component_files or None,
             existing_routes=existing_routes,
-            has_selection=has_real_selection
+            has_selection=has_real_selection,
+            cost_tracker=cost_tracker
         )
 
         # Clarify-first: the analysis flagged a missing resource or contradiction
@@ -2473,7 +2489,8 @@ async def _run_edit_pipeline(
                     images=attachment_images or None,
                     analysis=edit_analysis,
                     library_note=library_note,
-                    conversation_context=conversation_context
+                    conversation_context=conversation_context,
+                    cost_tracker=cost_tracker
                 )
 
                 if not success:
@@ -2493,9 +2510,10 @@ async def _run_edit_pipeline(
                     break
                 strict_note = (
                     f"You modified code outside the selected element(s) ({violation}). "
-                    "Output the original file with ONLY the selected element(s) changed; "
-                    "reproduce every other line exactly."
+                    "Change ONLY the selected element(s); every other line of the file "
+                    "must remain exactly as it is."
                 )
+                cost_tracker.increment_retries()
 
             if scope == "element" and not contained:
                 logger.error(f"[COMPONENT EDIT] Containment violation persisted for {component_file}; nothing saved")
@@ -2554,7 +2572,7 @@ async def _run_edit_pipeline(
         # On failure, feed build errors back to the LLM for up to 2 repair attempts.
         progress("building", "Building and verifying the preview")
         preview_result, candidate_files = await _build_verify_with_repairs(
-            project_id, files, new_codes
+            project_id, files, new_codes, cost_tracker=cost_tracker
         )
 
         if preview_result is None:
@@ -2636,6 +2654,8 @@ async def _run_edit_pipeline(
                 "metadata": {
                     "file_path": component_file,
                     "scope": scope,
+                    "edit_mode": edit_analysis.get("edit_mode"),
+                    "patch_blocks": edit_analysis.get("patch_blocks"),
                     "selected_element": {
                         "tagName": primary_element.get('tagName', ''),
                         "textContent": (primary_element.get('textContent') or '')[:100],
@@ -2712,14 +2732,24 @@ async def _run_edit_pipeline(
         )
 
     except HTTPException as e:
+        cost_tracker.mark_failed(f"{e.status_code}: {e.detail}")
         logger.error(f"[COMPONENT EDIT] HTTPException: {e.status_code} - {e.detail}")
         raise
     except Exception as e:
+        cost_tracker.mark_failed(str(e))
         logger.error(f"[COMPONENT EDIT] Unexpected error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to edit component"
         )
+    finally:
+        # Persist token/cost accounting for any request that reached an LLM.
+        # save_to_database swallows its own errors, so this can't mask the
+        # response or the original exception.
+        if cost_tracker.model_calls:
+            if cost_tracker.status == "in_progress":
+                cost_tracker.mark_completed()
+            await cost_tracker.save_to_database(project_id, user_id, supabase)
 
 
 @router.post("/edit/project/{project_id}", response_model=ComponentEditResponse)
