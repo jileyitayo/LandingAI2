@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     vercel_api_token: str = ""
     vercel_team_id: str = ""
 
+    # Custom domains (Pro tier). DNS values shown to users; Vercel may echo
+    # newer recommended targets in API responses, which take precedence.
+    vercel_apex_a_value: str = "76.76.21.21"
+    vercel_cname_value: str = "cname.vercel-dns.com"
+    # Hostname suffixes users may not connect as custom domains
+    blocked_domain_suffixes: Union[list[str], str] = [".vercel.app", "vercel.com", "sitesmith.app"]
+
     # Backend URL (for generating absolute URLs in Railway/production)
     backend_url: str = "http://localhost:8000"
 
@@ -105,10 +112,10 @@ class Settings(BaseSettings):
     # enable_dark_mode: bool = True
     # enable_a11y_checks: bool = True
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", "blocked_domain_suffixes", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
-        """Parse CORS origins from string or list."""
+        """Parse list settings from JSON/comma-separated string or list."""
         if isinstance(v, str):
             # Handle JSON array string format
             import json

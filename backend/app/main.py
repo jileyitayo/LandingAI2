@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.types import Scope
 
 from app.config import settings
-from app.routers import health, auth, users, templates, generation, projects, deployment, feedback, media, history
+from app.routers import health, auth, users, templates, generation, projects, deployment, domains, feedback, media, history
 from app.middleware.auth_middleware import AuthenticationMiddleware
 from app.services.vite_preview_service import vite_preview_service
 
@@ -198,6 +198,7 @@ app.include_router(templates.router, prefix="/api/v1/templates", tags=["Template
 app.include_router(projects.router, prefix="/api/v1", tags=["Projects"])
 app.include_router(generation.router, prefix="/api/v1", tags=["Generation"])
 app.include_router(deployment.router, prefix="/api/v1", tags=["Deployment"])
+app.include_router(domains.router, prefix="/api/v1", tags=["Domains"])
 app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["Feedback"])
 app.include_router(media.router, prefix="/api/v1", tags=["Media"])
 app.include_router(history.router, prefix="/api/v1", tags=["History"])

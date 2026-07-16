@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import SEOPreview from './SEOPreview';
 import DeleteProjectModal from './DeleteProjectModal';
 import EditHistoryPanel from './EditHistoryPanel';
+import CustomDomainCard from './CustomDomainCard';
 import {
   Copy, Check, ExternalLink, Globe, Clock, PencilLine, Files, Loader2, Upload, X,
   FileText, Settings2, Search, History, AlertTriangle,
@@ -295,6 +296,8 @@ export default function ProjectSettingsForm({
             <p className="text-xs text-gray-500">
               Publishing and unpublishing are done from the editor's Publish button.
             </p>
+
+            <CustomDomainCard projectId={projectId} published={!!initialData.published} />
           </div>
         </div>
       </div>

@@ -221,12 +221,17 @@ async def delete_project_deployment(
         update_data = {
             "deployment_id": None,
             "deployment_url": None,
+            "vercel_project_id": None,
             "published": False,
             "deploy_status": "idle",
             "deploy_stage_detail": None,
             "deploy_error": None,
             "updated_at": datetime.utcnow().isoformat()
         }
+        # Keep the custom domain so the next publish re-attaches it; the
+        # Vercel project deletion above already detached it on Vercel's side
+        if project.get("custom_domain"):
+            update_data["custom_domain_status"] = "pending_dns"
         
         supabase.table("projects").update(update_data).eq("id", project_id).execute()
         

@@ -23,6 +23,15 @@ class VercelDeploymentError(Exception):
     pass
 
 
+class VercelDomainError(VercelDeploymentError):
+    """Vercel domain API error carrying Vercel's error code for HTTP mapping."""
+
+    def __init__(self, message: str, code: str = "", status_code: int = 0):
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+
+
 class VercelDeployer:
     """Deploy projects (static HTML or Vite + React) to Vercel from database or in-memory files."""
     
@@ -513,6 +522,7 @@ class VercelDeployer:
             update_data = {
                 "deployment_id": deployment_result["deployment_id"],
                 "deployment_url": deployment_result["deployment_url"],
+                "vercel_project_id": deployment_result.get("project_id"),
                 "last_deployed_at": now,
                 "updated_at": now,
                 "published": True
@@ -521,6 +531,18 @@ class VercelDeployer:
             supabase.table("projects").update(update_data).eq("id", project_id).execute()
 
             logger.info(f"Project {project_id} deployment information updated in database")
+
+            # Re-attach a stored custom domain (undeploy deletes the Vercel
+            # project, detaching the domain there while we keep it in DB).
+            # Best-effort: never fails the deploy; GET /domain reconciles status.
+            custom_domain = project.get("custom_domain")
+            vercel_project_id = deployment_result.get("project_id")
+            if custom_domain and vercel_project_id:
+                try:
+                    await self.attach_custom_domain(vercel_project_id, custom_domain)
+                    logger.info(f"Re-attached custom domain {custom_domain} for project {project_id}")
+                except Exception as e:
+                    logger.warning(f"Could not re-attach custom domain {custom_domain}: {e}")
             # Note: deploy_from_files already polls Vercel until READY
             # (_wait_for_deployment) — no artificial sleep needed.
 
@@ -677,6 +699,226 @@ class VercelDeployer:
         except Exception as e:
             logger.error(f"Unexpected error checking deployment status: {str(e)}")
             raise VercelDeploymentError(f"Failed to check deployment status: {str(e)}")
+
+    # ------------------------------------------------------------------
+    # Custom domain management (Vercel Domains API)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_vercel_error(response) -> tuple:
+        """Extract (code, message) from a Vercel error response body."""
+        try:
+            error = response.json().get("error") or {}
+            return error.get("code", ""), error.get("message", response.text)
+        except Exception:
+            return "", response.text
+
+    async def get_deployment_project_id(self, deployment_id: str) -> Optional[str]:
+        """Resolve the Vercel projectId that owns a deployment (backfill for
+        projects published before vercel_project_id was persisted)."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                self._get_api_url(f"/v13/deployments/{deployment_id}"),
+                headers=self._get_headers()
+            )
+        if response.status_code != 200:
+            return None
+        return response.json().get("projectId")
+
+    async def add_project_domain(
+        self, vercel_project: str, domain: str, redirect: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Attach a domain to a Vercel project.
+
+        Note: a domain owned by a different Vercel account is accepted with
+        verified=false plus a TXT challenge in `verification` — that is the
+        pending path, not an error.
+        """
+        payload: Dict[str, Any] = {"name": domain}
+        if redirect:
+            payload["redirect"] = redirect
+            payload["redirectStatusCode"] = 308
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                self._get_api_url(f"/v10/projects/{vercel_project}/domains"),
+                headers=self._get_headers(),
+                json=payload
+            )
+
+        if response.status_code in (200, 201):
+            return response.json()
+
+        code, message = self._parse_vercel_error(response)
+        logger.error(f"Failed to add domain {domain} to {vercel_project}: {code} {message}")
+        raise VercelDomainError(message, code=code, status_code=response.status_code)
+
+    async def get_project_domain(self, vercel_project: str, domain: str) -> Optional[Dict[str, Any]]:
+        """Get a project's domain record; None if not attached."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                self._get_api_url(f"/v9/projects/{vercel_project}/domains/{domain}"),
+                headers=self._get_headers()
+            )
+        if response.status_code == 200:
+            return response.json()
+        if response.status_code == 404:
+            return None
+        code, message = self._parse_vercel_error(response)
+        raise VercelDomainError(message, code=code, status_code=response.status_code)
+
+    async def verify_project_domain(self, vercel_project: str, domain: str) -> Optional[Dict[str, Any]]:
+        """Trigger verification of a pending TXT challenge. Best-effort:
+        'not yet verifiable' responses are swallowed."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                self._get_api_url(f"/v9/projects/{vercel_project}/domains/{domain}/verify"),
+                headers=self._get_headers()
+            )
+        if response.status_code == 200:
+            return response.json()
+        logger.info(f"Domain {domain} not yet verifiable: {response.text[:200]}")
+        return None
+
+    async def get_domain_config(self, domain: str) -> Dict[str, Any]:
+        """Get DNS configuration status for a domain. Returns {} on failure
+        (callers treat missing config as misconfigured/pending)."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                self._get_api_url(f"/v6/domains/{domain}/config"),
+                headers=self._get_headers()
+            )
+        if response.status_code == 200:
+            return response.json()
+        logger.warning(f"Failed to get domain config for {domain}: {response.text[:200]}")
+        return {}
+
+    async def remove_project_domain(self, vercel_project: str, domain: str) -> bool:
+        """Detach a domain from a Vercel project. 404 (already gone) is success."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.delete(
+                self._get_api_url(f"/v9/projects/{vercel_project}/domains/{domain}"),
+                headers=self._get_headers()
+            )
+        if response.status_code in (200, 204, 404):
+            return True
+        code, message = self._parse_vercel_error(response)
+        raise VercelDomainError(message, code=code, status_code=response.status_code)
+
+    @staticmethod
+    def _counterpart_domain(domain: str, apex_name: str) -> Optional[str]:
+        """The www<->apex pair for a domain, or None for deeper subdomains."""
+        if domain == apex_name:
+            return f"www.{apex_name}"
+        if domain == f"www.{apex_name}":
+            return apex_name
+        return None
+
+    async def attach_custom_domain(self, vercel_project: str, domain: str) -> Dict[str, Any]:
+        """
+        Attach a domain as primary and auto-pair its www/apex counterpart as a
+        308 redirect. Idempotent: already-attached domains are left in place.
+        Counterpart failures are logged, never fatal.
+        """
+        existing = await self.get_project_domain(vercel_project, domain)
+        result = existing if existing is not None else await self.add_project_domain(vercel_project, domain)
+
+        # apexName from Vercel handles multi-part TLDs (e.g. .co.uk) correctly
+        apex_name = result.get("apexName") or domain
+        counterpart = self._counterpart_domain(domain, apex_name)
+        if counterpart:
+            try:
+                if await self.get_project_domain(vercel_project, counterpart) is None:
+                    await self.add_project_domain(vercel_project, counterpart, redirect=domain)
+            except Exception as e:
+                logger.warning(f"Could not attach counterpart domain {counterpart}: {e}")
+        return result
+
+    async def detach_custom_domain(self, vercel_project: str, domain: str) -> None:
+        """Detach a domain and its auto-paired counterpart. Best-effort on the
+        counterpart; failures on the primary raise."""
+        apex_name = None
+        try:
+            record = await self.get_project_domain(vercel_project, domain)
+            apex_name = (record or {}).get("apexName")
+        except Exception as e:
+            logger.warning(f"Could not read domain record for {domain}: {e}")
+        if not apex_name:
+            apex_name = domain[4:] if domain.startswith("www.") else domain
+
+        await self.remove_project_domain(vercel_project, domain)
+
+        counterpart = self._counterpart_domain(domain, apex_name)
+        if counterpart:
+            try:
+                await self.remove_project_domain(vercel_project, counterpart)
+            except Exception as e:
+                logger.warning(f"Could not detach counterpart domain {counterpart}: {e}")
+
+    async def get_domain_status(self, vercel_project: str, domain: str) -> Dict[str, Any]:
+        """
+        Composite status check used by the domains router and re-attach flow.
+
+        Returns {attached, status, verified, misconfigured, dns_instructions,
+        apex_name} where status is 'verified' or 'pending_dns'.
+        """
+        record = await self.get_project_domain(vercel_project, domain)
+        if record is None:
+            return {
+                "attached": False,
+                "status": "pending_dns",
+                "verified": False,
+                "misconfigured": True,
+                "dns_instructions": [],
+                "apex_name": None,
+            }
+
+        # Outstanding ownership challenge: poke verify once, then re-read
+        if record.get("verification"):
+            if await self.verify_project_domain(vercel_project, domain):
+                record = await self.get_project_domain(vercel_project, domain) or record
+
+        config = await self.get_domain_config(domain)
+        verified = bool(record.get("verified"))
+        misconfigured = bool(config.get("misconfigured", True))
+        status = "verified" if verified and not misconfigured else "pending_dns"
+        apex_name = record.get("apexName") or domain
+
+        dns_instructions = []
+        if status != "verified":
+            # TXT ownership challenges first (domain owned by another account)
+            for challenge in record.get("verification") or []:
+                if challenge.get("type") != "TXT":
+                    continue
+                challenge_host = challenge.get("domain", f"_vercel.{apex_name}")
+                name = challenge_host[: -len(f".{apex_name}")] if challenge_host.endswith(f".{apex_name}") else challenge_host
+                dns_instructions.append({
+                    "type": "TXT",
+                    "name": name,
+                    "value": challenge.get("value", ""),
+                })
+            # Prefer Vercel-echoed recommended values over our constants
+            if domain == apex_name:
+                recommended_ips = config.get("recommendedIPs") or []
+                a_value = recommended_ips[0] if recommended_ips else settings.vercel_apex_a_value
+                dns_instructions.append({"type": "A", "name": "@", "value": a_value})
+            else:
+                label = domain[: -len(f".{apex_name}")] if domain.endswith(f".{apex_name}") else domain
+                recommended_cnames = config.get("recommendedCNAME") or []
+                if isinstance(recommended_cnames, str):
+                    recommended_cnames = [recommended_cnames]
+                cname_value = recommended_cnames[0] if recommended_cnames else settings.vercel_cname_value
+                dns_instructions.append({"type": "CNAME", "name": label, "value": cname_value})
+
+        return {
+            "attached": True,
+            "status": status,
+            "verified": verified,
+            "misconfigured": misconfigured,
+            "dns_instructions": dns_instructions,
+            "apex_name": apex_name,
+        }
 
 
 # Backwards compatibility alias

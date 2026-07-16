@@ -98,6 +98,19 @@ async function apiRequest<T>(
 }
 
 /**
+ * Custom domain state for a project (see backend routers/domains.py)
+ */
+export interface DomainStatus {
+  domain: string | null;
+  status: 'pending_dns' | 'verified' | 'error' | null;
+  verified: boolean;
+  misconfigured: boolean;
+  dns_instructions: Array<{ type: string; name: string; value: string }>;
+  error: string | null;
+  checked_at: string | null;
+}
+
+/**
  * API client with typed methods for backend endpoints
  */
 export const api = {
@@ -1069,6 +1082,38 @@ export const api = {
         deploy_stage_detail: string | null;
         deploy_error: string | null;
       }>(`/api/v1/projects/${projectId}/deployment-status`),
+  },
+
+  /**
+   * Custom domain endpoints (Pro tier)
+   */
+  domains: {
+    /**
+     * Connect a custom domain to a published project
+     * Requires: Authorization header with valid access token; Pro/Premium plan
+     */
+    set: (projectId: string, domain: string) =>
+      apiRequest<DomainStatus>(`/api/v1/projects/${projectId}/domain`, {
+        method: "POST",
+        body: JSON.stringify({ domain }),
+      }),
+
+    /**
+     * Get custom domain status (live-checks Vercel; poll target)
+     * Requires: Authorization header with valid access token
+     */
+    getStatus: (projectId: string) =>
+      apiRequest<DomainStatus>(`/api/v1/projects/${projectId}/domain`),
+
+    /**
+     * Disconnect the project's custom domain
+     * Requires: Authorization header with valid access token
+     */
+    remove: (projectId: string) =>
+      apiRequest<{ message: string; project_id: string }>(
+        `/api/v1/projects/${projectId}/domain`,
+        { method: "DELETE" }
+      ),
   },
 
   /**
