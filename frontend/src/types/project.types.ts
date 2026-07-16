@@ -11,6 +11,7 @@ export interface Project {
   is_published?: boolean;
   published?: boolean;
   preview_url?: string;
+  thumbnail_url?: string;
   subdomain?: string;
   deployment_url?: string;
   whatsapp_number?: string;

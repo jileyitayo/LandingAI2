@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     # Hostname suffixes users may not connect as custom domains
     blocked_domain_suffixes: Union[list[str], str] = [".vercel.app", "vercel.com", "sitesmith.app"]
 
+    # ScreenshotOne (optional): dashboard thumbnails are skipped when unset
+    screenshotone_access_key: str = ""
+
     # Backend URL (for generating absolute URLs in Railway/production)
     backend_url: str = "http://localhost:8000"
 
