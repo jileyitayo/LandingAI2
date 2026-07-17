@@ -8,6 +8,7 @@ import DashboardHeader from "@/components/DashboardHeader";
 import SubscriptionDetailsCard from "@/components/SubscriptionDetailsCard";
 import UsageChart from "@/components/UsageChart";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { AlertTriangle } from "lucide-react";
 
 interface SubscriptionTier {
   id: string;
@@ -139,19 +140,7 @@ export default function ProfilePage() {
       <div className="min-h-screen bg-surface flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-card rounded-2xl shadow-card border border-red-200 dark:border-red-500/30 p-6">
           <div className="text-center">
-            <svg
-              className="mx-auto h-12 w-12 text-red-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
+            <AlertTriangle className="mx-auto h-12 w-12 text-red-400" aria-hidden="true" />
             <h3 className="mt-4 text-lg font-medium text-fg">Error Loading Profile</h3>
             <p className="mt-2 text-sm text-muted">{error}</p>
             <button
@@ -185,166 +174,36 @@ export default function ProfilePage() {
 
         {/* Main Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Profile & Account Info */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Appearance */}
-            <div className="card p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-fg">Appearance</h2>
-                  <p className="mt-1 text-sm text-muted">
-                    Choose how SiteSmith looks to you. System matches your
-                    device setting.
-                  </p>
-                </div>
-                <ThemeToggle />
-              </div>
-            </div>
+          {/* Left Column - Profile & Usage */}
+          <div className="lg:col-span-2 space-y-6">
+            <ProfileForm
+              initialProfile={profile}
+              onUpdate={handleProfileUpdate}
+            />
 
-            {/* Profile Form */}
-            <div>
-              <h2 className="text-xl font-semibold text-fg mb-4">
-                Personal Information
-              </h2>
-              <ProfileForm
-                initialProfile={profile}
-                onUpdate={handleProfileUpdate}
-              />
-            </div>
-
-            {/* Usage Analytics */}
             <UsageChart
               data={analyticsData}
               isLoading={analyticsLoading}
               onPeriodChange={handlePeriodChange}
               currentPeriod={analyticsPeriod}
             />
-
-            {/* Account Information */}
-            <div className="card p-6">
-              <h2 className="text-xl font-semibold text-fg mb-4">
-                Account Information
-              </h2>
-              <dl className="space-y-4">
-                <div>
-                  <dt className="text-sm font-medium text-muted">User ID</dt>
-                  <dd className="mt-1 text-sm text-fg font-mono">{profile.id}</dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-muted">Email Verified</dt>
-                  <dd className="mt-1">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        profile.email_verified
-                          ? "bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400"
-                          : "bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-400"
-                      }`}
-                    >
-                      {profile.email_verified ? "Verified" : "Not Verified"}
-                    </span>
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-muted">Account Created</dt>
-                  <dd className="mt-1 text-sm text-fg">
-                    {new Date(profile.created_at).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-muted">Last Updated</dt>
-                  <dd className="mt-1 text-sm text-fg">
-                    {new Date(profile.updated_at).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </dd>
-                </div>
-              </dl>
-            </div>
           </div>
 
-          {/* Right Column - Subscription & Quick Stats */}
+          {/* Right Column - Plan & Preferences */}
           <div className="space-y-6">
-            {/* Subscription Details */}
             <SubscriptionDetailsCard
               subscription={profile.subscription}
               currentUsed={profile.current_period_generations}
               fallbackTierName={profile.subscription_tier}
+              totalGenerations={profile.generation_count}
             />
 
-            {/* Quick Stats */}
             <div className="card p-6">
-              <h3 className="text-lg font-semibold text-fg mb-4">Quick Stats</h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <svg
-                      className="h-5 w-5 text-green-600 dark:text-green-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <span className="text-sm font-medium text-fg">Total Projects</span>
-                  </div>
-                  <span className="text-lg font-bold text-fg">{profile.generation_count}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <svg
-                      className="h-5 w-5 text-brand"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
-                      />
-                    </svg>
-                    <span className="text-sm font-medium text-fg">Daily Used</span>
-                  </div>
-                  <span className="text-lg font-bold text-fg">{profile.current_period_generations}</span>
-                </div>
-                {analyticsData && (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <svg
-                          className="h-5 w-5 text-brand-2"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                          />
-                        </svg>
-                        <span className="text-sm font-medium text-fg">Total Calls</span>
-                      </div>
-                      <span className="text-lg font-bold text-fg">{analyticsData.total_calls}</span>
-                    </div>
-                  </>
-                )}
-              </div>
+              <h2 className="text-xl font-semibold text-fg">Appearance</h2>
+              <p className="mt-1 mb-4 text-sm text-muted">
+                Choose how SiteSmith looks to you.
+              </p>
+              <ThemeToggle />
             </div>
           </div>
         </div>
