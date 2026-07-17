@@ -1,5 +1,7 @@
 "use client";
 
+import { AlertTriangle, Check, Clock, Zap } from "lucide-react";
+
 interface SubscriptionTier {
   id: string;
   tier_name: string;
@@ -29,12 +31,14 @@ interface SubscriptionDetailsCardProps {
   subscription?: Subscription;
   currentUsed: number;
   fallbackTierName?: string;
+  totalGenerations?: number;
 }
 
 export default function SubscriptionDetailsCard({
   subscription,
   currentUsed,
   fallbackTierName = "free",
+  totalGenerations,
 }: SubscriptionDetailsCardProps) {
   // Use subscription data if available, otherwise use fallback
   const displayName = subscription?.tier?.display_name || fallbackTierName.charAt(0).toUpperCase() + fallbackTierName.slice(1);
@@ -127,44 +131,25 @@ export default function SubscriptionDetailsCard({
             ? `${dailyLimit - currentUsed} generations remaining today`
             : "Daily limit reached"}
         </p>
+        {typeof totalGenerations === "number" && (
+          <p className="text-xs text-muted mt-0.5">
+            {totalGenerations} generations all-time
+          </p>
+        )}
       </div>
 
       {/* Limits */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="bg-card-muted rounded-lg p-3">
           <div className="flex items-center gap-2 mb-1">
-            <svg
-              className="h-4 w-4 text-muted"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <Clock className="h-4 w-4 text-muted" aria-hidden="true" />
             <span className="text-xs font-medium text-muted">Daily Limit</span>
           </div>
           <p className="text-lg font-semibold text-fg">{dailyLimit}</p>
         </div>
         <div className="bg-card-muted rounded-lg p-3">
           <div className="flex items-center gap-2 mb-1">
-            <svg
-              className="h-4 w-4 text-muted"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              />
-            </svg>
+            <Zap className="h-4 w-4 text-muted" aria-hidden="true" />
             <span className="text-xs font-medium text-muted">Per Minute</span>
           </div>
           <p className="text-lg font-semibold text-fg">{perMinuteLimit}</p>
@@ -177,19 +162,10 @@ export default function SubscriptionDetailsCard({
         <ul className="space-y-2">
           {features.map((feature, index) => (
             <li key={index} className="flex items-start gap-2">
-              <svg
+              <Check
                 className="h-5 w-5 text-green-500 dark:text-green-400 flex-shrink-0 mt-0.5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
+                aria-hidden="true"
+              />
               <span className="text-sm text-muted">{feature}</span>
             </li>
           ))}
@@ -211,19 +187,10 @@ export default function SubscriptionDetailsCard({
       {cancelAtPeriodEnd && subscription?.current_period_end && (
         <div className="mb-6 p-3 bg-yellow-50 border border-yellow-200 dark:bg-yellow-500/10 dark:border-yellow-500/30 rounded-md">
           <div className="flex items-start gap-2">
-            <svg
+            <AlertTriangle
               className="h-5 w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
+              aria-hidden="true"
+            />
             <div>
               <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Subscription Ending</p>
               <p className="text-xs text-yellow-700 dark:text-yellow-400/90 mt-1">
