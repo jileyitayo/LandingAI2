@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { api, ApiError } from "@/lib/api";
+import { User } from "lucide-react";
 
 interface UserProfile {
   id: string;
@@ -111,6 +112,8 @@ export default function ProfileForm({
 
   return (
     <div className="card p-6">
+      <h2 className="text-xl font-semibold text-fg mb-4">Profile</h2>
+
       {/* Error Message */}
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-500/30 rounded-md">
@@ -141,13 +144,7 @@ export default function ProfileForm({
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <svg
-                  className="w-12 h-12 text-muted"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                </svg>
+                <User className="w-12 h-12 text-muted" aria-hidden="true" />
               )}
             </div>
             {isUploadingAvatar && (
@@ -186,12 +183,20 @@ export default function ProfileForm({
       <form onSubmit={handleSubmit}>
         {/* Email (Read-only) */}
         <div className="mb-4">
-          <label
-            htmlFor="email"
-            className="block text-sm font-medium text-fg mb-1"
-          >
-            Email Address
-          </label>
+          <div className="flex items-center gap-2 mb-1">
+            <label htmlFor="email" className="text-sm font-medium text-fg">
+              Email Address
+            </label>
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                initialProfile.email_verified
+                  ? "bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400"
+                  : "bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-400"
+              }`}
+            >
+              {initialProfile.email_verified ? "Verified" : "Not Verified"}
+            </span>
+          </div>
           <input
             type="email"
             id="email"
@@ -251,6 +256,14 @@ export default function ProfileForm({
           </button>
         </div>
       </form>
+
+      <p className="mt-6 pt-4 border-t border-border text-xs text-muted">
+        Member since{" "}
+        {new Date(initialProfile.created_at).toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+        })}
+      </p>
     </div>
   );
 }
