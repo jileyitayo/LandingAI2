@@ -99,10 +99,10 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto"></div>
+          <p className="mt-4 text-muted">Loading...</p>
         </div>
       </div>
     );
@@ -113,22 +113,22 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface">
       <DashboardHeader />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">My Projects</h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <h1 className="font-display text-3xl font-bold text-fg">My Projects</h1>
+            <p className="mt-1 text-sm text-muted">
               {projects?.length || 0} {projects?.length === 1 ? "project" : "projects"} on this page
             </p>
           </div>
 
           <button
             onClick={() => router.push("/dashboard/new")}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-brand-gradient text-brand-fg font-medium rounded-full shadow-glow-sm hover:shadow-glow hover:-translate-y-0.5 active:translate-y-0 transition-all"
           >
             <Plus className="w-5 h-5" />
             New Project
@@ -139,13 +139,13 @@ export default function DashboardPage() {
         <div className="mb-6 flex flex-col sm:flex-row gap-3">
           {/* Search Input */}
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted" />
             <input
               type="text"
               placeholder="Search projects..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="input pl-10"
             />
           </div>
 
@@ -153,16 +153,16 @@ export default function DashboardPage() {
           <div className="relative">
             <button
               onClick={() => setShowFilterMenu(!showFilterMenu)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors min-w-[160px] justify-between"
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-border rounded-full bg-card hover:bg-card-muted transition-colors min-w-[160px] justify-between"
             >
               <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-gray-500" />
-                <span className="text-sm font-medium text-gray-700">
+                <Filter className="w-4 h-4 text-muted" />
+                <span className="text-sm font-medium text-fg">
                   {STATUS_FILTERS.find((f) => f.value === statusFilter)?.label}
                 </span>
               </div>
               <svg
-                className={`w-4 h-4 text-gray-500 transition-transform ${
+                className={`w-4 h-4 text-muted transition-transform ${
                   showFilterMenu ? "rotate-180" : ""
                 }`}
                 fill="none"
@@ -180,7 +180,7 @@ export default function DashboardPage() {
 
             {/* Filter Dropdown */}
             {showFilterMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
+              <div className="absolute right-0 mt-2 w-48 bg-card rounded-xl shadow-lg border border-border py-1 z-10">
                 {STATUS_FILTERS.map((filter) => (
                   <button
                     key={filter.value}
@@ -190,8 +190,8 @@ export default function DashboardPage() {
                     }}
                     className={`w-full text-left px-4 py-2 text-sm transition-colors ${
                       statusFilter === filter.value
-                        ? "bg-indigo-50 text-indigo-700 font-medium"
-                        : "text-gray-700 hover:bg-gray-50"
+                        ? "bg-brand/10 text-brand font-medium"
+                        : "text-fg hover:bg-card-muted"
                     }`}
                   >
                     {filter.label}
@@ -205,14 +205,14 @@ export default function DashboardPage() {
         {/* Projects Grid */}
         {projectsLoading ? (
           <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading projects...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto"></div>
+            <p className="mt-4 text-muted">Loading projects...</p>
           </div>
         ) : !projects || projects.length === 0 ? (
           <div className="text-center py-16">
-            <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <div className="mx-auto w-24 h-24 bg-card-muted rounded-full flex items-center justify-center mb-4">
               <svg
-                className="w-12 h-12 text-gray-400"
+                className="w-12 h-12 text-muted"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -225,10 +225,10 @@ export default function DashboardPage() {
                 />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <h3 className="text-lg font-medium text-fg mb-2">
               {searchQuery || statusFilter !== "all" ? "No projects found" : "No projects yet"}
             </h3>
-            <p className="text-gray-500 mb-6 max-w-sm mx-auto">
+            <p className="text-muted mb-6 max-w-sm mx-auto">
               {searchQuery || statusFilter !== "all"
                 ? "Try adjusting your search or filter to find what you're looking for."
                 : "Get started by creating your first website project."}
@@ -236,7 +236,7 @@ export default function DashboardPage() {
             {!searchQuery && statusFilter === "all" && (
               <button
                 onClick={() => router.push("/dashboard/new")}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-brand-gradient text-brand-fg font-medium rounded-full shadow-glow-sm hover:shadow-glow hover:-translate-y-0.5 active:translate-y-0 transition-all"
               >
                 <Plus className="w-5 h-5" />
                 Create Your First Project

@@ -132,10 +132,10 @@ export default function BrowseTemplatesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto"></div>
+          <p className="mt-4 text-muted">Loading...</p>
         </div>
       </div>
     );
@@ -154,13 +154,13 @@ export default function BrowseTemplatesPage() {
     : templates.filter(t => t.category === selectedCategory);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm border-b border-gray-200">
+    <div className="min-h-screen bg-surface">
+      <nav className="bg-card shadow-sm border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <button
               onClick={() => router.push("/dashboard")}
-              className="flex items-center text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity"
+              className="flex items-center text-2xl font-bold bg-gradient-to-r from-brand to-brand-2 bg-clip-text text-transparent hover:opacity-80 transition-opacity"
             >
               SiteSmith
             </button>
@@ -169,7 +169,7 @@ export default function BrowseTemplatesPage() {
               {/* Back to Dashboard */}
               <button
                 onClick={() => router.push("/dashboard")}
-                className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-2 transition-colors"
+                className="text-sm text-muted hover:text-fg flex items-center gap-2 transition-colors"
               >
                 <svg
                   className="w-4 h-4"
@@ -191,31 +191,31 @@ export default function BrowseTemplatesPage() {
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="flex items-center space-x-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors"
+                  className="flex items-center space-x-3 hover:bg-card-muted rounded-lg px-3 py-2 transition-colors"
                 >
                   <div className="flex items-center space-x-3">
                     {userProfile?.avatar_url ? (
                       <img
                         src={userProfile.avatar_url}
                         alt="Profile"
-                        className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-200"
+                        className="w-10 h-10 rounded-full object-cover ring-2 ring-border"
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm ring-2 ring-gray-200">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand to-brand-2 flex items-center justify-center text-white font-semibold text-sm ring-2 ring-border">
                         {getInitials()}
                       </div>
                     )}
                     
                     <div className="text-left hidden sm:block">
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-fg">
                         {getDisplayName()}
                       </p>
-                      <p className="text-xs text-gray-500">{user.email}</p>
+                      <p className="text-xs text-muted">{user.email}</p>
                     </div>
                   </div>
 
                   <svg
-                    className={`w-4 h-4 text-gray-500 transition-transform ${
+                    className={`w-4 h-4 text-muted transition-transform ${
                       dropdownOpen ? "rotate-180" : ""
                     }`}
                     fill="none"
@@ -232,12 +232,12 @@ export default function BrowseTemplatesPage() {
                 </button>
 
                 {dropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                    <div className="px-4 py-3 border-b border-gray-100 sm:hidden">
-                      <p className="text-sm font-medium text-gray-900">
+                  <div className="absolute right-0 mt-2 w-56 bg-card rounded-lg shadow-lg border border-border py-1 z-50">
+                    <div className="px-4 py-3 border-b border-border sm:hidden">
+                      <p className="text-sm font-medium text-fg">
                         {getDisplayName()}
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5">{user.email}</p>
+                      <p className="text-xs text-muted mt-0.5">{user.email}</p>
                     </div>
 
                     <button
@@ -245,10 +245,10 @@ export default function BrowseTemplatesPage() {
                         router.push("/dashboard/profile");
                         setDropdownOpen(false);
                       }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+                      className="w-full text-left px-4 py-2.5 text-sm text-fg hover:bg-card-muted flex items-center space-x-3 transition-colors"
                     >
                       <svg
-                        className="w-5 h-5 text-gray-400"
+                        className="w-5 h-5 text-muted"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -296,10 +296,10 @@ export default function BrowseTemplatesPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+          <h1 className="text-4xl font-bold text-fg mb-2">
             Browse Templates
           </h1>
-          <p className="text-lg text-gray-600">
+          <p className="text-lg text-muted">
             Choose from our collection of professionally designed templates
           </p>
         </div>
@@ -313,8 +313,8 @@ export default function BrowseTemplatesPage() {
                 onClick={() => setSelectedCategory(category || "")}
                 className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
                   selectedCategory === category
-                    ? "bg-indigo-600 text-white"
-                    : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
+                    ? "bg-brand text-brand-fg shadow-glow-sm"
+                    : "bg-card text-fg hover:bg-card-muted border border-border"
                 }`}
               >
                 {category === "all" ? "All Templates" : category}
@@ -326,14 +326,14 @@ export default function BrowseTemplatesPage() {
         {/* Templates Grid */}
         {templatesLoading ? (
           <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading templates...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto"></div>
+            <p className="mt-4 text-muted">Loading templates...</p>
           </div>
         ) : filteredTemplates.length === 0 ? (
           <div className="text-center py-12">
-            <div className="bg-gray-100 rounded-lg p-8 max-w-md mx-auto">
+            <div className="bg-card-muted rounded-lg p-8 max-w-md mx-auto">
               <svg
-                className="w-16 h-16 text-gray-400 mx-auto mb-4"
+                className="w-16 h-16 text-muted mx-auto mb-4"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -345,8 +345,8 @@ export default function BrowseTemplatesPage() {
                   d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
                 />
               </svg>
-              <p className="text-gray-600 font-medium">No templates found</p>
-              <p className="text-sm text-gray-500 mt-2">
+              <p className="text-muted font-medium">No templates found</p>
+              <p className="text-sm text-muted mt-2">
                 Try selecting a different category
               </p>
             </div>

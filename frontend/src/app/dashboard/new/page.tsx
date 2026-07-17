@@ -52,7 +52,7 @@ export default function DashboardPage() {
   const generations = useActiveGenerations();
   const [prompt, setPrompt] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
-  const [primaryColor, setPrimaryColor] = useState("#6366f1");
+  const [primaryColor, setPrimaryColor] = useState("#7c3aed");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   // Templates state
@@ -158,10 +158,10 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto"></div>
+          <p className="mt-4 text-muted">Loading...</p>
         </div>
       </div>
     );
@@ -175,16 +175,16 @@ export default function DashboardPage() {
   const displayedTemplates = templates.slice(0, 5);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface">
       <DashboardHeader />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         {/* Hero Section */}
         <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
+          <h1 className="font-display text-5xl font-bold text-fg mb-4">
             Create a new website with AI
           </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+          <p className="text-lg text-muted max-w-2xl mx-auto">
             Simply describe your business or project, and our AI will generate a
             beautiful, professional website for you in minutes.
           </p>
@@ -193,7 +193,7 @@ export default function DashboardPage() {
         {/* Prompt Input Section */}
         <div className="max-w-4xl mx-auto mb-12">
           <div className="relative">
-            <div className="flex items-end gap-3 bg-white rounded-xl border-2 border-gray-200 focus-within:border-indigo-500 transition-colors shadow-sm px-4 py-3">
+            <div className="flex items-end gap-3 bg-card rounded-2xl border border-border focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/40 focus-within:shadow-glow-sm transition shadow-card px-4 py-3">
               <div className="pb-0.5">
                 <AttachmentButton
                   attachments={attachments}
@@ -212,14 +212,14 @@ export default function DashboardPage() {
                 onKeyDown={handleKeyPress}
                 placeholder="e.g., 'A modern coffee shop in downtown Seattle'"
                 rows={1}
-                className="flex-1 px-2 py-2 text-base text-gray-900 placeholder-gray-400 bg-transparent border-0 focus:outline-none focus:ring-0 resize-none"
+                className="flex-1 px-2 py-2 text-base text-fg placeholder:text-muted bg-transparent border-0 focus:outline-none focus:ring-0 resize-none"
                 maxLength={1000}
                 disabled={isGenerating}
               />
               <button
                 onClick={handleGenerate}
                 disabled={prompt.trim().length < 20 || isGenerating}
-                className="mr-3 px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200 whitespace-nowrap"
+                className="mr-3 px-8 py-3 bg-brand-gradient text-brand-fg font-medium rounded-full shadow-glow-sm hover:shadow-glow disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all duration-200 whitespace-nowrap"
               >
                 {isGenerating ? (
                   <span className="flex items-center gap-2">
@@ -251,7 +251,7 @@ export default function DashboardPage() {
               </button>
             </div>
             <div className="absolute -bottom-6 right-0 text-xs">
-              <span className={prompt.trim().length < 20 ? "text-gray-500" : "text-gray-400"}>
+              <span className={prompt.trim().length < 20 ? "text-muted" : "text-muted/70"}>
                 {prompt.length}/1000 {prompt.trim().length < 20 && `(min. 20 characters)`}
               </span>
             </div>
@@ -273,7 +273,7 @@ export default function DashboardPage() {
         {/* Error Display */}
         {error && (
           <div className="max-w-4xl mx-auto mb-8">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-500/30 rounded-lg p-4">
               <div className="flex">
                 <svg
                   className="h-5 w-5 text-red-400"
@@ -288,7 +288,7 @@ export default function DashboardPage() {
                     d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                <p className="ml-3 text-sm text-red-700">{error}</p>
+                <p className="ml-3 text-sm text-red-700 dark:text-red-400">{error}</p>
               </div>
             </div>
           </div>
@@ -297,7 +297,7 @@ export default function DashboardPage() {
         {/* Success Display */}
         {generatedProject && generatedProject.status === 'completed' && (
           <div className="max-w-4xl mx-auto mb-8">
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-2xl p-8 shadow-lg">
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-500/10 dark:to-emerald-500/10 border-2 border-green-300 dark:border-green-500/40 rounded-2xl p-8 shadow-lg">
               <div className="text-center">
                 {/* Celebration Icon */}
                 <div className="mb-4 flex justify-center">
@@ -322,13 +322,13 @@ export default function DashboardPage() {
                 </div>
                 
                 {/* Congratulatory Message */}
-                <h3 className="text-3xl font-bold text-green-800 mb-2">
+                <h3 className="font-display text-3xl font-bold text-green-800 dark:text-green-300 mb-2">
                   🎉 Congratulations! 🎉
                 </h3>
-                <p className="text-xl text-green-700 font-semibold mb-1">
+                <p className="text-xl text-green-700 dark:text-green-300/90 font-semibold mb-1">
                   Your website has been generated successfully!
                 </p>
-                <p className="text-base text-green-600 mb-6">
+                <p className="text-base text-green-600 dark:text-green-400/80 mb-6">
                   Your beautiful, professional website is ready to use and customize.
                 </p>
                 
@@ -374,10 +374,10 @@ export default function DashboardPage() {
         ) : (
           <div className="relative mb-12">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200"></div>
+              <div className="w-full border-t border-border"></div>
             </div>
             <div className="relative flex justify-center">
-              <span className="px-4 bg-gray-50 text-base text-gray-500 font-medium text-center">
+              <span className="px-4 bg-surface text-base text-muted font-medium text-center">
                 OR
                 <br />
                 start with a template
@@ -390,8 +390,8 @@ export default function DashboardPage() {
         {/* COMMENTED OUT FOR NOW WHILE FOCUSING ON JUST UNIFIED GENERATION */}
         {templatesLoading ? (
           <div className="text-center py-12">
-            {/* <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading templates...</p> */}
+            {/* <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto"></div>
+            <p className="mt-4 text-muted">Loading templates...</p> */}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">

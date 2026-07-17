@@ -35,10 +35,10 @@ export function GoogleSignInButton({
       type="button"
       onClick={handleClick}
       disabled={disabled || isLoading}
-      className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-border rounded-full font-medium text-fg bg-card hover:bg-card-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
     >
       {isLoading ? (
-        <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+        <div className="w-5 h-5 border-2 border-border border-t-muted rounded-full animate-spin" />
       ) : (
         <svg className="w-5 h-5" viewBox="0 0 24 24">
           <path

@@ -179,7 +179,7 @@ export default function ProjectSettingsForm({
   return (
     <div className="space-y-8">
       {/* Quick section navigation */}
-      <nav className="sticky top-0 z-10 -mx-1 bg-gray-50/95 backdrop-blur px-1 py-2">
+      <nav className="sticky top-0 z-10 -mx-1 bg-surface/95 backdrop-blur px-1 py-2">
         <div className="flex flex-wrap gap-2">
           {SECTION_NAV.filter((s) => s.id !== 'prompt' || initialData.prompt).map((section) => (
             <a
@@ -188,7 +188,7 @@ export default function ProjectSettingsForm({
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                 section.id === 'danger'
                   ? 'border-red-200 text-red-600 hover:bg-red-50'
-                  : 'border-gray-200 text-gray-600 hover:bg-white hover:text-gray-900'
+                  : 'border-border text-muted hover:bg-card hover:text-fg'
               }`}
             >
               <section.icon className="w-3.5 h-3.5" />
@@ -200,29 +200,29 @@ export default function ProjectSettingsForm({
 
       {/* Original Generation Prompt */}
       {initialData.prompt && (
-        <div id="prompt" className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-lg scroll-mt-16">
+        <div id="prompt" className="bg-card shadow-sm ring-1 ring-border sm:rounded-lg scroll-mt-16">
           <div className="px-4 py-6 sm:p-8">
             <div className="max-w-2xl space-y-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-gray-900">
-                    <FileText className="w-4 h-4 text-indigo-500" />
+                  <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-fg">
+                    <FileText className="w-4 h-4 text-brand" />
                     Original Prompt
                   </h2>
-                  <p className="mt-1 text-sm leading-6 text-gray-600">
+                  <p className="mt-1 text-sm leading-6 text-muted">
                     The prompt used to generate this website{initialData.created_at ? ` on ${formatDate(initialData.created_at)}` : ''}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={handleCopyPrompt}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted hover:text-fg border border-border rounded-md hover:bg-card-muted transition-colors"
                 >
-                  {promptCopied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                  {promptCopied ? <Check className="w-4 h-4 text-green-600 dark:text-green-400" /> : <Copy className="w-4 h-4" />}
                   {promptCopied ? 'Copied' : 'Copy'}
                 </button>
               </div>
-              <blockquote className="rounded-md bg-gray-50 border border-gray-200 p-4 text-sm text-gray-700 whitespace-pre-wrap">
+              <blockquote className="rounded-md bg-card-muted border border-border p-4 text-sm text-fg whitespace-pre-wrap">
                 {initialData.prompt}
               </blockquote>
             </div>
@@ -231,19 +231,19 @@ export default function ProjectSettingsForm({
       )}
 
       {/* Publishing */}
-      <div id="publishing" className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-lg scroll-mt-16">
+      <div id="publishing" className="bg-card shadow-sm ring-1 ring-border sm:rounded-lg scroll-mt-16">
         <div className="px-4 py-6 sm:p-8">
           <div className="max-w-2xl space-y-4">
-            <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-gray-900">
-              <Globe className="w-4 h-4 text-green-600" />
+            <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-fg">
+              <Globe className="w-4 h-4 text-green-600 dark:text-green-400" />
               Publishing
             </h2>
             <div className="flex items-center gap-2">
               <span
                 className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                   initialData.published
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-600'
+                    ? 'bg-green-100 text-green-800 dark:text-green-300 dark:bg-green-500/15 dark:text-green-400'
+                    : 'bg-card-muted text-muted'
                 }`}
               >
                 <Globe className="w-3 h-3" />
@@ -252,28 +252,28 @@ export default function ProjectSettingsForm({
             </div>
 
             {initialData.deployment_url && (
-              <div className="flex items-center gap-2 rounded-md bg-gray-50 border border-gray-200 px-3 py-2">
+              <div className="flex items-center gap-2 rounded-md bg-card-muted border border-border px-3 py-2">
                 <a
                   href={initialData.deployment_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 truncate text-sm text-indigo-600 hover:text-indigo-800"
+                  className="flex-1 truncate text-sm text-brand hover:text-brand-2"
                 >
                   {initialData.deployment_url}
                 </a>
                 <button
                   type="button"
                   onClick={handleCopyUrl}
-                  className="p-1.5 text-gray-500 hover:text-gray-800 rounded transition-colors"
+                  className="p-1.5 text-muted hover:text-fg rounded transition-colors"
                   title="Copy URL"
                 >
-                  {urlCopied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                  {urlCopied ? <Check className="w-4 h-4 text-green-600 dark:text-green-400" /> : <Copy className="w-4 h-4" />}
                 </button>
                 <a
                   href={initialData.deployment_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-1.5 text-gray-500 hover:text-gray-800 rounded transition-colors"
+                  className="p-1.5 text-muted hover:text-fg rounded transition-colors"
                   title="Open live site"
                 >
                   <ExternalLink className="w-4 h-4" />
@@ -282,18 +282,18 @@ export default function ProjectSettingsForm({
             )}
 
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center gap-2 text-gray-600">
-                <Clock className="w-4 h-4 text-gray-400" />
+              <div className="flex items-center gap-2 text-muted">
+                <Clock className="w-4 h-4 text-muted" />
                 <dt>Last published:</dt>
-                <dd className="text-gray-900">{formatDate(initialData.last_deployed_at)}</dd>
+                <dd className="text-fg">{formatDate(initialData.last_deployed_at)}</dd>
               </div>
-              <div className="flex items-center gap-2 text-gray-600">
-                <PencilLine className="w-4 h-4 text-gray-400" />
+              <div className="flex items-center gap-2 text-muted">
+                <PencilLine className="w-4 h-4 text-muted" />
                 <dt>Last edited:</dt>
-                <dd className="text-gray-900">{formatDate(initialData.last_edited_at)}</dd>
+                <dd className="text-fg">{formatDate(initialData.last_edited_at)}</dd>
               </div>
             </dl>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted">
               Publishing and unpublishing are done from the editor's Publish button.
             </p>
 
@@ -304,22 +304,22 @@ export default function ProjectSettingsForm({
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* General Settings */}
-        <div id="general" className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-lg scroll-mt-16">
+        <div id="general" className="bg-card shadow-sm ring-1 ring-border sm:rounded-lg scroll-mt-16">
           <div className="px-4 py-6 sm:p-8">
             <div className="max-w-2xl space-y-6">
               <div>
-                <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-gray-900">
-                  <Settings2 className="w-4 h-4 text-gray-500" />
+                <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-fg">
+                  <Settings2 className="w-4 h-4 text-muted" />
                   General Settings
                 </h2>
-                <p className="mt-1 text-sm leading-6 text-gray-600">
+                <p className="mt-1 text-sm leading-6 text-muted">
                   Basic information about your project
                 </p>
               </div>
 
               {/* Project Name */}
               <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="name" className="block text-sm font-medium text-fg">
                   Project Name
                 </label>
                 <input
@@ -327,33 +327,33 @@ export default function ProjectSettingsForm({
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                  className="mt-1 block w-full rounded-md border-border shadow-sm focus:border-brand focus:ring-brand/40 sm:text-sm px-3 py-2 border"
                   maxLength={200}
                   required
                 />
-                <p className="mt-1 text-xs text-gray-500">{formData.name.length}/200 characters</p>
+                <p className="mt-1 text-xs text-muted">{formData.name.length}/200 characters</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* SEO Settings */}
-        <div id="seo" className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-lg scroll-mt-16">
+        <div id="seo" className="bg-card shadow-sm ring-1 ring-border sm:rounded-lg scroll-mt-16">
           <div className="px-4 py-6 sm:p-8">
             <div className="max-w-2xl space-y-6">
               <div>
-                <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-gray-900">
-                  <Search className="w-4 h-4 text-blue-500" />
+                <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-fg">
+                  <Search className="w-4 h-4 text-brand" />
                   SEO &amp; Site Identity
                 </h2>
-                <p className="mt-1 text-sm leading-6 text-gray-600">
+                <p className="mt-1 text-sm leading-6 text-muted">
                   How your site appears in search results and browser tabs. Applied on the next publish.
                 </p>
               </div>
 
               {/* SEO Title */}
               <div>
-                <label htmlFor="seo_title" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="seo_title" className="block text-sm font-medium text-fg">
                   SEO Title
                 </label>
                 <input
@@ -361,18 +361,18 @@ export default function ProjectSettingsForm({
                   id="seo_title"
                   value={formData.seo_title}
                   onChange={(e) => setFormData({ ...formData, seo_title: e.target.value })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                  className="mt-1 block w-full rounded-md border-border shadow-sm focus:border-brand focus:ring-brand/40 sm:text-sm px-3 py-2 border"
                   maxLength={60}
                   placeholder={formData.name}
                 />
-                <p className="mt-1 text-xs text-gray-500">{formData.seo_title.length}/60 characters</p>
+                <p className="mt-1 text-xs text-muted">{formData.seo_title.length}/60 characters</p>
               </div>
 
               {/* SEO Description */}
               <div>
                 <label
                   htmlFor="seo_description"
-                  className="block text-sm font-medium text-gray-700"
+                  className="block text-sm font-medium text-fg"
                 >
                   SEO Description
                 </label>
@@ -381,16 +381,16 @@ export default function ProjectSettingsForm({
                   rows={3}
                   value={formData.seo_description}
                   onChange={(e) => setFormData({ ...formData, seo_description: e.target.value })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                  className="mt-1 block w-full rounded-md border-border shadow-sm focus:border-brand focus:ring-brand/40 sm:text-sm px-3 py-2 border"
                   maxLength={160}
                   placeholder={initialData.description}
                 />
-                <p className="mt-1 text-xs text-gray-500">{formData.seo_description.length}/160 characters</p>
+                <p className="mt-1 text-xs text-muted">{formData.seo_description.length}/160 characters</p>
               </div>
 
               {/* Favicon */}
               <div>
-                <label className="block text-sm font-medium text-gray-700">Favicon</label>
+                <label className="block text-sm font-medium text-fg">Favicon</label>
                 <div className="mt-1 flex items-center gap-3">
                   {formData.favicon_url ? (
                     <div className="relative">
@@ -398,19 +398,19 @@ export default function ProjectSettingsForm({
                       <img
                         src={formData.favicon_url}
                         alt="Favicon"
-                        className="w-10 h-10 rounded border border-gray-200 object-cover"
+                        className="w-10 h-10 rounded border border-border object-cover"
                       />
                       <button
                         type="button"
                         onClick={() => setFormData({ ...formData, favicon_url: '' })}
-                        className="absolute -top-1.5 -right-1.5 bg-gray-700 text-white rounded-full p-0.5 hover:bg-gray-900"
+                        className="absolute -top-1.5 -right-1.5 bg-fg/70 text-card rounded-full p-0.5 hover:bg-fg"
                         title="Remove favicon"
                       >
                         <X className="w-3 h-3" />
                       </button>
                     </div>
                   ) : (
-                    <div className="w-10 h-10 rounded border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs">
+                    <div className="w-10 h-10 rounded border border-dashed border-border flex items-center justify-center text-muted text-xs">
                       —
                     </div>
                   )}
@@ -425,7 +425,7 @@ export default function ProjectSettingsForm({
                     type="button"
                     onClick={() => faviconInputRef.current?.click()}
                     disabled={uploadingFavicon}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted hover:text-fg border border-border rounded-md hover:bg-card-muted transition-colors disabled:opacity-50"
                   >
                     {uploadingFavicon ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -435,7 +435,7 @@ export default function ProjectSettingsForm({
                     {uploadingFavicon ? 'Uploading…' : 'Upload favicon'}
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-muted">
                   Square PNG recommended (32×32 or larger). Shown in browser tabs after the next publish.
                 </p>
               </div>
@@ -466,7 +466,7 @@ export default function ProjectSettingsForm({
               </div>
             )}
             {saved && (
-              <div className="text-sm text-green-600 flex items-center">
+              <div className="text-sm text-green-600 dark:text-green-400 flex items-center">
                 <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                   <path
                     fillRule="evenodd"
@@ -481,7 +481,7 @@ export default function ProjectSettingsForm({
           <button
             type="submit"
             disabled={saving || !hasChanges}
-            className="inline-flex justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex justify-center rounded-full bg-brand-gradient px-4 py-2 text-sm font-semibold text-brand-fg shadow-glow-sm hover:shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
@@ -489,15 +489,15 @@ export default function ProjectSettingsForm({
       </form>
 
       {/* Edit History */}
-      <div id="history" className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-lg scroll-mt-16">
+      <div id="history" className="bg-card shadow-sm ring-1 ring-border sm:rounded-lg scroll-mt-16">
         <div className="px-4 py-6 sm:p-8">
           <div className="max-w-2xl space-y-4">
             <div>
-              <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-gray-900">
-                <History className="w-4 h-4 text-purple-500" />
+              <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-fg">
+                <History className="w-4 h-4 text-brand-2" />
                 Edit History
               </h2>
-              <p className="mt-1 text-sm leading-6 text-gray-600">
+              <p className="mt-1 text-sm leading-6 text-muted">
                 Every AI edit made to this project, with one-click revert
               </p>
             </div>
@@ -509,12 +509,12 @@ export default function ProjectSettingsForm({
       </div>
 
       {/* Duplicate */}
-      <div className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-lg">
+      <div className="bg-card shadow-sm ring-1 ring-border sm:rounded-lg">
         <div className="px-4 py-6 sm:p-8">
           <div className="max-w-2xl flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold leading-7 text-gray-900">Duplicate Project</h2>
-              <p className="mt-1 text-sm leading-6 text-gray-600">
+              <h2 className="text-base font-semibold leading-7 text-fg">Duplicate Project</h2>
+              <p className="mt-1 text-sm leading-6 text-muted">
                 Create a copy of this project, including all files and the original prompt
               </p>
             </div>
@@ -522,7 +522,7 @@ export default function ProjectSettingsForm({
               type="button"
               onClick={handleDuplicate}
               disabled={duplicating}
-              className="inline-flex items-center gap-2 justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 justify-center rounded-md bg-card px-4 py-2 text-sm font-semibold text-fg shadow-sm border border-border hover:bg-card-muted disabled:opacity-50"
             >
               {duplicating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Files className="w-4 h-4" />}
               {duplicating ? 'Duplicating…' : 'Duplicate'}
@@ -532,7 +532,7 @@ export default function ProjectSettingsForm({
       </div>
 
       {/* Danger Zone */}
-      <div id="danger" className="bg-white shadow-sm ring-1 ring-red-900/10 sm:rounded-lg border-red-200 border scroll-mt-16">
+      <div id="danger" className="bg-card shadow-sm ring-1 ring-red-900/10 sm:rounded-lg border-red-200 border scroll-mt-16">
         <div className="px-4 py-6 sm:p-8">
           <div className="max-w-2xl">
             <h2 className="flex items-center gap-2 text-base font-semibold leading-7 text-red-900">

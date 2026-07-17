@@ -2,15 +2,130 @@
 @tailwind components;
 @tailwind utilities;
 
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
 @layer base {
   :root {
-    --foreground-rgb: 0, 0, 0;
-    --background-start-rgb: 214, 219, 220;
-    --background-end-rgb: 255, 255, 255;
+    --surface: 247 246 250; /* #F7F6FA canvas */
+    --card: 255 255 255;
+    --card-muted: 243 241 248; /* inset panels, hover fills */
+    --border: 233 230 240; /* #E9E6F0 */
+    --fg: 27 23 37; /* #1B1725 violet-biased near-black */
+    --muted: 110 104 126; /* #6E687E secondary text */
+    --brand: 124 58 237; /* #7C3AED violet-600 */
+    --brand-2: 217 70 239; /* #D946EF fuchsia-500 */
+    --on-brand: 255 255 255;
+  }
+
+  .dark {
+    --surface: 15 13 22; /* #0F0D16 */
+    --card: 23 19 34; /* #171322 */
+    --card-muted: 31 25 48; /* #1F1930 */
+    --border: 42 36 64; /* #2A2440 */
+    --fg: 242 240 247;
+    --muted: 162 155 184;
+    --brand: 139 92 246; /* violet-500, brighter for dark contrast */
+    --brand-2: 232 121 249; /* fuchsia-400 */
+    --on-brand: 255 255 255;
   }
 
   body {
-    color: rgb(var(--foreground-rgb));
+    @apply bg-surface text-fg antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-card border border-border rounded-2xl shadow-card;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-border bg-card px-4 py-2.5 text-fg placeholder:text-muted transition focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/40 focus:shadow-glow-sm;
+  }
+
+  /* Animated ring + halo for cards with an action in flight
+     (generation, publishing, saving). Host must have its own background. */
+  .glow-active {
+    position: relative;
+  }
+  .glow-active::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    padding: 2px;
+    background: conic-gradient(
+      from var(--angle),
+      rgb(var(--brand)),
+      rgb(var(--brand-2)),
+      transparent 55%,
+      rgb(var(--brand))
+    );
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    animation: spin-angle 4s linear infinite;
+    pointer-events: none;
+  }
+  .glow-active::before {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: inherit;
+    background: conic-gradient(
+      from var(--angle),
+      rgb(var(--brand)),
+      rgb(var(--brand-2)),
+      transparent 55%,
+      rgb(var(--brand))
+    );
+    filter: blur(14px);
+    opacity: 0.45;
+    z-index: -1;
+    animation:
+      spin-angle 4s linear infinite,
+      glow-pulse 2.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  .glow-dot {
+    @apply inline-block h-2 w-2 rounded-full bg-brand-2;
+    box-shadow: 0 0 0 4px rgb(var(--brand-2) / 0.25);
+    animation: glow-pulse 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes spin-angle {
+  to {
+    --angle: 360deg;
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-active::before,
+  .glow-active::after,
+  .glow-dot,
+  .animate-shimmer {
+    animation: none !important;
   }
 }
 
@@ -18,22 +133,23 @@
   .text-balance {
     text-wrap: balance;
   }
-  
-  /* Custom scrollbar for color picker */
+
+  /* Custom scrollbar for the editor's color picker — the editor keeps its
+     hardcoded dark chrome in both themes, so these stay dark (not tokens). */
   .custom-scrollbar::-webkit-scrollbar {
     width: 8px;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-track {
     background: rgba(31, 41, 55, 0.5);
     border-radius: 4px;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-thumb {
     background: rgba(75, 85, 99, 0.8);
     border-radius: 4px;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(107, 114, 128, 1);
   }

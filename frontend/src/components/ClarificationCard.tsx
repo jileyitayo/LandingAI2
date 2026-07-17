@@ -37,10 +37,10 @@ export default function ClarificationCard({
 
   return (
     <div className="max-w-4xl mx-auto mb-8">
-      <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-6 shadow-sm">
+      <div className="bg-brand/5 border border-brand/25 rounded-2xl p-6 shadow-sm">
         <div className="flex gap-3">
           <svg
-            className="h-6 w-6 text-indigo-500 flex-shrink-0 mt-0.5"
+            className="h-6 w-6 text-brand flex-shrink-0 mt-0.5"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -53,12 +53,12 @@ export default function ClarificationCard({
             />
           </svg>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-indigo-900 mb-1">
+            <h3 className="text-sm font-semibold text-fg mb-1">
               Quick question before we generate
             </h3>
-            <p className="text-sm text-indigo-800 mb-4">{clarification.question}</p>
+            <p className="text-sm text-fg/80 mb-4">{clarification.question}</p>
 
-            <div className="flex items-end gap-2 bg-white rounded-lg border border-indigo-200 px-3 py-2 mb-4">
+            <div className="flex items-end gap-2 bg-card rounded-xl border border-brand/25 px-3 py-2 mb-4">
               {clarification.wants_attachment && (
                 <div className="pb-0.5">
                   <AttachmentButton
@@ -79,7 +79,7 @@ export default function ClarificationCard({
                 rows={2}
                 maxLength={1000}
                 disabled={disabled}
-                className="flex-1 px-1 py-1 text-sm text-gray-900 placeholder-gray-400 bg-transparent border-0 focus:outline-none focus:ring-0 resize-none"
+                className="flex-1 px-1 py-1 text-sm text-fg placeholder:text-muted bg-transparent border-0 focus:outline-none focus:ring-0 resize-none"
               />
             </div>
 
@@ -87,14 +87,14 @@ export default function ClarificationCard({
               <button
                 onClick={() => onAnswer(answer.trim() || undefined)}
                 disabled={disabled || !hasInput}
-                className="px-5 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                className="px-5 py-2 bg-brand-gradient text-brand-fg text-sm font-medium rounded-full shadow-glow-sm hover:shadow-glow disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all"
               >
                 Answer & generate
               </button>
               <button
                 onClick={onGenerateAnyway}
                 disabled={disabled}
-                className="px-5 py-2 bg-white text-indigo-700 text-sm font-medium rounded-lg border border-indigo-300 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-5 py-2 bg-card text-brand text-sm font-medium rounded-full border border-brand/30 hover:bg-brand/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Generate anyway
               </button>

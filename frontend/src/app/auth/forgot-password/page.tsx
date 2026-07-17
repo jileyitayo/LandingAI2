@@ -50,12 +50,12 @@ export default function ForgotPasswordPage() {
   // Show success message after email is sent
   if (showSuccessMessage) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-surface px-4">
         <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 text-center">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="card p-8 text-center">
+            <div className="w-16 h-16 bg-brand/10 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg
-                className="w-8 h-8 text-blue-600"
+                className="w-8 h-8 text-brand"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -69,18 +69,18 @@ export default function ForgotPasswordPage() {
               </svg>
             </div>
 
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <h2 className="font-display text-2xl font-semibold text-fg mb-2">
               Check your email
             </h2>
 
-            <p className="text-gray-600 mb-2">
+            <p className="text-muted mb-2">
               We&apos;ve sent a password reset link to:
             </p>
 
-            <p className="font-medium text-gray-900 mb-6">{submittedEmail}</p>
+            <p className="font-medium text-fg mb-6">{submittedEmail}</p>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <p className="text-sm text-blue-800">
+            <div className="bg-brand/5 border border-brand/20 rounded-lg p-4 mb-6">
+              <p className="text-sm text-brand">
                 <strong>Note:</strong> The link will expire in 1 hour. If you
                 don&apos;t see the email, check your spam folder.
               </p>
@@ -89,14 +89,14 @@ export default function ForgotPasswordPage() {
             <div className="space-y-3">
               <Link
                 href="/auth/login"
-                className="block w-full px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-medium hover:from-indigo-700 hover:to-purple-700 transition-colors"
+                className="block w-full px-6 py-2.5 bg-brand-gradient text-brand-fg rounded-full font-medium shadow-glow-sm hover:shadow-glow transition-all"
               >
                 Back to login
               </Link>
 
               <button
                 onClick={() => setShowSuccessMessage(false)}
-                className="block w-full px-6 py-2.5 bg-white text-gray-700 rounded-lg font-medium border border-gray-300 hover:bg-gray-50 transition-colors"
+                className="block w-full px-6 py-2.5 bg-card text-fg rounded-full font-medium border border-border hover:bg-card-muted transition-colors"
               >
                 Resend email
               </button>
@@ -117,7 +117,7 @@ export default function ForgotPasswordPage() {
         <div className="text-center">
           <Link
             href="/auth/login"
-            className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            className="text-sm text-brand hover:text-brand-2 font-medium"
           >
             ← Back to login
           </Link>
@@ -137,8 +137,8 @@ export default function ForgotPasswordPage() {
 
       <SubmitButton isLoading={isSubmitting}>Send reset link</SubmitButton>
 
-      <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-        <p className="text-sm text-gray-600">
+      <div className="mt-4 p-4 bg-card-muted rounded-lg border border-border">
+        <p className="text-sm text-muted">
           <strong>Need help?</strong> If you&apos;re having trouble resetting
           your password, please contact support.
         </p>

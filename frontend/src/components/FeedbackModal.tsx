@@ -160,12 +160,12 @@ export default function FeedbackModal({
         />
 
         {/* Modal */}
-        <div className="relative transform overflow-hidden rounded-2xl bg-white shadow-2xl transition-all w-full max-w-2xl">
+        <div className="relative transform overflow-hidden rounded-2xl bg-card shadow-2xl transition-all w-full max-w-2xl">
           {/* Close button */}
           <button
             onClick={handleClose}
             disabled={submitting}
-            className="absolute right-4 top-4 z-10 rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors disabled:opacity-50"
+            className="absolute right-4 top-4 z-10 rounded-full p-2 text-muted hover:bg-card-muted hover:text-fg transition-colors disabled:opacity-50"
           >
             <X className="w-5 h-5" />
           </button>
@@ -187,26 +187,26 @@ export default function FeedbackModal({
                     />
                   </svg>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                <h3 className="text-2xl font-bold text-fg mb-2">
                   Thank You!
                 </h3>
-                <p className="text-gray-600">
+                <p className="text-muted">
                   Your feedback has been submitted successfully. We appreciate your input!
                 </p>
               </div>
             ) : (
               <>
                 {/* Header */}
-                <div className="bg-gradient-to-r from-blue-500 to-purple-600 px-8 py-6 text-white">
+                <div className="bg-brand-gradient px-8 py-6 text-white">
                   <h2 className="text-2xl font-bold mb-2">We'd Love Your Feedback</h2>
-                  <p className="text-blue-100">Help us improve by sharing your thoughts</p>
+                  <p className="text-white/80">Help us improve by sharing your thoughts</p>
                 </div>
 
                 {/* Content */}
                 <div className="p-8 space-y-6">
                   {/* Category Selection - Card Style */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-900 mb-3">
+                    <label className="block text-sm font-semibold text-fg mb-3">
                       What would you like to share? *
                     </label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -214,11 +214,18 @@ export default function FeedbackModal({
                         const Icon = option.icon;
                         const isSelected = category === option.value;
                         const colorClasses = {
-                          blue: isSelected ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-500' : 'border-gray-200 hover:border-blue-300',
-                          red: isSelected ? 'bg-red-50 border-red-500 ring-2 ring-red-500' : 'border-gray-200 hover:border-red-300',
-                          yellow: isSelected ? 'bg-yellow-50 border-yellow-500 ring-2 ring-yellow-500' : 'border-gray-200 hover:border-yellow-300',
-                          purple: isSelected ? 'bg-purple-50 border-purple-500 ring-2 ring-purple-500' : 'border-gray-200 hover:border-purple-300',
-                          gray: isSelected ? 'bg-gray-50 border-gray-500 ring-2 ring-gray-500' : 'border-gray-200 hover:border-gray-300',
+                          blue: isSelected ? 'bg-brand/10 border-brand ring-2 ring-brand/50' : 'border-border hover:border-brand/40',
+                          red: isSelected ? 'bg-red-50 dark:bg-red-500/10 border-red-500 ring-2 ring-red-500/50' : 'border-border hover:border-red-300 dark:hover:border-red-500/50',
+                          yellow: isSelected ? 'bg-yellow-50 dark:bg-yellow-500/10 border-yellow-500 ring-2 ring-yellow-500/50' : 'border-border hover:border-yellow-300 dark:hover:border-yellow-500/50',
+                          purple: isSelected ? 'bg-brand-2/10 border-brand-2 ring-2 ring-brand-2/50' : 'border-border hover:border-brand-2/40',
+                          gray: isSelected ? 'bg-card-muted border-muted ring-2 ring-muted/50' : 'border-border hover:border-muted/50',
+                        };
+                        const iconColorClasses = {
+                          blue: 'text-brand',
+                          red: 'text-red-600 dark:text-red-400',
+                          yellow: 'text-yellow-600 dark:text-yellow-400',
+                          purple: 'text-brand-2',
+                          gray: 'text-muted',
                         };
 
                         return (
@@ -229,11 +236,11 @@ export default function FeedbackModal({
                             disabled={submitting}
                             className={`relative flex flex-col items-center p-4 rounded-xl border-2 transition-all cursor-pointer disabled:opacity-50 ${colorClasses[option.color as keyof typeof colorClasses]}`}
                           >
-                            <Icon className={`w-6 h-6 mb-2 ${isSelected ? `text-${option.color}-600` : 'text-gray-400'}`} />
-                            <span className={`text-sm font-medium ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
+                            <Icon className={`w-6 h-6 mb-2 ${isSelected ? iconColorClasses[option.color as keyof typeof iconColorClasses] : 'text-muted'}`} />
+                            <span className={`text-sm font-medium ${isSelected ? 'text-fg' : 'text-fg'}`}>
                               {option.label}
                             </span>
-                            <span className="text-xs text-gray-500 mt-1">
+                            <span className="text-xs text-muted mt-1">
                               {option.description}
                             </span>
                           </button>
@@ -246,15 +253,15 @@ export default function FeedbackModal({
                   <div>
                     <label
                       htmlFor="action"
-                      className="block text-sm font-semibold text-gray-900 mb-2"
+                      className="block text-sm font-semibold text-fg mb-2"
                     >
-                      Related Action <span className="text-gray-500 font-normal">(Optional)</span>
+                      Related Action <span className="text-muted font-normal">(Optional)</span>
                     </label>
                     <select
                       id="action"
                       value={action}
                       onChange={(e) => setAction(e.target.value as ActionType | '')}
-                      className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 sm:text-sm px-4 py-3 border transition-all"
+                      className="block w-full rounded-lg border-border shadow-sm focus:border-brand focus:ring-2 focus:ring-brand/30 sm:text-sm px-4 py-3 border transition-all"
                       disabled={submitting}
                     >
                       {actionOptions.map((option) => (
@@ -263,15 +270,15 @@ export default function FeedbackModal({
                         </option>
                       ))}
                     </select>
-                    <p className="mt-1.5 text-xs text-gray-500">
+                    <p className="mt-1.5 text-xs text-muted">
                       What were you doing when you encountered this?
                     </p>
                   </div>
 
                   {/* Rating - Improved Stars */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-900 mb-3">
-                      Rate Your Experience <span className="text-gray-500 font-normal">(Optional)</span>
+                    <label className="block text-sm font-semibold text-fg mb-3">
+                      Rate Your Experience <span className="text-muted font-normal">(Optional)</span>
                     </label>
                     <div className="flex items-center space-x-3">
                       {[1, 2, 3, 4, 5].map((star) => (
@@ -286,13 +293,13 @@ export default function FeedbackModal({
                             className={`w-10 h-10 transition-all ${
                               rating && star <= rating
                                 ? 'text-yellow-400 fill-yellow-400 drop-shadow-sm'
-                                : 'text-gray-300 group-hover:text-yellow-200'
+                                : 'text-border group-hover:text-yellow-300'
                             }`}
                           />
                         </button>
                       ))}
                       {rating && (
-                        <span className="ml-3 text-sm font-medium text-gray-700">
+                        <span className="ml-3 text-sm font-medium text-fg">
                           {rating === 5 ? 'Excellent!' : rating === 4 ? 'Good' : rating === 3 ? 'Okay' : rating === 2 ? 'Poor' : 'Very Poor'}
                         </span>
                       )}
@@ -303,7 +310,7 @@ export default function FeedbackModal({
                   <div>
                     <label
                       htmlFor="message"
-                      className="block text-sm font-semibold text-gray-900 mb-2"
+                      className="block text-sm font-semibold text-fg mb-2"
                     >
                       Your Feedback *
                     </label>
@@ -313,15 +320,15 @@ export default function FeedbackModal({
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Tell us what you think... Be as detailed as you'd like!"
-                      className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 sm:text-sm px-4 py-3 border transition-all resize-none"
+                      className="block w-full rounded-lg border-border shadow-sm focus:border-brand focus:ring-2 focus:ring-brand/30 sm:text-sm px-4 py-3 border transition-all resize-none"
                       disabled={submitting}
                       required
                     />
                     <div className="mt-1.5 flex items-center justify-between">
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-muted">
                         Share your experience, suggestions, or issues
                       </p>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-muted">
                         {message.length}/2000
                       </span>
                     </div>
@@ -329,18 +336,18 @@ export default function FeedbackModal({
 
                   {/* Error Message */}
                   {error && (
-                    <div className="rounded-lg bg-red-50 border border-red-200 p-4 flex items-start space-x-3">
+                    <div className="rounded-lg bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-500/30 p-4 flex items-start space-x-3">
                       <svg className="w-5 h-5 text-red-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                       </svg>
-                      <p className="text-sm text-red-700 font-medium">{error}</p>
+                      <p className="text-sm text-red-700 dark:text-red-400 font-medium">{error}</p>
                     </div>
                   )}
                 </div>
 
                 {/* Footer */}
-                <div className="bg-gray-50 px-8 py-4 flex items-center justify-between border-t border-gray-200">
-                  <p className="text-xs text-gray-500">
+                <div className="bg-card-muted px-8 py-4 flex items-center justify-between border-t border-border">
+                  <p className="text-xs text-muted">
                     <span className="text-red-500">*</span> Required fields
                   </p>
                   <div className="flex items-center space-x-3">
@@ -348,14 +355,14 @@ export default function FeedbackModal({
                       type="button"
                       onClick={handleClose}
                       disabled={submitting}
-                      className="px-5 py-2.5 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      className="px-5 py-2.5 text-sm font-semibold text-fg bg-card border border-border rounded-lg hover:bg-card-muted focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={submitting || !message.trim()}
-                      className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg"
+                      className="px-6 py-2.5 text-sm font-semibold text-brand-fg bg-brand-gradient rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all shadow-glow-sm hover:shadow-glow"
                     >
                       {submitting ? (
                         <span className="flex items-center space-x-2">

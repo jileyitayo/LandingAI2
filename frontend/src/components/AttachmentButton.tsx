@@ -85,7 +85,7 @@ export default function AttachmentButton({
           {attachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="group relative h-12 w-12 overflow-hidden rounded-md border border-gray-200"
+              className="group relative h-12 w-12 overflow-hidden rounded-md border border-border"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -107,9 +107,9 @@ export default function AttachmentButton({
             Array.from({ length: uploadingCount }).map((_, i) => (
               <div
                 key={`uploading-${i}`}
-                className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-gray-300 bg-gray-50"
+                className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-border bg-card-muted"
               >
-                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                <Loader2 className="h-4 w-4 animate-spin text-muted" />
               </div>
             ))}
         </div>
@@ -135,7 +135,7 @@ export default function AttachmentButton({
         type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={disabled || uploadingCount > 0 || attachments.length >= maxAttachments}
-        className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted transition-colors hover:border-brand/40 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
         aria-label="Attach images"
         title="Attach images"
       >

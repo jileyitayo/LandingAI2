@@ -125,10 +125,10 @@ export default function SignupPage() {
   // Show loading state while checking auth
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+      <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto"></div>
+          <p className="mt-4 text-muted">Loading...</p>
         </div>
       </div>
     );
@@ -142,12 +142,12 @@ export default function SignupPage() {
   // Show email verification message after successful signup
   if (showVerificationMessage) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-surface px-4">
         <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="card p-8 text-center">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-500/15 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg
-                className="w-8 h-8 text-green-600"
+                className="w-8 h-8 text-green-600 dark:text-green-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -161,18 +161,18 @@ export default function SignupPage() {
               </svg>
             </div>
 
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <h2 className="font-display text-2xl font-semibold text-fg mb-2">
               Check your email
             </h2>
 
-            <p className="text-gray-600 mb-6">
+            <p className="text-muted mb-6">
               We&apos;ve sent a verification link to your email address. Please
               click the link to verify your account and complete the signup
               process.
             </p>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <p className="text-sm text-blue-800">
+            <div className="bg-brand/5 border border-brand/20 rounded-lg p-4 mb-6">
+              <p className="text-sm text-brand">
                 <strong>Tip:</strong> If you don&apos;t see the email, check
                 your spam folder.
               </p>
@@ -180,7 +180,7 @@ export default function SignupPage() {
 
             <Link
               href="/auth/login"
-              className="inline-block px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-medium hover:from-indigo-700 hover:to-purple-700 transition-colors"
+              className="inline-block px-6 py-2.5 bg-brand-gradient text-brand-fg rounded-full font-medium shadow-glow-sm hover:shadow-glow transition-all"
             >
               Back to login
             </Link>
@@ -198,11 +198,11 @@ export default function SignupPage() {
       error={errors.root?.message}
       footer={
         <div className="text-center">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted">
             Already have an account?{" "}
             <Link
               href="/auth/login"
-              className="text-indigo-600 hover:text-indigo-700 font-medium"
+              className="text-brand hover:text-brand-2 font-medium"
             >
               Sign in
             </Link>
@@ -218,10 +218,10 @@ export default function SignupPage() {
 
       <div className="relative">
         <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-gray-300"></div>
+          <div className="w-full border-t border-border"></div>
         </div>
         <div className="relative flex justify-center text-sm">
-          <span className="px-2 bg-white text-gray-500">Or continue with email</span>
+          <span className="px-2 bg-card text-muted">Or continue with email</span>
         </div>
       </div>
 

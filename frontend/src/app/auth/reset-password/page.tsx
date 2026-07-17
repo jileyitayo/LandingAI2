@@ -79,12 +79,12 @@ function ResetPasswordContent() {
   // Show error if token is invalid
   if (!isValidToken) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-surface px-4">
         <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="card p-8 text-center">
+            <div className="w-16 h-16 bg-red-100 dark:bg-red-500/15 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg
-                className="w-8 h-8 text-red-600"
+                className="w-8 h-8 text-red-600 dark:text-red-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -98,11 +98,11 @@ function ResetPasswordContent() {
               </svg>
             </div>
 
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <h2 className="font-display text-2xl font-semibold text-fg mb-2">
               Invalid or expired link
             </h2>
 
-            <p className="text-gray-600 mb-6">
+            <p className="text-muted mb-6">
               This password reset link is invalid or has expired. Please request
               a new password reset link.
             </p>
@@ -110,14 +110,14 @@ function ResetPasswordContent() {
             <div className="space-y-3">
               <Link
                 href="/auth/forgot-password"
-                className="block w-full px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-medium hover:from-indigo-700 hover:to-purple-700 transition-colors"
+                className="block w-full px-6 py-2.5 bg-brand-gradient text-brand-fg rounded-full font-medium shadow-glow-sm hover:shadow-glow transition-all"
               >
                 Request new link
               </Link>
 
               <Link
                 href="/auth/login"
-                className="block w-full px-6 py-2.5 bg-white text-gray-700 rounded-lg font-medium border border-gray-300 hover:bg-gray-50 transition-colors"
+                className="block w-full px-6 py-2.5 bg-card text-fg rounded-full font-medium border border-border hover:bg-card-muted transition-colors"
               >
                 Back to login
               </Link>
@@ -131,12 +131,12 @@ function ResetPasswordContent() {
   // Show success message after password is reset
   if (showSuccessMessage) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-surface px-4">
         <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="card p-8 text-center">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-500/15 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg
-                className="w-8 h-8 text-green-600"
+                className="w-8 h-8 text-green-600 dark:text-green-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -150,22 +150,22 @@ function ResetPasswordContent() {
               </svg>
             </div>
 
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <h2 className="font-display text-2xl font-semibold text-fg mb-2">
               Password updated!
             </h2>
 
-            <p className="text-gray-600 mb-6">
+            <p className="text-muted mb-6">
               Your password has been successfully updated. You can now sign in
               with your new password.
             </p>
 
-            <p className="text-sm text-gray-500 mb-6">
+            <p className="text-sm text-muted mb-6">
               Redirecting to login page...
             </p>
 
             <Link
               href="/auth/login"
-              className="inline-block px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-medium hover:from-indigo-700 hover:to-purple-700 transition-colors"
+              className="inline-block px-6 py-2.5 bg-brand-gradient text-brand-fg rounded-full font-medium shadow-glow-sm hover:shadow-glow transition-all"
             >
               Go to login
             </Link>
@@ -185,7 +185,7 @@ function ResetPasswordContent() {
         <div className="text-center">
           <Link
             href="/auth/login"
-            className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            className="text-sm text-brand hover:text-brand-2 font-medium"
           >
             ← Back to login
           </Link>
@@ -214,11 +214,11 @@ function ResetPasswordContent() {
         required
       />
 
-      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-        <p className="text-xs text-blue-800">
+      <div className="p-3 bg-brand/5 border border-brand/20 rounded-lg">
+        <p className="text-xs text-brand">
           <strong>Password requirements:</strong>
         </p>
-        <ul className="text-xs text-blue-700 mt-1 space-y-1 list-disc list-inside">
+        <ul className="text-xs text-brand/90 mt-1 space-y-1 list-disc list-inside">
           <li>At least 8 characters long</li>
           <li>Contains uppercase and lowercase letters</li>
           <li>Contains at least one number</li>
@@ -237,10 +237,10 @@ export default function ResetPasswordPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+        <div className="min-h-screen flex items-center justify-center bg-surface">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto"></div>
+            <p className="mt-4 text-muted">Loading...</p>
           </div>
         </div>
       }

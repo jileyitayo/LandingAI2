@@ -85,10 +85,10 @@ function LoginForm() {
   // Show loading state while checking auth
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+      <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto"></div>
+          <p className="mt-4 text-muted">Loading...</p>
         </div>
       </div>
     );
@@ -107,11 +107,11 @@ function LoginForm() {
       error={errors.root?.message}
       footer={
         <div className="text-center space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted">
             Don&apos;t have an account?{" "}
             <Link
               href="/auth/signup"
-              className="text-indigo-600 hover:text-indigo-700 font-medium"
+              className="text-brand hover:text-brand-2 font-medium"
             >
               Sign up
             </Link>
@@ -127,10 +127,10 @@ function LoginForm() {
 
       <div className="relative">
         <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-gray-300"></div>
+          <div className="w-full border-t border-border"></div>
         </div>
         <div className="relative flex justify-center text-sm">
-          <span className="px-2 bg-white text-gray-500">Or continue with email</span>
+          <span className="px-2 bg-card text-muted">Or continue with email</span>
         </div>
       </div>
 
@@ -159,7 +159,7 @@ function LoginForm() {
       <div className="flex items-center justify-end">
         <Link
           href="/auth/forgot-password"
-          className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+          className="text-sm text-brand hover:text-brand-2 font-medium"
         >
           Forgot password?
         </Link>
@@ -178,10 +178,10 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+        <div className="min-h-screen flex items-center justify-center bg-surface">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto"></div>
+            <p className="mt-4 text-muted">Loading...</p>
           </div>
         </div>
       }

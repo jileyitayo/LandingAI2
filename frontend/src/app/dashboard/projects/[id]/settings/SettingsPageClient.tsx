@@ -32,38 +32,38 @@ export default function SettingsPageClient({
 }: SettingsPageClientProps) {
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface">
       <DashboardHeader />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Breadcrumb and Header */}
         <div className="mb-8">
-          <nav className="flex items-center space-x-2 text-sm text-gray-500 mb-4">
-            <Link href="/dashboard" className="hover:text-gray-700 transition-colors">
+          <nav className="flex items-center space-x-2 text-sm text-muted mb-4">
+            <Link href="/dashboard" className="hover:text-fg transition-colors">
               Dashboard
             </Link>
             <span>/</span>
             <Link
               href={`/dashboard/projects/${projectId}`}
-              className="hover:text-gray-700 transition-colors"
+              className="hover:text-fg transition-colors"
             >
               {initialProject.name}
             </Link>
             <span>/</span>
-            <span className="text-gray-900">Settings</span>
+            <span className="text-fg">Settings</span>
           </nav>
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Project Settings</h1>
-              <p className="mt-1 text-sm text-gray-500">
+              <h1 className="text-3xl font-bold text-fg">Project Settings</h1>
+              <p className="mt-1 text-sm text-muted">
                 Configure your project settings, subdomain, SEO, and integrations
               </p>
             </div>
             <Link
               href={`/dashboard/projects/${projectId}`}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm"
+              className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg bg-card hover:bg-card-muted transition-colors shadow-sm"
             >
               <svg
                 className="w-5 h-5"

@@ -200,34 +200,34 @@ export default function GenerationStatus({
 
   return (
     <div className="max-w-4xl mx-auto mb-8">
-      <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 border-2 border-indigo-200 rounded-xl p-6 shadow-lg">
+      <div className="card glow-active p-6">
         {/* Header with icon and emoji */}
         <div className="flex items-start gap-4 mb-4">
           <div className="relative">
             {/* Rotating spinner background */}
             <div className="absolute inset-0 flex items-center justify-center">
-              <IconComponent className="w-6 h-6 text-indigo-600 animate-spin" />
+              <IconComponent className="w-6 h-6 text-brand animate-spin" />
             </div>
             {/* Main icon */}
-            <div className="relative bg-white rounded-full p-3 shadow-md">
-              <IconComponent className="w-6 h-6 text-indigo-600" />
+            <div className="relative bg-card rounded-full p-3 shadow-glow-sm">
+              <IconComponent className="w-6 h-6 text-brand" />
             </div>
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <h3 className="text-lg font-semibold text-indigo-900">
+              <h3 className="text-lg font-semibold text-fg">
                 {displayedMessage || defaultMessage}
               </h3>
               <span className="text-2xl animate-bounce">{emoji}</span>
               {isTyping && (
-                <span className="inline-block w-1 h-5 bg-indigo-600 animate-pulse ml-1">|</span>
+                <span className="inline-block w-1 h-5 bg-brand animate-pulse ml-1">|</span>
               )}
             </div>
 
             {/* Progress bar */}
-            <div className="w-full bg-indigo-100 rounded-full h-3 mb-2 overflow-hidden shadow-inner">
+            <div className="w-full bg-card-muted rounded-full h-3 mb-2 overflow-hidden shadow-inner">
               <div
-                className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500 ease-out shadow-lg relative overflow-hidden"
+                className="h-full bg-brand-gradient rounded-full transition-all duration-500 ease-out relative overflow-hidden"
                 style={{ width: `${displayedProgress}%` }}
               >
                 {/* Shimmer effect */}
@@ -237,10 +237,10 @@ export default function GenerationStatus({
 
             {/* Progress percentage */}
             <div className="flex items-center justify-between text-sm">
-              <span className="text-indigo-700 font-medium">
+              <span className="text-brand font-medium">
                 {Math.round(displayedProgress)}% complete
               </span>
-              <span className="text-indigo-600">
+              <span className="text-muted">
                 {message || "This may take a few minutes"}
               </span>
             </div>
@@ -249,11 +249,11 @@ export default function GenerationStatus({
 
         {/* Stage indicator dots */}
         {stage && (
-          <div className="flex items-center gap-2 mt-4 pt-4 border-t border-indigo-200">
-            <span className="text-xs font-medium text-indigo-700 uppercase tracking-wide">
+          <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border">
+            <span className="text-xs font-medium text-muted uppercase tracking-wide">
               Current Stage:
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               {Object.keys(STAGE_CONFIG).map((stageKey, index) => {
                 const isActive = stageKey === stage;
                 const isCompleted =
@@ -265,12 +265,12 @@ export default function GenerationStatus({
                 return (
                   <div
                     key={stageKey}
-                    className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                    className={`rounded-full transition-all duration-300 ${
                       isActive
-                        ? "bg-indigo-600 scale-125 animate-pulse"
+                        ? "glow-dot scale-125"
                         : isCompleted
-                        ? "bg-indigo-400"
-                        : "bg-indigo-200"
+                        ? "w-2 h-2 bg-brand/60"
+                        : "w-2 h-2 bg-border"
                     }`}
                     title={stageTitle}
                   />

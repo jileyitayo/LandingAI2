@@ -7,6 +7,7 @@ import ProfileForm from "@/components/ProfileForm";
 import DashboardHeader from "@/components/DashboardHeader";
 import SubscriptionDetailsCard from "@/components/SubscriptionDetailsCard";
 import UsageChart from "@/components/UsageChart";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 interface SubscriptionTier {
   id: string;
@@ -124,10 +125,10 @@ export default function ProfilePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-surface flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading profile...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto mb-4"></div>
+          <p className="text-muted">Loading profile...</p>
         </div>
       </div>
     );
@@ -135,8 +136,8 @@ export default function ProfilePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-sm border border-red-200 p-6">
+      <div className="min-h-screen bg-surface flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-card rounded-2xl shadow-card border border-red-200 dark:border-red-500/30 p-6">
           <div className="text-center">
             <svg
               className="mx-auto h-12 w-12 text-red-400"
@@ -151,11 +152,11 @@ export default function ProfilePage() {
                 d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
               />
             </svg>
-            <h3 className="mt-4 text-lg font-medium text-gray-900">Error Loading Profile</h3>
-            <p className="mt-2 text-sm text-gray-600">{error}</p>
+            <h3 className="mt-4 text-lg font-medium text-fg">Error Loading Profile</h3>
+            <p className="mt-2 text-sm text-muted">{error}</p>
             <button
               onClick={loadProfile}
-              className="mt-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="mt-4 px-4 py-2 text-sm font-medium text-brand-fg bg-brand-gradient rounded-full shadow-glow-sm hover:shadow-glow focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
             >
               Try Again
             </button>
@@ -170,14 +171,14 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface">
       <DashboardHeader />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Profile Settings</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <h1 className="font-display text-3xl font-bold text-fg">Profile Settings</h1>
+          <p className="mt-2 text-sm text-muted">
             Manage your account information, subscription, and view usage analytics.
           </p>
         </div>
@@ -186,9 +187,23 @@ export default function ProfilePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Profile & Account Info */}
           <div className="lg:col-span-2 space-y-8">
+            {/* Appearance */}
+            <div className="card p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-fg">Appearance</h2>
+                  <p className="mt-1 text-sm text-muted">
+                    Choose how SiteSmith looks to you. System matches your
+                    device setting.
+                  </p>
+                </div>
+                <ThemeToggle />
+              </div>
+            </div>
+
             {/* Profile Form */}
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              <h2 className="text-xl font-semibold text-fg mb-4">
                 Personal Information
               </h2>
               <ProfileForm
@@ -206,23 +221,23 @@ export default function ProfilePage() {
             />
 
             {/* Account Information */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            <div className="card p-6">
+              <h2 className="text-xl font-semibold text-fg mb-4">
                 Account Information
               </h2>
               <dl className="space-y-4">
                 <div>
-                  <dt className="text-sm font-medium text-gray-600">User ID</dt>
-                  <dd className="mt-1 text-sm text-gray-900 font-mono">{profile.id}</dd>
+                  <dt className="text-sm font-medium text-muted">User ID</dt>
+                  <dd className="mt-1 text-sm text-fg font-mono">{profile.id}</dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-600">Email Verified</dt>
+                  <dt className="text-sm font-medium text-muted">Email Verified</dt>
                   <dd className="mt-1">
                     <span
                       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         profile.email_verified
-                          ? "bg-green-100 text-green-800"
-                          : "bg-yellow-100 text-yellow-800"
+                          ? "bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400"
+                          : "bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-400"
                       }`}
                     >
                       {profile.email_verified ? "Verified" : "Not Verified"}
@@ -230,8 +245,8 @@ export default function ProfilePage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-600">Account Created</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
+                  <dt className="text-sm font-medium text-muted">Account Created</dt>
+                  <dd className="mt-1 text-sm text-fg">
                     {new Date(profile.created_at).toLocaleDateString("en-US", {
                       year: "numeric",
                       month: "long",
@@ -240,8 +255,8 @@ export default function ProfilePage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-600">Last Updated</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
+                  <dt className="text-sm font-medium text-muted">Last Updated</dt>
+                  <dd className="mt-1 text-sm text-fg">
                     {new Date(profile.updated_at).toLocaleDateString("en-US", {
                       year: "numeric",
                       month: "long",
@@ -265,13 +280,13 @@ export default function ProfilePage() {
             />
 
             {/* Quick Stats */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
+            <div className="card p-6">
+              <h3 className="text-lg font-semibold text-fg mb-4">Quick Stats</h3>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <svg
-                      className="h-5 w-5 text-green-600"
+                      className="h-5 w-5 text-green-600 dark:text-green-400"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -283,14 +298,14 @@ export default function ProfilePage() {
                         d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                       />
                     </svg>
-                    <span className="text-sm font-medium text-gray-700">Total Projects</span>
+                    <span className="text-sm font-medium text-fg">Total Projects</span>
                   </div>
-                  <span className="text-lg font-bold text-gray-900">{profile.generation_count}</span>
+                  <span className="text-lg font-bold text-fg">{profile.generation_count}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <svg
-                      className="h-5 w-5 text-blue-600"
+                      className="h-5 w-5 text-brand"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -302,16 +317,16 @@ export default function ProfilePage() {
                         d="M13 10V3L4 14h7v7l9-11h-7z"
                       />
                     </svg>
-                    <span className="text-sm font-medium text-gray-700">Daily Used</span>
+                    <span className="text-sm font-medium text-fg">Daily Used</span>
                   </div>
-                  <span className="text-lg font-bold text-gray-900">{profile.current_period_generations}</span>
+                  <span className="text-lg font-bold text-fg">{profile.current_period_generations}</span>
                 </div>
                 {analyticsData && (
                   <>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <svg
-                          className="h-5 w-5 text-purple-600"
+                          className="h-5 w-5 text-brand-2"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -323,9 +338,9 @@ export default function ProfilePage() {
                             d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
                           />
                         </svg>
-                        <span className="text-sm font-medium text-gray-700">Total Calls</span>
+                        <span className="text-sm font-medium text-fg">Total Calls</span>
                       </div>
-                      <span className="text-lg font-bold text-gray-900">{analyticsData.total_calls}</span>
+                      <span className="text-lg font-bold text-fg">{analyticsData.total_calls}</span>
                     </div>
                   </>
                 )}

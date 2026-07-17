@@ -12,7 +12,6 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 
@@ -158,14 +157,14 @@ function GenerationBanner({ active }: { active: ActiveGeneration[] }) {
         <Link
           key={gen.projectId}
           href={`/dashboard/new?project_id=${gen.projectId}`}
-          className="flex items-center gap-3 bg-gray-900 text-white rounded-full pl-3 pr-4 py-2 shadow-xl hover:bg-gray-800 transition-colors"
+          className="flex items-center gap-3 bg-gray-900 text-white rounded-full pl-3 pr-4 py-2 shadow-glow hover:bg-gray-800 transition-colors"
           title={gen.stageMessage || 'Generation in progress'}
         >
-          <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+          <span className="glow-dot shrink-0" />
           <span className="text-xs font-medium truncate max-w-[180px]">
             Building {gen.name}
           </span>
-          <span className="text-xs text-indigo-300 font-semibold">{Math.round(gen.progress)}%</span>
+          <span className="text-xs text-brand-2 font-semibold">{Math.round(gen.progress)}%</span>
         </Link>
       ))}
     </div>

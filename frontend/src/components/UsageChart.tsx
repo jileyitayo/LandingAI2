@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
 import {
   LineChart,
   Line,
@@ -13,6 +14,25 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+
+// Recharts consumes hex strings, not CSS classes, so the palette is
+// duplicated here per theme and selected via resolvedTheme.
+const CHART_COLORS = {
+  light: {
+    grid: "#E9E6F0",
+    axis: "#6E687E",
+    generation: "#7C3AED",
+    edit: "#10B981",
+    question: "#D946EF",
+  },
+  dark: {
+    grid: "#2A2440",
+    axis: "#A29BB8",
+    generation: "#A78BFA",
+    edit: "#34D399",
+    question: "#E879F9",
+  },
+} as const;
 
 interface AnalyticsData {
   period: string;
@@ -42,6 +62,11 @@ export default function UsageChart({
   currentPeriod,
 }: UsageChartProps) {
   const [chartType, setChartType] = useState<"line" | "bar">("line");
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const palette =
+    CHART_COLORS[mounted && resolvedTheme === "dark" ? "dark" : "light"];
 
   // Format timestamp for display
   const formatTimestamp = (timestamp: string) => {
@@ -69,24 +94,24 @@ export default function UsageChart({
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-          <p className="font-medium text-gray-900 mb-2">{label}</p>
+        <div className="bg-card p-3 border border-border rounded-lg shadow-lg">
+          <p className="font-medium text-fg mb-2">{label}</p>
           <div className="space-y-1">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted">
               Total: <span className="font-semibold">{payload[0].payload.total}</span>
             </p>
             {payload[0].payload.generation > 0 && (
-              <p className="text-sm text-blue-600">
+              <p className="text-sm text-brand">
                 Generation: <span className="font-semibold">{payload[0].payload.generation}</span>
               </p>
             )}
             {payload[0].payload.edit > 0 && (
-              <p className="text-sm text-green-600">
+              <p className="text-sm text-green-600 dark:text-green-400">
                 Edit: <span className="font-semibold">{payload[0].payload.edit}</span>
               </p>
             )}
             {payload[0].payload.question > 0 && (
-              <p className="text-sm text-purple-600">
+              <p className="text-sm text-brand-2">
                 Question: <span className="font-semibold">{payload[0].payload.question}</span>
               </p>
             )}
@@ -98,29 +123,29 @@ export default function UsageChart({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div className="card p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">Usage Analytics</h2>
+        <h2 className="text-xl font-semibold text-fg">Usage Analytics</h2>
         <div className="flex items-center gap-2">
           {/* Chart Type Toggle */}
-          <div className="flex items-center bg-gray-100 rounded-md p-1">
+          <div className="flex items-center bg-card-muted rounded-full p-1">
             <button
               onClick={() => setChartType("line")}
-              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+              className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
                 chartType === "line"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-card text-fg shadow-sm"
+                  : "text-muted hover:text-fg"
               }`}
             >
               Line
             </button>
             <button
               onClick={() => setChartType("bar")}
-              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+              className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
                 chartType === "bar"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-card text-fg shadow-sm"
+                  : "text-muted hover:text-fg"
               }`}
             >
               Bar
@@ -135,10 +160,10 @@ export default function UsageChart({
           <button
             key={period}
             onClick={() => onPeriodChange(period)}
-            className={`px-4 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${
+            className={`px-4 py-2 text-sm font-medium rounded-full whitespace-nowrap transition-colors ${
               currentPeriod === period
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                ? "bg-brand text-brand-fg shadow-glow-sm"
+                : "bg-card-muted text-fg hover:bg-border"
             }`}
           >
             {period === "24h" && "Last 24 Hours"}
@@ -152,17 +177,17 @@ export default function UsageChart({
       {/* Stats Summary */}
       {data && !isLoading && (
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs font-medium text-gray-600 mb-1">Total Calls</p>
-            <p className="text-2xl font-bold text-gray-900">{data.total_calls}</p>
+          <div className="bg-card-muted rounded-lg p-4">
+            <p className="text-xs font-medium text-muted mb-1">Total Calls</p>
+            <p className="text-2xl font-bold text-fg">{data.total_calls}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs font-medium text-gray-600 mb-1">Peak RPM</p>
-            <p className="text-2xl font-bold text-gray-900">{data.rpm_peak}</p>
+          <div className="bg-card-muted rounded-lg p-4">
+            <p className="text-xs font-medium text-muted mb-1">Peak RPM</p>
+            <p className="text-2xl font-bold text-fg">{data.rpm_peak}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs font-medium text-gray-600 mb-1">Avg RPD</p>
-            <p className="text-2xl font-bold text-gray-900">{data.rpd_average}</p>
+          <div className="bg-card-muted rounded-lg p-4">
+            <p className="text-xs font-medium text-muted mb-1">Avg RPD</p>
+            <p className="text-2xl font-bold text-fg">{data.rpd_average}</p>
           </div>
         </div>
       )}
@@ -172,15 +197,15 @@ export default function UsageChart({
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading analytics...</p>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mx-auto mb-4"></div>
+              <p className="text-muted">Loading analytics...</p>
             </div>
           </div>
         ) : chartData.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <svg
-                className="mx-auto h-12 w-12 text-gray-400"
+                className="mx-auto h-12 w-12 text-muted"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -192,8 +217,8 @@ export default function UsageChart({
                   d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
                 />
               </svg>
-              <p className="mt-4 text-gray-600">No usage data available for this period</p>
-              <p className="text-sm text-gray-500 mt-2">
+              <p className="mt-4 text-muted">No usage data available for this period</p>
+              <p className="text-sm text-muted mt-2">
                 Start generating websites to see your analytics
               </p>
             </div>
@@ -202,22 +227,22 @@ export default function UsageChart({
           <ResponsiveContainer width="100%" height="100%">
             {chartType === "line" ? (
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
                 <XAxis
                   dataKey="name"
-                  stroke="#6b7280"
+                  stroke={palette.axis}
                   style={{ fontSize: "12px" }}
                   angle={-45}
                   textAnchor="end"
                   height={80}
                 />
-                <YAxis stroke="#6b7280" style={{ fontSize: "12px" }} />
+                <YAxis stroke={palette.axis} style={{ fontSize: "12px" }} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ fontSize: "12px" }} />
                 <Line
                   type="monotone"
                   dataKey="generation"
-                  stroke="#3b82f6"
+                  stroke={palette.generation}
                   strokeWidth={2}
                   name="Generation"
                   dot={{ r: 4 }}
@@ -226,7 +251,7 @@ export default function UsageChart({
                 <Line
                   type="monotone"
                   dataKey="edit"
-                  stroke="#10b981"
+                  stroke={palette.edit}
                   strokeWidth={2}
                   name="Edit"
                   dot={{ r: 4 }}
@@ -235,7 +260,7 @@ export default function UsageChart({
                 <Line
                   type="monotone"
                   dataKey="question"
-                  stroke="#8b5cf6"
+                  stroke={palette.question}
                   strokeWidth={2}
                   name="Question"
                   dot={{ r: 4 }}
@@ -244,21 +269,21 @@ export default function UsageChart({
               </LineChart>
             ) : (
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
                 <XAxis
                   dataKey="name"
-                  stroke="#6b7280"
+                  stroke={palette.axis}
                   style={{ fontSize: "12px" }}
                   angle={-45}
                   textAnchor="end"
                   height={80}
                 />
-                <YAxis stroke="#6b7280" style={{ fontSize: "12px" }} />
+                <YAxis stroke={palette.axis} style={{ fontSize: "12px" }} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ fontSize: "12px" }} />
-                <Bar dataKey="generation" fill="#3b82f6" name="Generation" />
-                <Bar dataKey="edit" fill="#10b981" name="Edit" />
-                <Bar dataKey="question" fill="#8b5cf6" name="Question" />
+                <Bar dataKey="generation" fill={palette.generation} name="Generation" />
+                <Bar dataKey="edit" fill={palette.edit} name="Edit" />
+                <Bar dataKey="question" fill={palette.question} name="Question" />
               </BarChart>
             )}
           </ResponsiveContainer>
@@ -267,17 +292,17 @@ export default function UsageChart({
 
       {/* Breakdown by Type */}
       {data && !isLoading && data.total_calls > 0 && (
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">Breakdown by Type</h3>
+        <div className="mt-6 pt-6 border-t border-border">
+          <h3 className="text-sm font-medium text-fg mb-3">Breakdown by Type</h3>
           <div className="grid grid-cols-3 gap-4">
             {Object.entries(data.breakdown_by_type).map(([type, count]) => {
               const percentage = ((count / data.total_calls) * 100).toFixed(1);
               const colors: Record<string, { bg: string; text: string }> = {
-                generation: { bg: "bg-blue-100", text: "text-blue-900" },
-                edit: { bg: "bg-green-100", text: "text-green-900" },
-                question: { bg: "bg-purple-100", text: "text-purple-900" },
+                generation: { bg: "bg-brand/10", text: "text-brand" },
+                edit: { bg: "bg-green-100 dark:bg-green-500/15", text: "text-green-900 dark:text-green-300" },
+                question: { bg: "bg-brand-2/10", text: "text-brand-2" },
               };
-              const color = colors[type] || { bg: "bg-gray-100", text: "text-gray-900" };
+              const color = colors[type] || { bg: "bg-card-muted", text: "text-fg" };
 
               return (
                 <div key={type} className={`${color.bg} rounded-lg p-3`}>

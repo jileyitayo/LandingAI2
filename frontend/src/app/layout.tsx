@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Schibsted_Grotesk } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "sonner";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { ThemedToaster } from "@/components/ThemedToaster";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const schibstedGrotesk = Schibsted_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-display",
+});
 
 export const metadata: Metadata = {
   title: "SiteSmith - AI Website Builder",
@@ -17,10 +22,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        {children}
-        <Toaster position="top-right" richColors />
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.variable} ${schibstedGrotesk.variable} font-sans`}>
+        <ThemeProvider>
+          {children}
+          <ThemedToaster />
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -110,30 +110,30 @@ export default function ProfileForm({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div className="card p-6">
       {/* Error Message */}
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-500/30 rounded-md">
+          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
         </div>
       )}
 
       {/* Success Message */}
       {successMessage && (
-        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
-          <p className="text-sm text-green-600">{successMessage}</p>
+        <div className="mb-4 p-4 bg-green-50 border border-green-200 dark:bg-green-500/10 dark:border-green-500/30 rounded-md">
+          <p className="text-sm text-green-600 dark:text-green-400">{successMessage}</p>
         </div>
       )}
 
       {/* Avatar Upload Section */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-fg mb-2">
           Profile Picture
         </label>
         <div className="flex items-center gap-4">
           {/* Avatar Display */}
           <div className="relative">
-            <div className="w-24 h-24 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
+            <div className="w-24 h-24 rounded-full bg-card-muted overflow-hidden flex items-center justify-center">
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
@@ -142,7 +142,7 @@ export default function ProfileForm({
                 />
               ) : (
                 <svg
-                  className="w-12 h-12 text-gray-400"
+                  className="w-12 h-12 text-muted"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                 >
@@ -171,11 +171,11 @@ export default function ProfileForm({
               type="button"
               onClick={triggerFileInput}
               disabled={isUploadingAvatar}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-sm font-medium text-fg bg-card border border-border rounded-full hover:bg-card-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isUploadingAvatar ? "Uploading..." : "Change Avatar"}
             </button>
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-2 text-xs text-muted">
               JPG, PNG, GIF or WebP. Max 5MB.
             </p>
           </div>
@@ -188,7 +188,7 @@ export default function ProfileForm({
         <div className="mb-4">
           <label
             htmlFor="email"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-fg mb-1"
           >
             Email Address
           </label>
@@ -197,9 +197,9 @@ export default function ProfileForm({
             id="email"
             value={initialProfile.email}
             disabled
-            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500 cursor-not-allowed"
+            className="w-full px-3 py-2 border border-border rounded-xl bg-card-muted text-muted cursor-not-allowed"
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-muted">
             Email cannot be changed directly. Contact support if needed.
           </p>
         </div>
@@ -208,7 +208,7 @@ export default function ProfileForm({
         <div className="mb-4">
           <label
             htmlFor="firstName"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-fg mb-1"
           >
             First Name
           </label>
@@ -217,7 +217,7 @@ export default function ProfileForm({
             id="firstName"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="input"
             placeholder="Enter your first name"
           />
         </div>
@@ -226,7 +226,7 @@ export default function ProfileForm({
         <div className="mb-6">
           <label
             htmlFor="lastName"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-fg mb-1"
           >
             Last Name
           </label>
@@ -235,7 +235,7 @@ export default function ProfileForm({
             id="lastName"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="input"
             placeholder="Enter your last name"
           />
         </div>
@@ -245,7 +245,7 @@ export default function ProfileForm({
           <button
             type="submit"
             disabled={isUpdating}
-            className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2 text-sm font-medium text-brand-fg bg-brand-gradient rounded-full shadow-glow-sm hover:shadow-glow focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all"
           >
             {isUpdating ? "Saving..." : "Save Changes"}
           </button>

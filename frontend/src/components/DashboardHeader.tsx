@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserProfile } from "@/hooks/useProjects";
 import { shimmer, toBase64 } from "@/utils/value";
 import FeedbackModal from "@/components/FeedbackModal";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 export default function DashboardHeader() {
   const router = useRouter();
@@ -65,13 +66,13 @@ export default function DashboardHeader() {
   };
 
   return (
-    <nav className="bg-white shadow-sm border-b border-gray-200">
+    <nav className="bg-card/80 backdrop-blur border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
             <button
               onClick={() => router.push("/dashboard")}
-              className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity cursor-pointer"
+              className="font-display text-2xl font-bold bg-brand-gradient bg-clip-text text-transparent hover:opacity-80 transition-opacity cursor-pointer"
             >
               SiteSmith
             </button>
@@ -81,11 +82,11 @@ export default function DashboardHeader() {
             {/* Feedback Button */}
             <button
               onClick={() => setFeedbackModalOpen(true)}
-              className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+              className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-fg bg-card border border-border rounded-full hover:bg-card-muted transition-colors shadow-sm"
               title="Share Feedback"
             >
               <svg
-                className="w-5 h-5 text-gray-500"
+                className="w-5 h-5 text-muted"
                 fill="none"
                 viewBox="0 0 24 24"
                 strokeWidth="1.5"
@@ -104,12 +105,12 @@ export default function DashboardHeader() {
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="flex items-center space-x-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors"
+                className="flex items-center space-x-3 hover:bg-card-muted rounded-full px-3 py-2 transition-colors"
               >
                 {/* Avatar */}
                 <div className="flex items-center space-x-3">
                   {userProfile?.avatar_url && !avatarError ? (
-                    <div className="relative w-10 h-10 rounded-full ring-2 ring-gray-200 overflow-hidden">
+                    <div className="relative w-10 h-10 rounded-full ring-2 ring-border overflow-hidden">
                       <Image
                         src={userProfile.avatar_url}
                         alt="Profile"
@@ -124,23 +125,23 @@ export default function DashboardHeader() {
                       />
                     </div>
                   ) : (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm ring-2 ring-gray-200">
+                    <div className="w-10 h-10 rounded-full bg-brand-gradient-br flex items-center justify-center text-brand-fg font-semibold text-sm ring-2 ring-border">
                       {getInitials()}
                     </div>
                   )}
 
                   {/* User Info */}
                   <div className="text-left hidden sm:block">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-fg">
                       {getDisplayName()}
                     </p>
-                    <p className="text-xs text-gray-500">{user?.email}</p>
+                    <p className="text-xs text-muted">{user?.email}</p>
                   </div>
                 </div>
 
                 {/* Dropdown Arrow */}
                 <svg
-                  className={`w-4 h-4 text-gray-500 transition-transform ${
+                  className={`w-4 h-4 text-muted transition-transform ${
                     dropdownOpen ? "rotate-180" : ""
                   }`}
                   fill="none"
@@ -158,13 +159,13 @@ export default function DashboardHeader() {
 
               {/* Dropdown Menu */}
               {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                <div className="absolute right-0 mt-2 w-56 bg-card rounded-xl shadow-lg border border-border py-1 z-50">
                   {/* User Info in Dropdown (mobile) */}
-                  <div className="px-4 py-3 border-b border-gray-100 sm:hidden">
-                    <p className="text-sm font-medium text-gray-900">
+                  <div className="px-4 py-3 border-b border-border sm:hidden">
+                    <p className="text-sm font-medium text-fg">
                       {getDisplayName()}
                     </p>
-                    <p className="text-xs text-gray-500 mt-0.5">{user?.email}</p>
+                    <p className="text-xs text-muted mt-0.5">{user?.email}</p>
                   </div>
 
                   {/* Dashboard Link */}
@@ -173,10 +174,10 @@ export default function DashboardHeader() {
                       router.push("/dashboard");
                       setDropdownOpen(false);
                     }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+                    className="w-full text-left px-4 py-2.5 text-sm text-fg hover:bg-card-muted flex items-center space-x-3 transition-colors"
                   >
                     <svg
-                      className="w-5 h-5 text-gray-400"
+                      className="w-5 h-5 text-muted"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -197,10 +198,10 @@ export default function DashboardHeader() {
                       router.push("/dashboard/profile");
                       setDropdownOpen(false);
                     }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+                    className="w-full text-left px-4 py-2.5 text-sm text-fg hover:bg-card-muted flex items-center space-x-3 transition-colors"
                   >
                     <svg
-                      className="w-5 h-5 text-gray-400"
+                      className="w-5 h-5 text-muted"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -215,16 +216,22 @@ export default function DashboardHeader() {
                     <span>Profile</span>
                   </button>
 
+                  {/* Theme Toggle */}
+                  <div className="px-4 py-2.5 border-t border-border flex items-center justify-between">
+                    <span className="text-sm text-muted">Theme</span>
+                    <ThemeToggle compact />
+                  </div>
+
                   {/* Logout Button */}
                   <button
                     onClick={() => {
                       handleSignOut();
                       setDropdownOpen(false);
                     }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-3 transition-colors"
+                    className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 flex items-center space-x-3 transition-colors border-t border-border"
                   >
                     <svg
-                      className="w-5 h-5 text-red-500"
+                      className="w-5 h-5 text-red-500 dark:text-red-400"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
