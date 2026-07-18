@@ -66,7 +66,10 @@ export default function DashboardHeader() {
   };
 
   return (
-    <nav className="bg-card/80 backdrop-blur border-b border-border">
+    // relative z-40: backdrop-blur creates a stacking context, so the menu's
+    // z-50 only applies inside the nav — the nav itself must sit above page
+    // content (e.g. the z-10 filter dropdown) but below fixed z-50 modals
+    <nav className="relative z-40 bg-card/80 backdrop-blur border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">

@@ -6,7 +6,7 @@
  * Main dashboard displaying all user projects with search and filter capabilities
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -44,6 +44,19 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  // Close filter menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setShowFilterMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Debounce search query to reduce API calls while typing
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
@@ -150,7 +163,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Status Filter */}
-          <div className="relative">
+          <div className="relative" ref={filterRef}>
             <button
               onClick={() => setShowFilterMenu(!showFilterMenu)}
               className="inline-flex items-center gap-2 px-4 py-2.5 border border-border rounded-full bg-card hover:bg-card-muted transition-colors min-w-[160px] justify-between"
