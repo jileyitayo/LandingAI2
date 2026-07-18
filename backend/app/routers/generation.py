@@ -233,18 +233,20 @@ async def create_project(
     project_name: str,
     prompt: str,
     template_id: str,
-    supabase_client
+    supabase_client,
+    polished_prompt: Optional[str] = None
 ) -> str:
     """Create a new project in the database"""
     try:
         project_id = str(uuid.uuid4())
-        
+
         project_data = {
             "id": project_id,
             "user_id": user_id,
             "name": project_name or f"Generated Website - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
             "description": prompt[:500],
             "prompt": prompt,
+            "polished_prompt": polished_prompt,
             "template_id": template_id,
             "generation_status": "generating",
             "project_type": "react",
@@ -633,6 +635,7 @@ async def generate_react_website_from_prompt(
         design_extraction = None
         design_fidelity = "none"
         preflight_usage = None
+        polished_prompt = None
         if settings.intent_preflight_enabled:
             try:
                 async def _preflight():
@@ -641,6 +644,7 @@ async def generate_react_website_from_prompt(
                         request.prompt,
                         bool(request.attachments),
                         settings.url_ingestion_enabled,
+                        request.clarification_response,
                     )
                     extraction = None
                     if intent.url_refs and settings.url_ingestion_enabled:
@@ -651,9 +655,11 @@ async def generate_react_website_from_prompt(
                     _preflight(), timeout=20.0
                 )
                 design_fidelity = intent.fidelity
+                polished_prompt = intent.polished_prompt
                 logger.info(
                     f"[PREFLIGHT] clarify={intent.needs_clarification} urls={len(intent.url_refs)} "
-                    f"fidelity={intent.fidelity} extraction_ok={getattr(design_extraction, 'ok', None)} "
+                    f"fidelity={intent.fidelity} polished={bool(polished_prompt)} "
+                    f"extraction_ok={getattr(design_extraction, 'ok', None)} "
                     f"confidence={getattr(design_extraction, 'confidence', None)}"
                 )
 
@@ -721,6 +727,10 @@ async def generate_react_website_from_prompt(
         if request.clarification_response:
             effective_prompt = f"{request.prompt}\n\nUser clarification: {request.clarification_response.strip()}"
 
+        # Generation consumes the polished spec when the preflight produced one;
+        # the raw effective_prompt stays the user-facing project record.
+        generation_prompt = polished_prompt or effective_prompt
+
         # Step 3: Create project
         logger.info("Creating project...")
         project_id = await create_project(
@@ -728,7 +738,8 @@ async def generate_react_website_from_prompt(
             project_name=request.project_name or f"React Website - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
             prompt=effective_prompt,
             template_id=None,
-            supabase_client=supabase
+            supabase_client=supabase,
+            polished_prompt=polished_prompt
         )
 
         # Step 3.5: Link pre-project media uploads (dashboard attachments) to the new project
@@ -766,7 +777,7 @@ async def generate_react_website_from_prompt(
         asyncio.create_task(
             process_react_generation(
                 project_id=project_id,
-                prompt=effective_prompt,
+                prompt=generation_prompt,
                 user_id=user_id,
                 attachments=request.attachments,
                 design_extraction=design_extraction,

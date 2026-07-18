@@ -118,3 +118,49 @@ def test_can_read_urls_false_with_attachment_proceeds():
     mock_client.assert_not_called()
     assert result.needs_clarification is False
     assert result.fidelity == "replica"
+
+
+# ---------------------------------------------------------------------------
+# Prompt polish
+# ---------------------------------------------------------------------------
+
+def test_polished_prompt_round_trips():
+    llm = _LLMIntentCheck(
+        needs_clarification=False,
+        polished_prompt="Create a modern portfolio website...\n### Design System & Theme:\n- Dark mode")
+    with _mock_llm(llm):
+        result, _ = check_generation_intent("a modern portfolio website", has_attachments=False)
+    assert result.polished_prompt.startswith("Create a modern portfolio website")
+
+
+def test_empty_polished_prompt_normalized_to_none():
+    with _mock_llm(_LLMIntentCheck(needs_clarification=False, polished_prompt="   ")):
+        result, _ = check_generation_intent("a bakery site", has_attachments=False)
+    assert result.polished_prompt is None
+
+
+def test_clarification_response_included_in_llm_input():
+    client = MagicMock()
+    client.call_openai_api_structured.return_value = (
+        _LLMIntentCheck(needs_clarification=False, polished_prompt="spec"), {})
+    with patch("app.services.intent_checker.PromptOpenAI", return_value=client):
+        check_generation_intent(
+            "use my logo", has_attachments=True,
+            clarification_response="here is the logo, make it blue")
+    user_prompt = client.call_openai_api_structured.call_args[0][1]
+    assert "here is the logo, make it blue" in user_prompt
+
+
+def test_llm_failure_leaves_polished_prompt_none():
+    client = MagicMock()
+    client.call_openai_api_structured.side_effect = RuntimeError("api down")
+    with patch("app.services.intent_checker.PromptOpenAI", return_value=client):
+        result, _ = check_generation_intent("a portfolio site", has_attachments=False)
+    assert result.polished_prompt is None
+
+
+def test_clarify_only_mode_has_no_polish():
+    with patch("app.services.intent_checker.PromptOpenAI"):
+        result, _ = check_generation_intent(
+            "replica of https://example.com", has_attachments=False, can_read_urls=False)
+    assert result.polished_prompt is None
