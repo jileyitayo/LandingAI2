@@ -60,19 +60,8 @@ class PromptOpenAI:
         self.max_completion_tokens = 10000
         self.url = url
 
-    def set_model(self, model: str):
-        self.model = model
-
-    def set_max_retries(self, max_retries: int):
-        self.max_retries = max_retries
-
     def set_max_completion_tokens(self, max_completion_tokens: int):
         self.max_completion_tokens = max_completion_tokens
-
-    def set_url(self, url: str):
-        self.url = url
-        # Force the OpenAI client to be rebuilt against the new base URL
-        self._clients.pop("openai", None)
 
     @property
     def client(self):

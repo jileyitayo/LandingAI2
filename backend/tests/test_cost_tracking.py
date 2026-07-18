@@ -16,7 +16,6 @@ from app.services.cost_calculator import (
     CostTracker,
     clear_pricing_cache
 )
-from app.utils.pricing_manager import pricing_manager
 from app.utils.supabase_client import get_supabase_client
 
 
@@ -209,34 +208,6 @@ async def test_database_storage(tracker: CostTracker):
     print("\n✓ Database storage test completed")
 
 
-def test_pricing_manager():
-    """Test 5: Test pricing manager utilities"""
-    print("\n" + "="*70)
-    print("TEST 5: Pricing Manager")
-    print("="*70)
-    
-    # Get all pricing
-    print("\nFetching all pricing records...")
-    all_pricing = pricing_manager.get_all_pricing(active_only=True)
-    print(f"✓ Found {len(all_pricing)} active models")
-    
-    # Group by provider
-    providers = {}
-    for pricing in all_pricing:
-        provider = pricing["provider"]
-        if provider not in providers:
-            providers[provider] = []
-        providers[provider].append(pricing["model_name"])
-    
-    print(f"\nModels by provider:")
-    for provider, models in providers.items():
-        print(f"  {provider}: {len(models)} models")
-        for model in sorted(models):
-            print(f"    - {model}")
-    
-    print("\n✓ Pricing manager test completed")
-
-
 async def run_all_tests():
     """Run all tests"""
     print("\n" + "="*70)
@@ -251,8 +222,7 @@ async def run_all_tests():
     test_cost_calculation()
     tracker = test_cost_tracker()
     await test_database_storage(tracker)
-    test_pricing_manager()
-    
+
     print("\n" + "="*70)
     print("ALL TESTS COMPLETED")
     print("="*70)
