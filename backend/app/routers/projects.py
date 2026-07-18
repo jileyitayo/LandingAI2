@@ -16,7 +16,7 @@ from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import log_action
 from app.utils.auth import get_current_user
 from app.services.project_file_manager import project_file_manager
-from app.routers.generation import check_project_limit
+from app.services.quota_service import check_project_limit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"])
