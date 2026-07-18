@@ -3,15 +3,13 @@ Templates Router
 API endpoints for template generation and management.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
-from pydantic import BaseModel, Field, validator
+from fastapi import APIRouter, HTTPException, Depends, status
+from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
-import uuid
+from datetime import datetime
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import ActionLogger, log_action
 from app.utils.auth import get_current_user
-from app.services.templates.template_generator import template_generator, TemplateGenerationError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,19 +19,6 @@ router = APIRouter(tags=["templates"])
 # ============================================================================
 # Request/Response Models
 # ============================================================================
-
-class GenerateTemplateRequest(BaseModel):
-    """Request model for template generation"""
-    prompt: str = Field(..., min_length=10, max_length=1000, description="Description of desired website")
-    style_preferences: Optional[Dict[str, Any]] = Field(None, description="Style preferences (colors, fonts, etc.)")
-    
-    @validator('prompt')
-    def validate_prompt(cls, v):
-        """Validate prompt is meaningful"""
-        if not v.strip():
-            raise ValueError("Prompt cannot be empty")
-        return v.strip()
-
 
 class TemplateResponse(BaseModel):
     """Response model for template data"""
@@ -85,59 +70,6 @@ class UpdateTemplateRequest(BaseModel):
 
 
 # ============================================================================
-# Rate Limiting
-# ============================================================================
-
-class RateLimiter:
-    """Simple in-memory rate limiter for template generation"""
-    
-    def __init__(self):
-        self.user_requests: Dict[str, List[datetime]] = {}
-        self.max_requests_per_hour = 3
-    
-    def check_rate_limit(self, user_id: str) -> bool:
-        """Check if user has exceeded rate limit"""
-        now = datetime.utcnow()
-        hour_ago = now - timedelta(hours=1)
-        
-        # Clean up old requests
-        if user_id in self.user_requests:
-            self.user_requests[user_id] = [
-                req_time for req_time in self.user_requests[user_id]
-                if req_time > hour_ago
-            ]
-        else:
-            self.user_requests[user_id] = []
-        
-        # Check limit
-        if len(self.user_requests[user_id]) >= self.max_requests_per_hour:
-            return False
-        
-        # Add current request
-        self.user_requests[user_id].append(now)
-        return True
-    
-    def get_remaining_requests(self, user_id: str) -> int:
-        """Get number of remaining requests for user"""
-        now = datetime.utcnow()
-        hour_ago = now - timedelta(hours=1)
-        
-        if user_id not in self.user_requests:
-            return self.max_requests_per_hour
-        
-        recent_requests = [
-            req_time for req_time in self.user_requests[user_id]
-            if req_time > hour_ago
-        ]
-        
-        return max(0, self.max_requests_per_hour - len(recent_requests))
-
-
-# Global rate limiter instance
-rate_limiter = RateLimiter()
-
-
-# ============================================================================
 # Helper Functions
 # ============================================================================
 @log_action(action_type='READ', target_resource_type='template')
@@ -150,104 +82,10 @@ async def get_template_from_db(template_id: str, supabase_client) -> Optional[Di
         logger.error(f"Error fetching template {template_id}: {str(e)}")
         return None
 
-@log_action(action_type='CREATE', target_resource_type='template')
-async def save_template_to_db(template_data: Dict[str, Any], supabase_client) -> str:
-    """Save template to database"""
-    try:
-        # Generate ID
-        template_id = str(uuid.uuid4())
-        template_data["id"] = template_id
-        
-        # Insert into database
-        response = supabase_client.table("templates").insert(template_data).execute()
-        
-        if not response.data:
-            raise Exception("Failed to insert template")
-        
-        return template_id
-    except Exception as e:
-        logger.error(f"Error saving template: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save template"
-        )
-
 
 # ============================================================================
 # API Endpoints
 # ============================================================================
-# TODO: OBSOLETE, REMOVE THIS ENDPOINT - MIGHT BE GOOD FOR JUST GENERATING TEMPLATES
-async def generate_template(
-    request: GenerateTemplateRequest,
-    background_tasks: BackgroundTasks,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Generate a new website template from a prompt.
-    
-    - **prompt**: Description of the desired website (10-1000 characters)
-    - **style_preferences**: Optional style preferences (colors, fonts, etc.)
-    
-    Rate limit: 3 generations per hour for free tier users.
-    """
-    logger.info(f"Generating template for user {current_user['id']}")
-    user_id = current_user["id"]
-    supabase = get_supabase_client()
-    
-    # Check rate limit
-    if not rate_limiter.check_rate_limit(user_id):
-        remaining = rate_limiter.get_remaining_requests(user_id)
-        logger.error(f"Rate limit exceeded. You have {remaining} generations remaining this hour.")
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Rate limit exceeded. You have {remaining} generations remaining this hour."
-        )
-    
-    try:
-        # Log action
-        action_logger = ActionLogger(supabase)
-        await action_logger.log_action(
-            user_id=user_id,
-            action="template_generation_started",
-            details={"prompt": request.prompt[:100]}
-        )
-        
-        # Generate template
-        logger.info(f"Starting template generation for user {user_id}")
-        template_data = template_generator.generate_template(
-            prompt=request.prompt,
-            user_id=user_id,
-            style_preferences=request.style_preferences
-        )
-        
-        # Save to database
-        template_id = await save_template_to_db(template_data, supabase)
-        template_data["id"] = template_id
-        
-        # Log success
-        await action_logger.log_action(
-            user_id=user_id,
-            action="template_generated",
-            details={"template_id": template_id, "category": template_data.get("category")}
-        )
-        
-        logger.info(f"Template {template_id} generated successfully for user {user_id}")
-        
-        return TemplateResponse(**template_data)
-    
-    except TemplateGenerationError as e:
-        logger.error(f"Template generation failed: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        logger.error(f"Unexpected error during template generation: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Template generation failed"
-        )
-
 
 @router.get("", response_model=List[TemplateListItem])
 async def list_templates(

@@ -57,4 +57,5 @@ logs/
 tests/gentest/
 tests/edittests/
 tests/test_langgraph_gen.py
-app/services/generation/venv_cleanup/
+app/services/generation/
+venv_cleanup/
