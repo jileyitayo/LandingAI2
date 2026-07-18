@@ -90,13 +90,6 @@ class Settings(BaseSettings):
     site_ingest_timeout_s: float = 15.0  # Overall cap for one site extraction
     site_ingest_max_html_bytes: int = 2 * 1024 * 1024  # Byte cap for the index HTML fetch
 
-    # LangGraph settings
-    enable_langgraph_checkpoints: bool = True
-    langgraph_max_retries: int = 3
-    langgraph_parallel_workers: int = 3
-    guardrails_max_prompt_length: int = 10000
-    guardrails_rate_limit_per_minute: int = 60 
-
     # # Model settings
     # use_premium_models: bool = True
     # model_temperature: float = 0.7
