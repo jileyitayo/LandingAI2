@@ -15,6 +15,7 @@ from typing import Dict, Any, Optional, List
 
 from fastapi import HTTPException, status
 
+from app.config import settings
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import ActionLogger
 from app.utils.image_loader import fetch_images_as_data_urls

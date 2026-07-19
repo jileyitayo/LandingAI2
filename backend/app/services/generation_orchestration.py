@@ -11,6 +11,8 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
+from fastapi import HTTPException, status
+
 from app.utils.supabase_client import get_supabase_client
 from app.utils.action_logger import ActionLogger, log_action
 from app.services.react_website_generator import react_website_generator
